@@ -1,24 +1,60 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+import { DrykoLogo } from "@/components/dryko/logo";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Aponta Produção — DRYKO" },
+      {
+        name: "description",
+        content:
+          "Aplicativo de apontamento de produção da DRYKO: turnos, setores, metas de OP e relatórios.",
+      },
+      { property: "og:title", content: "Aponta Produção — DRYKO" },
+      {
+        property: "og:description",
+        content:
+          "Aplicativo de apontamento de produção da DRYKO: turnos, setores, metas de OP e relatórios.",
+      },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
+  const navigate = useNavigate();
+  const [verificando, setVerificando] = useState(true);
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        void navigate({ to: "/painel", replace: true });
+      } else {
+        setVerificando(false);
+      }
+    });
+  }, [navigate]);
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary px-6 text-center">
+      <DrykoLogo size="lg" />
+      <div>
+        <h1 className="text-3xl font-bold">Aponta Produção</h1>
+        <p className="mt-2 max-w-md text-muted-foreground">
+          Registro de produção por setor e turno, com metas, pendências e relatórios.
+        </p>
+      </div>
+      <Button
+        className="h-14 px-10 text-base"
+        disabled={verificando}
+        onClick={() => navigate({ to: "/auth" })}
+      >
+        {verificando ? "Carregando..." : "Entrar"}
+      </Button>
     </div>
   );
 }

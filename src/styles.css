@@ -142,3 +142,47 @@
     color: var(--color-foreground);
   }
 }
+
+/* ===== Identidade DRYKO ===== */
+@theme inline {
+  --color-sucesso: var(--sucesso);
+  --color-sucesso-foreground: var(--sucesso-foreground);
+  --color-alerta: var(--alerta);
+  --color-alerta-foreground: var(--alerta-foreground);
+  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.985 0.003 60);
+  --foreground: oklch(0.18 0.01 20);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.01 20);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.01 20);
+  --primary: oklch(0.53 0.21 28);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.005 60);
+  --secondary-foreground: oklch(0.2 0.01 20);
+  --muted: oklch(0.95 0.005 60);
+  --muted-foreground: oklch(0.48 0.01 40);
+  --accent: oklch(0.94 0.02 30);
+  --accent-foreground: oklch(0.25 0.03 28);
+  --destructive: oklch(0.53 0.21 28);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.9 0.006 60);
+  --input: oklch(0.9 0.006 60);
+  --ring: oklch(0.53 0.21 28);
+  --sucesso: oklch(0.62 0.16 149);
+  --sucesso-foreground: oklch(0.99 0 0);
+  --alerta: oklch(0.82 0.16 85);
+  --alerta-foreground: oklch(0.25 0.03 60);
+  --sidebar: oklch(0.16 0.01 20);
+  --sidebar-foreground: oklch(0.97 0 0);
+  --sidebar-primary: oklch(0.53 0.21 28);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.24 0.02 25);
+  --sidebar-accent-foreground: oklch(0.97 0 0);
+  --sidebar-border: oklch(0.28 0.02 25);
+  --sidebar-ring: oklch(0.53 0.21 28);
+}

@@ -10,33 +10,180 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedApontarRouteImport } from './routes/_authenticated/apontar'
+import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
+import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authenticated/historico'
+import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
+import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
+import { Route as AuthenticatedPassagemTurnoRouteImport } from './routes/_authenticated/passagem-turno'
+import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
+import { Route as AuthenticatedReportarProblemaRouteImport } from './routes/_authenticated/reportar-problema'
+import { Route as AuthenticatedSelecionarRouteImport } from './routes/_authenticated/selecionar'
+import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedApontarRoute = AuthenticatedApontarRouteImport.update({
+  id: '/apontar',
+  path: '/apontar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedContagemRoute = AuthenticatedContagemRouteImport.update({
+  id: '/contagem',
+  path: '/contagem',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHistoricoRoute = AuthenticatedHistoricoRouteImport.update({
+  id: '/historico',
+  path: '/historico',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMetasRoute = AuthenticatedMetasRouteImport.update({
+  id: '/metas',
+  path: '/metas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
+  id: '/painel',
+  path: '/painel',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPassagemTurnoRoute =
+  AuthenticatedPassagemTurnoRouteImport.update({
+    id: '/passagem-turno',
+    path: '/passagem-turno',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedReportarProblemaRoute =
+  AuthenticatedReportarProblemaRouteImport.update({
+    id: '/reportar-problema',
+    path: '/reportar-problema',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSelecionarRoute = AuthenticatedSelecionarRouteImport.update({
+  id: '/selecionar',
+  path: '/selecionar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/apontar': typeof AuthenticatedApontarRoute
+  '/contagem': typeof AuthenticatedContagemRoute
+  '/historico': typeof AuthenticatedHistoricoRoute
+  '/metas': typeof AuthenticatedMetasRoute
+  '/painel': typeof AuthenticatedPainelRoute
+  '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
+  '/selecionar': typeof AuthenticatedSelecionarRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/apontar': typeof AuthenticatedApontarRoute
+  '/contagem': typeof AuthenticatedContagemRoute
+  '/historico': typeof AuthenticatedHistoricoRoute
+  '/metas': typeof AuthenticatedMetasRoute
+  '/painel': typeof AuthenticatedPainelRoute
+  '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
+  '/selecionar': typeof AuthenticatedSelecionarRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/apontar': typeof AuthenticatedApontarRoute
+  '/_authenticated/contagem': typeof AuthenticatedContagemRoute
+  '/_authenticated/historico': typeof AuthenticatedHistoricoRoute
+  '/_authenticated/metas': typeof AuthenticatedMetasRoute
+  '/_authenticated/painel': typeof AuthenticatedPainelRoute
+  '/_authenticated/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/_authenticated/reportar-problema': typeof AuthenticatedReportarProblemaRoute
+  '/_authenticated/selecionar': typeof AuthenticatedSelecionarRoute
+  '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/apontar'
+    | '/contagem'
+    | '/historico'
+    | '/metas'
+    | '/painel'
+    | '/passagem-turno'
+    | '/relatorios'
+    | '/reportar-problema'
+    | '/selecionar'
+    | '/usuarios'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/apontar'
+    | '/contagem'
+    | '/historico'
+    | '/metas'
+    | '/painel'
+    | '/passagem-turno'
+    | '/relatorios'
+    | '/reportar-problema'
+    | '/selecionar'
+    | '/usuarios'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/apontar'
+    | '/_authenticated/contagem'
+    | '/_authenticated/historico'
+    | '/_authenticated/metas'
+    | '/_authenticated/painel'
+    | '/_authenticated/passagem-turno'
+    | '/_authenticated/relatorios'
+    | '/_authenticated/reportar-problema'
+    | '/_authenticated/selecionar'
+    | '/_authenticated/usuarios'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +195,126 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/apontar': {
+      id: '/_authenticated/apontar'
+      path: '/apontar'
+      fullPath: '/apontar'
+      preLoaderRoute: typeof AuthenticatedApontarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/contagem': {
+      id: '/_authenticated/contagem'
+      path: '/contagem'
+      fullPath: '/contagem'
+      preLoaderRoute: typeof AuthenticatedContagemRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/historico': {
+      id: '/_authenticated/historico'
+      path: '/historico'
+      fullPath: '/historico'
+      preLoaderRoute: typeof AuthenticatedHistoricoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/metas': {
+      id: '/_authenticated/metas'
+      path: '/metas'
+      fullPath: '/metas'
+      preLoaderRoute: typeof AuthenticatedMetasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/painel': {
+      id: '/_authenticated/painel'
+      path: '/painel'
+      fullPath: '/painel'
+      preLoaderRoute: typeof AuthenticatedPainelRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/passagem-turno': {
+      id: '/_authenticated/passagem-turno'
+      path: '/passagem-turno'
+      fullPath: '/passagem-turno'
+      preLoaderRoute: typeof AuthenticatedPassagemTurnoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/relatorios': {
+      id: '/_authenticated/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof AuthenticatedRelatoriosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reportar-problema': {
+      id: '/_authenticated/reportar-problema'
+      path: '/reportar-problema'
+      fullPath: '/reportar-problema'
+      preLoaderRoute: typeof AuthenticatedReportarProblemaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/selecionar': {
+      id: '/_authenticated/selecionar'
+      path: '/selecionar'
+      fullPath: '/selecionar'
+      preLoaderRoute: typeof AuthenticatedSelecionarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/usuarios': {
+      id: '/_authenticated/usuarios'
+      path: '/usuarios'
+      fullPath: '/usuarios'
+      preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedApontarRoute: typeof AuthenticatedApontarRoute
+  AuthenticatedContagemRoute: typeof AuthenticatedContagemRoute
+  AuthenticatedHistoricoRoute: typeof AuthenticatedHistoricoRoute
+  AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
+  AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
+  AuthenticatedPassagemTurnoRoute: typeof AuthenticatedPassagemTurnoRoute
+  AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
+  AuthenticatedReportarProblemaRoute: typeof AuthenticatedReportarProblemaRoute
+  AuthenticatedSelecionarRoute: typeof AuthenticatedSelecionarRoute
+  AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedApontarRoute: AuthenticatedApontarRoute,
+  AuthenticatedContagemRoute: AuthenticatedContagemRoute,
+  AuthenticatedHistoricoRoute: AuthenticatedHistoricoRoute,
+  AuthenticatedMetasRoute: AuthenticatedMetasRoute,
+  AuthenticatedPainelRoute: AuthenticatedPainelRoute,
+  AuthenticatedPassagemTurnoRoute: AuthenticatedPassagemTurnoRoute,
+  AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
+  AuthenticatedReportarProblemaRoute: AuthenticatedReportarProblemaRoute,
+  AuthenticatedSelecionarRoute: AuthenticatedSelecionarRoute,
+  AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
