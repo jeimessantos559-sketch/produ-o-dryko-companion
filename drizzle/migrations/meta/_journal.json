@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790052326540,
+      "tag": "0000_etapa1_base_usuarios_setores_turnos",
+      "breakpoints": true
+    }
+  ]
 }
