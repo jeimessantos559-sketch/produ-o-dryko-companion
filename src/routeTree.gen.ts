@@ -12,6 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedApontarRouteImport } from './routes/_authenticated/apontar'
+import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
+import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authenticated/historico'
+import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
+import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
+import { Route as AuthenticatedPassagemTurnoRouteImport } from './routes/_authenticated/passagem-turno'
 import { Route as AuthenticatedSelecionarRouteImport } from './routes/_authenticated/selecionar'
 
 const IndexRoute = IndexRouteImport.update({
@@ -28,6 +34,37 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedApontarRoute = AuthenticatedApontarRouteImport.update({
+  id: '/apontar',
+  path: '/apontar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedContagemRoute = AuthenticatedContagemRouteImport.update({
+  id: '/contagem',
+  path: '/contagem',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHistoricoRoute = AuthenticatedHistoricoRouteImport.update({
+  id: '/historico',
+  path: '/historico',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMetasRoute = AuthenticatedMetasRouteImport.update({
+  id: '/metas',
+  path: '/metas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
+  id: '/painel',
+  path: '/painel',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPassagemTurnoRoute =
+  AuthenticatedPassagemTurnoRouteImport.update({
+    id: '/passagem-turno',
+    path: '/passagem-turno',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSelecionarRoute = AuthenticatedSelecionarRouteImport.update({
   id: '/selecionar',
   path: '/selecionar',
@@ -37,11 +74,23 @@ const AuthenticatedSelecionarRoute = AuthenticatedSelecionarRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/apontar': typeof AuthenticatedApontarRoute
+  '/contagem': typeof AuthenticatedContagemRoute
+  '/historico': typeof AuthenticatedHistoricoRoute
+  '/metas': typeof AuthenticatedMetasRoute
+  '/painel': typeof AuthenticatedPainelRoute
+  '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/apontar': typeof AuthenticatedApontarRoute
+  '/contagem': typeof AuthenticatedContagemRoute
+  '/historico': typeof AuthenticatedHistoricoRoute
+  '/metas': typeof AuthenticatedMetasRoute
+  '/painel': typeof AuthenticatedPainelRoute
+  '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
 }
 export interface FileRoutesById {
@@ -49,18 +98,48 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/apontar': typeof AuthenticatedApontarRoute
+  '/_authenticated/contagem': typeof AuthenticatedContagemRoute
+  '/_authenticated/historico': typeof AuthenticatedHistoricoRoute
+  '/_authenticated/metas': typeof AuthenticatedMetasRoute
+  '/_authenticated/painel': typeof AuthenticatedPainelRoute
+  '/_authenticated/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/_authenticated/selecionar': typeof AuthenticatedSelecionarRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/selecionar'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/apontar'
+    | '/contagem'
+    | '/historico'
+    | '/metas'
+    | '/painel'
+    | '/passagem-turno'
+    | '/selecionar'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/selecionar'
+  to:
+    | '/'
+    | '/auth'
+    | '/apontar'
+    | '/contagem'
+    | '/historico'
+    | '/metas'
+    | '/painel'
+    | '/passagem-turno'
+    | '/selecionar'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/apontar'
+    | '/_authenticated/contagem'
+    | '/_authenticated/historico'
+    | '/_authenticated/metas'
+    | '/_authenticated/painel'
+    | '/_authenticated/passagem-turno'
     | '/_authenticated/selecionar'
   fileRoutesById: FileRoutesById
 }
@@ -93,6 +172,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/apontar': {
+      id: '/_authenticated/apontar'
+      path: '/apontar'
+      fullPath: '/apontar'
+      preLoaderRoute: typeof AuthenticatedApontarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/contagem': {
+      id: '/_authenticated/contagem'
+      path: '/contagem'
+      fullPath: '/contagem'
+      preLoaderRoute: typeof AuthenticatedContagemRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/historico': {
+      id: '/_authenticated/historico'
+      path: '/historico'
+      fullPath: '/historico'
+      preLoaderRoute: typeof AuthenticatedHistoricoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/metas': {
+      id: '/_authenticated/metas'
+      path: '/metas'
+      fullPath: '/metas'
+      preLoaderRoute: typeof AuthenticatedMetasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/painel': {
+      id: '/_authenticated/painel'
+      path: '/painel'
+      fullPath: '/painel'
+      preLoaderRoute: typeof AuthenticatedPainelRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/passagem-turno': {
+      id: '/_authenticated/passagem-turno'
+      path: '/passagem-turno'
+      fullPath: '/passagem-turno'
+      preLoaderRoute: typeof AuthenticatedPassagemTurnoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/selecionar': {
       id: '/_authenticated/selecionar'
       path: '/selecionar'
@@ -104,10 +225,22 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedApontarRoute: typeof AuthenticatedApontarRoute
+  AuthenticatedContagemRoute: typeof AuthenticatedContagemRoute
+  AuthenticatedHistoricoRoute: typeof AuthenticatedHistoricoRoute
+  AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
+  AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
+  AuthenticatedPassagemTurnoRoute: typeof AuthenticatedPassagemTurnoRoute
   AuthenticatedSelecionarRoute: typeof AuthenticatedSelecionarRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedApontarRoute: AuthenticatedApontarRoute,
+  AuthenticatedContagemRoute: AuthenticatedContagemRoute,
+  AuthenticatedHistoricoRoute: AuthenticatedHistoricoRoute,
+  AuthenticatedMetasRoute: AuthenticatedMetasRoute,
+  AuthenticatedPainelRoute: AuthenticatedPainelRoute,
+  AuthenticatedPassagemTurnoRoute: AuthenticatedPassagemTurnoRoute,
   AuthenticatedSelecionarRoute: AuthenticatedSelecionarRoute,
 }
 
