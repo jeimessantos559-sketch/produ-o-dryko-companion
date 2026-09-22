@@ -18,7 +18,10 @@ import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authentica
 import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedPassagemTurnoRouteImport } from './routes/_authenticated/passagem-turno'
+import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
+import { Route as AuthenticatedReportarProblemaRouteImport } from './routes/_authenticated/reportar-problema'
 import { Route as AuthenticatedSelecionarRouteImport } from './routes/_authenticated/selecionar'
+import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -65,9 +68,25 @@ const AuthenticatedPassagemTurnoRoute =
     path: '/passagem-turno',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedReportarProblemaRoute =
+  AuthenticatedReportarProblemaRouteImport.update({
+    id: '/reportar-problema',
+    path: '/reportar-problema',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSelecionarRoute = AuthenticatedSelecionarRouteImport.update({
   id: '/selecionar',
   path: '/selecionar',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 
@@ -80,7 +99,10 @@ export interface FileRoutesByFullPath {
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -91,7 +113,10 @@ export interface FileRoutesByTo {
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
+  '/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -104,7 +129,10 @@ export interface FileRoutesById {
   '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/_authenticated/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
+  '/_authenticated/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/_authenticated/selecionar': typeof AuthenticatedSelecionarRoute
+  '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,7 +145,10 @@ export interface FileRouteTypes {
     | '/metas'
     | '/painel'
     | '/passagem-turno'
+    | '/relatorios'
+    | '/reportar-problema'
     | '/selecionar'
+    | '/usuarios'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -128,7 +159,10 @@ export interface FileRouteTypes {
     | '/metas'
     | '/painel'
     | '/passagem-turno'
+    | '/relatorios'
+    | '/reportar-problema'
     | '/selecionar'
+    | '/usuarios'
   id:
     | '__root__'
     | '/'
@@ -140,7 +174,10 @@ export interface FileRouteTypes {
     | '/_authenticated/metas'
     | '/_authenticated/painel'
     | '/_authenticated/passagem-turno'
+    | '/_authenticated/relatorios'
+    | '/_authenticated/reportar-problema'
     | '/_authenticated/selecionar'
+    | '/_authenticated/usuarios'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -214,11 +251,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPassagemTurnoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/relatorios': {
+      id: '/_authenticated/relatorios'
+      path: '/relatorios'
+      fullPath: '/relatorios'
+      preLoaderRoute: typeof AuthenticatedRelatoriosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reportar-problema': {
+      id: '/_authenticated/reportar-problema'
+      path: '/reportar-problema'
+      fullPath: '/reportar-problema'
+      preLoaderRoute: typeof AuthenticatedReportarProblemaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/selecionar': {
       id: '/_authenticated/selecionar'
       path: '/selecionar'
       fullPath: '/selecionar'
       preLoaderRoute: typeof AuthenticatedSelecionarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/usuarios': {
+      id: '/_authenticated/usuarios'
+      path: '/usuarios'
+      fullPath: '/usuarios'
+      preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
   }
@@ -231,7 +289,10 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedPassagemTurnoRoute: typeof AuthenticatedPassagemTurnoRoute
+  AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
+  AuthenticatedReportarProblemaRoute: typeof AuthenticatedReportarProblemaRoute
   AuthenticatedSelecionarRoute: typeof AuthenticatedSelecionarRoute
+  AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -241,7 +302,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedPassagemTurnoRoute: AuthenticatedPassagemTurnoRoute,
+  AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
+  AuthenticatedReportarProblemaRoute: AuthenticatedReportarProblemaRoute,
   AuthenticatedSelecionarRoute: AuthenticatedSelecionarRoute,
+  AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
