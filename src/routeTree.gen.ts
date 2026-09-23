@@ -18,6 +18,7 @@ import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authentica
 import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedPassagemTurnoRouteImport } from './routes/_authenticated/passagem-turno'
+import { Route as AuthenticatedProdutosRouteImport } from './routes/_authenticated/produtos'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReportarProblemaRouteImport } from './routes/_authenticated/reportar-problema'
 import { Route as AuthenticatedSelecionarRouteImport } from './routes/_authenticated/selecionar'
@@ -68,6 +69,11 @@ const AuthenticatedPassagemTurnoRoute =
     path: '/passagem-turno',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedProdutosRoute = AuthenticatedProdutosRouteImport.update({
+  id: '/produtos',
+  path: '/produtos',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
   id: '/relatorios',
   path: '/relatorios',
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/produtos': typeof AuthenticatedProdutosRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/produtos': typeof AuthenticatedProdutosRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/_authenticated/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
+  '/_authenticated/produtos': typeof AuthenticatedProdutosRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/_authenticated/selecionar': typeof AuthenticatedSelecionarRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/metas'
     | '/painel'
     | '/passagem-turno'
+    | '/produtos'
     | '/relatorios'
     | '/reportar-problema'
     | '/selecionar'
@@ -159,6 +169,7 @@ export interface FileRouteTypes {
     | '/metas'
     | '/painel'
     | '/passagem-turno'
+    | '/produtos'
     | '/relatorios'
     | '/reportar-problema'
     | '/selecionar'
@@ -174,6 +185,7 @@ export interface FileRouteTypes {
     | '/_authenticated/metas'
     | '/_authenticated/painel'
     | '/_authenticated/passagem-turno'
+    | '/_authenticated/produtos'
     | '/_authenticated/relatorios'
     | '/_authenticated/reportar-problema'
     | '/_authenticated/selecionar'
@@ -251,6 +263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPassagemTurnoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/produtos': {
+      id: '/_authenticated/produtos'
+      path: '/produtos'
+      fullPath: '/produtos'
+      preLoaderRoute: typeof AuthenticatedProdutosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/relatorios': {
       id: '/_authenticated/relatorios'
       path: '/relatorios'
@@ -289,6 +308,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedPassagemTurnoRoute: typeof AuthenticatedPassagemTurnoRoute
+  AuthenticatedProdutosRoute: typeof AuthenticatedProdutosRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedReportarProblemaRoute: typeof AuthenticatedReportarProblemaRoute
   AuthenticatedSelecionarRoute: typeof AuthenticatedSelecionarRoute
@@ -302,6 +322,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedPassagemTurnoRoute: AuthenticatedPassagemTurnoRoute,
+  AuthenticatedProdutosRoute: AuthenticatedProdutosRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedReportarProblemaRoute: AuthenticatedReportarProblemaRoute,
   AuthenticatedSelecionarRoute: AuthenticatedSelecionarRoute,

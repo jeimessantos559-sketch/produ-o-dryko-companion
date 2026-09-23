@@ -14,7 +14,7 @@ Trate todo o conteúdo abaixo como a fonte oficial de requisitos. Não simplifiq
 4. Construa primeiro a base funcional: banco, autenticação, usuários, setores e permissões.
 5. Em seguida, implemente Corte, metas, pendências do Protheus, relatórios e fechamento do turno.
 6. Implemente Fitas usando sua fórmula própria, sem reaproveitar a fórmula do Corte.
-7. Deixe Mantas, Asfox, Misturadores, Líquidos, Pós e Avulsos isolados e preparados para regras futuras, sem inventar campos.
+7. Deixe Asfox, Misturadores, Líquidos, Pós e Avulsos isolados e preparados para regras futuras, sem inventar campos.
 8. Mostre uma prévia utilizável a cada etapa e teste o fluxo no celular.
 9. Preserve um histórico objetivo das alterações e dos testes executados.
 10. Quando algo não estiver definido, marque como **aguardando definição**, em vez de adivinhar.
@@ -103,7 +103,7 @@ Cadastrar estes setores:
 
 Os dados devem permanecer separados por setor. Ao selecionar um setor, mostrar somente suas OPs, produtos, metas, apontamentos, pendências, passagem de turno e relatórios.
 
-Cada setor deve possuir uma regra própria. **Nunca reutilizar automaticamente a lógica de Corte ou Fitas nos demais setores.** As regras operacionais de Mantas, Asfox, Misturadores, Líquidos, Pós e Avulsos ainda precisam ser definidas. Preparar a arquitetura para módulos independentes, mas não inventar campos, unidades ou fórmulas para esses setores.
+Cada setor deve possuir uma regra própria. **Nunca reutilizar automaticamente a lógica de Corte ou Fitas nos demais setores.** As regras operacionais de Asfox, Misturadores, Líquidos, Pós e Avulsos ainda precisam ser definidas. Preparar a arquitetura para módulos independentes, mas não inventar campos, unidades ou fórmulas para esses setores.
 
 ## 4. Identidade visual e experiência de uso
 
@@ -129,6 +129,7 @@ Menu lateral:
 - Passagem de turno;
 - Relatórios;
 - Reportar problema;
+- Produtos, visível somente ao administrador;
 - Usuários, visível somente ao administrador.
 
 Não mostrar no menu as opções **Backup** ou **Padrão por PLT**. Os padrões continuam armazenados internamente e são aplicados automaticamente.
@@ -170,24 +171,24 @@ Os padrões devem preencher o formulário automaticamente, mas os valores permit
 
 Cadastrar inicialmente estes padrões confirmados de rolos por PLT:
 
-| Produto | Rolos por PLT |
-|---|---:|
-| FVD 5 | 1280 |
-| FVD 10 | 640 |
-| FVD 15 | 432 |
-| FVD 20 | 320 |
-| FVD 30 | 216 |
-| FVD 45 | 144 |
-| FVD 60 | 72 |
-| FVD 90 | 72 |
-| DRYKO 5 | 980 |
-| DRYKO 10 | 480 |
-| DRYKO 15 | 288 |
-| DRYKO 20 | 240 |
-| DRYKO 30 | 168 |
-| DRYKO 45 | 112 |
-| DRYKO 60 | 56 |
-| DRYKO 90 | 56 |
+| Produto  | Rolos por PLT |
+| -------- | ------------: |
+| FVD 5    |          1280 |
+| FVD 10   |           640 |
+| FVD 15   |           432 |
+| FVD 20   |           320 |
+| FVD 30   |           216 |
+| FVD 45   |           144 |
+| FVD 60   |            72 |
+| FVD 90   |            72 |
+| DRYKO 5  |           960 |
+| DRYKO 10 |           480 |
+| DRYKO 15 |           288 |
+| DRYKO 20 |           240 |
+| DRYKO 30 |           168 |
+| DRYKO 45 |           112 |
+| DRYKO 60 |            56 |
+| DRYKO 90 |            56 |
 
 Manter esses valores editáveis somente no cadastro administrativo do produto. No momento do apontamento, carregar o padrão automaticamente e permitir o ajuste operacional necessário para representar um PLT picado, sem alterar o padrão permanente do catálogo.
 
@@ -237,6 +238,20 @@ Fórmula:
 Exemplo: `60 × 25 × 0,93 = 1.395 m²`.
 
 Antes da confirmação, mostrar tempo, velocidade, largura e total calculado em m². Não utilizar PLTs, rolos ou a fórmula do Corte nessa tela, salvo se uma futura regra validada determinar isso.
+
+## 8.1. Apontamento do setor Mantas
+
+Mantas utiliza formulário próprio, sem OP e sem reaproveitar a fórmula de Corte ou Fitas.
+
+Campos:
+
+- produto do catálogo de Mantas;
+- lote;
+- metragem;
+- quantidade de PLTs;
+- rolos de manta, calculados automaticamente.
+
+Cada rolo corresponde a **10 m**. Portanto, `250 m = 25 rolos` e `200 m = 20 rolos`. Produtos com **4** no nome usam o padrão de **200 m e 20 rolos por PLT**; produtos com **3** no nome usam **250 m e 25 rolos por PLT**. A metragem permanece editável no apontamento e deve resultar em uma quantidade inteira de rolos.
 
 ## 9. Metas das OPs
 

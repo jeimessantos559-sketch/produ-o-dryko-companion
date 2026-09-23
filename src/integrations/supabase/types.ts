@@ -22,8 +22,9 @@ export type Database = {
           grupos: Json | null
           id: string
           largura: number | null
+          lote: string | null
           metragem: number | null
-          op: string
+          op: string | null
           produto_id: string
           produto_nome: string
           quantidade_plts: number | null
@@ -44,8 +45,9 @@ export type Database = {
           grupos?: Json | null
           id?: string
           largura?: number | null
+          lote?: string | null
           metragem?: number | null
-          op: string
+          op?: string | null
           produto_id: string
           produto_nome: string
           quantidade_plts?: number | null
@@ -66,8 +68,9 @@ export type Database = {
           grupos?: Json | null
           id?: string
           largura?: number | null
+          lote?: string | null
           metragem?: number | null
-          op?: string
+          op?: string | null
           produto_id?: string
           produto_nome?: string
           quantidade_plts?: number | null
@@ -86,27 +89,36 @@ export type Database = {
       produtos: {
         Row: {
           ativo: boolean
+          categoria: string | null
           created_at: string
           id: string
           largura: number | null
+          metragem_por_plt: number | null
+          metros_por_rolo: number | null
           nome: string
           rolos_por_plt: number | null
           setor: Database["public"]["Enums"]["setor_codigo"]
         }
         Insert: {
           ativo?: boolean
+          categoria?: string | null
           created_at?: string
           id?: string
           largura?: number | null
+          metragem_por_plt?: number | null
+          metros_por_rolo?: number | null
           nome: string
           rolos_por_plt?: number | null
           setor: Database["public"]["Enums"]["setor_codigo"]
         }
         Update: {
           ativo?: boolean
+          categoria?: string | null
           created_at?: string
           id?: string
           largura?: number | null
+          metragem_por_plt?: number | null
+          metros_por_rolo?: number | null
           nome?: string
           rolos_por_plt?: number | null
           setor?: Database["public"]["Enums"]["setor_codigo"]
@@ -376,4 +388,3 @@ export const Constants = {
     },
   },
 } as const
-

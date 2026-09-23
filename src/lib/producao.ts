@@ -7,7 +7,7 @@ export const CORTE_CATALOGO = [
   { nome: "FVD 45", rolosPorPlt: 144 },
   { nome: "FVD 60", rolosPorPlt: 72 },
   { nome: "FVD 90", rolosPorPlt: 72 },
-  { nome: "DRYKO 5", rolosPorPlt: 980 },
+  { nome: "DRYKO 5", rolosPorPlt: 960 },
   { nome: "DRYKO 10", rolosPorPlt: 480 },
   { nome: "DRYKO 15", rolosPorPlt: 288 },
   { nome: "DRYKO 20", rolosPorPlt: 240 },
@@ -43,6 +43,10 @@ export function metragemCorte(largura: number | null, rolos: number) {
 
 export function areaFitas(tempo: number, velocidade: number, largura = 0.93) {
   return tempo * velocidade * largura;
+}
+
+export function rolosManta(metragem: number, metrosPorRolo = 10) {
+  return metrosPorRolo > 0 ? metragem / metrosPorRolo : 0;
 }
 
 export function dataSaoPaulo(date = new Date()) {

@@ -9,7 +9,14 @@ import { dataSaoPaulo } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/contagem")({ component: Contagem });
 
-type Linha = { produto: string; apontamentos: number; plts: number; rolos: number; area: number };
+type Linha = {
+  produto: string;
+  apontamentos: number;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+};
 
 function Contagem() {
   const { profile } = useAuth();
@@ -26,7 +33,7 @@ function Contagem() {
     }
     void supabase
       .from("apontamentos")
-      .select("produto_nome, quantidade_plts, total_rolos, area_m2")
+      .select("produto_nome, quantidade_plts, total_rolos, metragem, area_m2")
       .eq("setor", profile.setor_atual)
       .eq("turno", profile.turno_atual)
       .eq("data_local", dataSaoPaulo())
@@ -44,11 +51,13 @@ function Contagem() {
             apontamentos: 0,
             plts: 0,
             rolos: 0,
+            metragem: 0,
             area: 0,
           };
           atual.apontamentos += 1;
           atual.plts += item.quantidade_plts ?? 0;
           atual.rolos += item.total_rolos ?? 0;
+          atual.metragem += Number(item.metragem ?? 0);
           atual.area += Number(item.area_m2 ?? 0);
           mapa.set(item.produto_nome, atual);
         }
@@ -60,6 +69,7 @@ function Contagem() {
   }, [profile?.setor_atual, profile?.turno_atual]);
 
   const fitas = profile?.setor_atual === "fitas";
+  const mantas = profile?.setor_atual === "mantas";
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl space-y-4">
@@ -88,7 +98,7 @@ function Contagem() {
               linhas.map((linha) => (
                 <div
                   key={linha.produto}
-                  className="grid grid-cols-2 gap-2 rounded-md border p-3 text-sm sm:grid-cols-4"
+                  className={`grid grid-cols-2 gap-2 rounded-md border p-3 text-sm ${mantas ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}
                 >
                   <strong>{linha.produto}</strong>
                   <span>{linha.apontamentos} apontamento(s)</span>
@@ -96,6 +106,14 @@ function Contagem() {
                     <span>
                       {linha.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
                     </span>
+                  ) : mantas ? (
+                    <>
+                      <span>{linha.plts} PLTs</span>
+                      <span>
+                        {linha.metragem.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m
+                      </span>
+                      <span>{linha.rolos} rolos</span>
+                    </>
                   ) : (
                     <>
                       <span>{linha.plts} PLTs</span>

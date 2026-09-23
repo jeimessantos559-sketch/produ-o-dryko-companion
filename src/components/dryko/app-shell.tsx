@@ -7,6 +7,7 @@ import {
   History,
   LogOut,
   Menu,
+  PackagePlus,
   PlusCircle,
   Repeat,
   TriangleAlert,
@@ -34,7 +35,11 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const itens = isAdmin
-    ? [...ITENS, { to: "/usuarios", label: "Usuários", icon: Users } as const]
+    ? [
+        ...ITENS,
+        { to: "/produtos", label: "Produtos", icon: PackagePlus } as const,
+        { to: "/usuarios", label: "Usuários", icon: Users } as const,
+      ]
     : ITENS;
 
   return (

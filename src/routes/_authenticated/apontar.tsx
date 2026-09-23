@@ -12,15 +12,18 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { areaFitas, totalPlts, totalRolos, type GrupoCorte } from "@/lib/producao";
+import { areaFitas, rolosManta, totalPlts, totalRolos, type GrupoCorte } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/apontar")({ component: Apontar });
 
 type Produto = {
   id: string;
   nome: string;
+  categoria: string | null;
   rolos_por_plt: number | null;
   largura: number | null;
+  metragem_por_plt: number | null;
+  metros_por_rolo: number | null;
 };
 
 const grupoInicial = (rolosPorPlt = 1): GrupoCorte => ({
@@ -33,6 +36,7 @@ function Apontar() {
   const { profile } = useAuth();
   if (profile?.setor_atual === "corte") return <ApontarCorte />;
   if (profile?.setor_atual === "fitas") return <ApontarFitas />;
+  if (profile?.setor_atual === "mantas") return <ApontarMantas />;
   return (
     <AppShell>
       <EmDefinicao
@@ -43,7 +47,7 @@ function Apontar() {
   );
 }
 
-function useProdutos(setor: "corte" | "fitas") {
+function useProdutos(setor: "corte" | "fitas" | "mantas") {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
@@ -52,7 +56,7 @@ function useProdutos(setor: "corte" | "fitas") {
     setErro(false);
     void supabase
       .from("produtos")
-      .select("id, nome, rolos_por_plt, largura")
+      .select("id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo")
       .eq("setor", setor)
       .eq("ativo", true)
       .order("nome")
@@ -115,10 +119,15 @@ function ApontarCorte() {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (error) return toast.error("Não foi possível consultar o último apontamento.");
-    if (!data || !Array.isArray(data.grupos))
-      return toast.info("Ainda não há apontamento para repetir.");
-    setOp(data.op);
+    if (error) {
+      toast.error("Não foi possível consultar o último apontamento.");
+      return;
+    }
+    if (!data || !Array.isArray(data.grupos)) {
+      toast.info("Ainda não há apontamento para repetir.");
+      return;
+    }
+    setOp(data.op ?? "");
     setProdutoId(data.produto_id);
     setGrupos(data.grupos as unknown as GrupoCorte[]);
     setUltimoSalvo(null);
@@ -148,7 +157,10 @@ function ApontarCorte() {
       .single();
     setSalvando(false);
     enviando.current = false;
-    if (error) return toast.error("Não foi possível salvar o apontamento. Revise os dados.");
+    if (error) {
+      toast.error("Não foi possível salvar o apontamento. Revise os dados.");
+      return;
+    }
     setUltimoSalvo(`PLTs ${data.sequencia_inicio}–${data.sequencia_fim} registrados com sucesso.`);
     setOp("");
     setProdutoId("");
@@ -322,6 +334,198 @@ function ApontarCorte() {
   );
 }
 
+function ApontarMantas() {
+  const { user, profile } = useAuth();
+  const { produtos, carregando, erro } = useProdutos("mantas");
+  const [produtoId, setProdutoId] = useState("");
+  const [lote, setLote] = useState("");
+  const [metragem, setMetragem] = useState(0);
+  const [quantidadePlts, setQuantidadePlts] = useState(1);
+  const [salvando, setSalvando] = useState(false);
+  const [ultimoSalvo, setUltimoSalvo] = useState<string | null>(null);
+  const enviando = useRef(false);
+  const produto = produtos.find((item) => item.id === produtoId);
+  const metrosPorRolo = produto?.metros_por_rolo ?? 10;
+  const rolos = rolosManta(metragem, metrosPorRolo);
+  const rolosInteiros = Number.isInteger(rolos) && rolos > 0;
+  const valido = Boolean(
+    produto &&
+    lote.trim() &&
+    metragem > 0 &&
+    Number.isInteger(quantidadePlts) &&
+    quantidadePlts > 0 &&
+    rolosInteiros,
+  );
+  const produtosPorCategoria = useMemo(() => {
+    const grupos = new Map<string, Produto[]>();
+    for (const item of produtos) {
+      const categoria = item.categoria ?? "Outros";
+      grupos.set(categoria, [...(grupos.get(categoria) ?? []), item]);
+    }
+    return [...grupos.entries()];
+  }, [produtos]);
+
+  function escolherProduto(id: string) {
+    setProdutoId(id);
+    const escolhido = produtos.find((item) => item.id === id);
+    setQuantidadePlts(1);
+    setMetragem(escolhido?.metragem_por_plt ?? 0);
+    setUltimoSalvo(null);
+  }
+
+  function alterarPlts(valor: number) {
+    setQuantidadePlts(valor);
+    if (produto?.metragem_por_plt && valor > 0) {
+      setMetragem(produto.metragem_por_plt * valor);
+    }
+  }
+
+  async function salvar() {
+    if (!valido || !user || !profile?.turno_atual || !produto || enviando.current) return;
+    enviando.current = true;
+    setSalvando(true);
+    const { data, error } = await supabase
+      .from("apontamentos")
+      .insert({
+        usuario_id: user.id,
+        setor: "mantas",
+        turno: profile.turno_atual,
+        lote: lote.trim(),
+        produto_id: produto.id,
+        produto_nome: produto.nome,
+        quantidade_plts: quantidadePlts,
+        rolos_por_plt: produto.rolos_por_plt,
+        total_rolos: rolos,
+        metragem,
+      })
+      .select("sequencia_inicio, sequencia_fim")
+      .single();
+    setSalvando(false);
+    enviando.current = false;
+    if (error) {
+      toast.error("Não foi possível salvar o apontamento de Mantas.");
+      return;
+    }
+    setUltimoSalvo(`PLTs ${data.sequencia_inicio}–${data.sequencia_fim} registrados com sucesso.`);
+    setProdutoId("");
+    setLote("");
+    setMetragem(0);
+    setQuantidadePlts(1);
+    toast.success("Apontamento de Mantas salvo.");
+  }
+
+  return (
+    <AppShell>
+      <div className="mx-auto max-w-2xl space-y-4">
+        <div>
+          <h1 className="text-2xl font-bold">Apontamento de Mantas</h1>
+          <p className="text-sm text-muted-foreground">
+            Informe a metragem; cada rolo de manta corresponde a {metrosPorRolo} m.
+          </p>
+        </div>
+        {ultimoSalvo && (
+          <div
+            role="status"
+            className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm font-medium text-green-800"
+          >
+            {ultimoSalvo}
+          </div>
+        )}
+        {erro && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800"
+          >
+            Não foi possível carregar o catálogo de Mantas.
+          </div>
+        )}
+        <Card>
+          <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="produto-manta">Produto *</Label>
+              <select
+                id="produto-manta"
+                className="h-12 w-full rounded-md border bg-background px-3 text-base"
+                value={produtoId}
+                onChange={(e) => escolherProduto(e.target.value)}
+                disabled={carregando}
+              >
+                <option value="">{carregando ? "Carregando..." : "Selecione"}</option>
+                {produtosPorCategoria.map(([categoria, itens]) => (
+                  <optgroup key={categoria} label={categoria}>
+                    {itens.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.nome}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="lote-manta">Lote *</Label>
+              <Input
+                id="lote-manta"
+                value={lote}
+                onChange={(e) => setLote(e.target.value)}
+                className="h-12 text-base"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="metragem-manta">Metragem *</Label>
+              <Input
+                id="metragem-manta"
+                type="number"
+                min={metrosPorRolo}
+                step={metrosPorRolo}
+                value={metragem || ""}
+                onChange={(e) => setMetragem(Number(e.target.value))}
+                className="h-12 text-base"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="plts-manta">PLT(s) *</Label>
+              <Input
+                id="plts-manta"
+                type="number"
+                min={1}
+                step={1}
+                value={quantidadePlts || ""}
+                onChange={(e) => alterarPlts(Number(e.target.value))}
+                className="h-12 text-base"
+              />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="rolos-manta">Rolos de manta</Label>
+              <Input
+                id="rolos-manta"
+                value={rolosInteiros ? rolos : ""}
+                readOnly
+                className="h-12 bg-muted text-base font-semibold"
+              />
+            </div>
+            {produto && (
+              <div className="rounded-md bg-muted p-3 text-sm sm:col-span-2">
+                <strong>{produto.categoria ?? "Mantas"}:</strong>{" "}
+                {produto.metragem_por_plt?.toLocaleString("pt-BR")} m/PLT · {produto.rolos_por_plt}{" "}
+                rolos/PLT
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        {metragem > 0 && !rolosInteiros && (
+          <p className="text-sm font-medium text-destructive">
+            A metragem deve ser múltipla de {metrosPorRolo} m para formar rolos inteiros.
+          </p>
+        )}
+        <Button className="h-14 w-full text-base" disabled={!valido || salvando} onClick={salvar}>
+          {salvando ? "Apontando..." : "Apontar"}
+        </Button>
+      </div>
+    </AppShell>
+  );
+}
+
 function ApontarFitas() {
   const { user, profile } = useAuth();
   const { produtos, carregando, erro } = useProdutos("fitas");
@@ -360,7 +564,10 @@ function ApontarFitas() {
     });
     setSalvando(false);
     enviando.current = false;
-    if (error) return toast.error("Não foi possível salvar o apontamento.");
+    if (error) {
+      toast.error("Não foi possível salvar o apontamento.");
+      return;
+    }
     toast.success("Apontamento de Fitas salvo.");
     setOp("");
     setProdutoId("");

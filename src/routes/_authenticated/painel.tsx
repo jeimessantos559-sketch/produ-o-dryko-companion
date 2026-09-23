@@ -10,17 +10,24 @@ import { dataSaoPaulo } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/painel")({ component: Painel });
 
-type Resumo = { registros: number; plts: number; rolos: number; area: number };
+type Resumo = { registros: number; plts: number; rolos: number; metragem: number; area: number };
 
 function Painel() {
   const { profile, loading } = useAuth();
-  const [resumo, setResumo] = useState<Resumo>({ registros: 0, plts: 0, rolos: 0, area: 0 });
+  const [resumo, setResumo] = useState<Resumo>({
+    registros: 0,
+    plts: 0,
+    rolos: 0,
+    metragem: 0,
+    area: 0,
+  });
   const [recentes, setRecentes] = useState<
     Array<{
       id: string;
       produto_nome: string;
       quantidade_plts: number | null;
       total_rolos: number | null;
+      metragem: number | null;
       area_m2: number | null;
       created_at: string;
     }>
@@ -32,14 +39,14 @@ function Painel() {
     setErro(false);
     if (!profile?.setor_atual || !profile.turno_atual) {
       setRecentes([]);
-      setResumo({ registros: 0, plts: 0, rolos: 0, area: 0 });
+      setResumo({ registros: 0, plts: 0, rolos: 0, metragem: 0, area: 0 });
       return () => {
         ativo = false;
       };
     }
     void supabase
       .from("apontamentos")
-      .select("id, produto_nome, quantidade_plts, total_rolos, area_m2, created_at")
+      .select("id, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, created_at")
       .eq("setor", profile.setor_atual)
       .eq("turno", profile.turno_atual)
       .eq("data_local", dataSaoPaulo())
@@ -49,7 +56,7 @@ function Painel() {
         if (error) {
           setErro(true);
           setRecentes([]);
-          setResumo({ registros: 0, plts: 0, rolos: 0, area: 0 });
+          setResumo({ registros: 0, plts: 0, rolos: 0, metragem: 0, area: 0 });
           return;
         }
         const itens = data ?? [];
@@ -60,9 +67,10 @@ function Painel() {
               registros: acc.registros + 1,
               plts: acc.plts + (item.quantidade_plts ?? 0),
               rolos: acc.rolos + (item.total_rolos ?? 0),
+              metragem: acc.metragem + Number(item.metragem ?? 0),
               area: acc.area + Number(item.area_m2 ?? 0),
             }),
-            { registros: 0, plts: 0, rolos: 0, area: 0 },
+            { registros: 0, plts: 0, rolos: 0, metragem: 0, area: 0 },
           ),
         );
       });
@@ -72,6 +80,7 @@ function Painel() {
   }, [profile?.setor_atual, profile?.turno_atual]);
 
   const setorFitas = profile?.setor_atual === "fitas";
+  const setorMantas = profile?.setor_atual === "mantas";
   const dataAtual = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
   }).format(new Date());
@@ -117,7 +126,16 @@ function Painel() {
             }
           />
           {!setorFitas && <Indicador label="Rolos" valor={resumo.rolos} />}
-          {!setorFitas && <Indicador label="Metragem" valor="Aguardando largura" />}
+          {!setorFitas && (
+            <Indicador
+              label="Metragem"
+              valor={
+                setorMantas
+                  ? `${resumo.metragem.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m`
+                  : "Aguardando largura"
+              }
+            />
+          )}
         </div>
         <Card>
           <CardHeader>
@@ -138,7 +156,9 @@ function Painel() {
                   <span className="text-muted-foreground">
                     {setorFitas
                       ? `${Number(item.area_m2).toLocaleString("pt-BR")} m²`
-                      : `${item.quantidade_plts} PLTs · ${item.total_rolos} rolos`}
+                      : setorMantas
+                        ? `${item.quantidade_plts} PLTs · ${Number(item.metragem).toLocaleString("pt-BR")} m · ${item.total_rolos} rolos`
+                        : `${item.quantidade_plts} PLTs · ${item.total_rolos} rolos`}
                   </span>
                 </div>
               ))
