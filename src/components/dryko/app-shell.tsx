@@ -117,9 +117,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <Button asChild size="lg" className="h-11">
-            <Link to="/apontar">
+            <a href="/apontar">
               <PlusCircle className="size-5" /> Apontar
-            </Link>
+            </a>
           </Button>
           <Button variant="ghost" size="icon" aria-label="Sair" onClick={sair}>
             <LogOut className="size-5" />

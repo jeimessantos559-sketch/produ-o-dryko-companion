@@ -186,3 +186,10 @@
   --sidebar-border: oklch(0.28 0.02 25);
   --sidebar-ring: oklch(0.53 0.21 28);
 }
+
+/* Oculta globalmente todo o widget de marca do preview do Lovable. */
+#lovable-badge {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

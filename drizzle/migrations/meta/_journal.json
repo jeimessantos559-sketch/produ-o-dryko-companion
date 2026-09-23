@@ -8,6 +8,13 @@
       "when": 1790052326540,
       "tag": "0000_etapa1_base_usuarios_setores_turnos",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790179886689,
+      "tag": "0001_etapa2_corte_fitas",
+      "breakpoints": true
     }
   ]
 }
