@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/_authenticated/produtos")({
 });
 
 type Produto = Database["public"]["Tables"]["produtos"]["Row"];
+type Marca = Database["public"]["Tables"]["marcas_produto"]["Row"];
 
 const SETORES: SetorCodigo[] = [
   "corte",
@@ -30,13 +32,14 @@ const SETORES: SetorCodigo[] = [
 ];
 
 function Produtos() {
-  const { isAdmin, loading } = useAuth();
+  const { canManageProducts, loading } = useAuth();
   const [setor, setSetor] = useState<SetorCodigo>("mantas");
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [marcas, setMarcas] = useState<Marca[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
-  const [categoria, setCategoria] = useState("Dryko");
+  const [categoria, setCategoria] = useState("DRYKO");
   const [rolosPorPlt, setRolosPorPlt] = useState(0);
   const [largura, setLargura] = useState(0.93);
   const [metragemPorPlt, setMetragemPorPlt] = useState(250);
@@ -44,28 +47,35 @@ function Produtos() {
 
   async function carregarProdutos(setorSelecionado: SetorCodigo) {
     setCarregando(true);
-    const { data, error } = await supabase
-      .from("produtos")
-      .select("*")
-      .eq("setor", setorSelecionado)
-      .order("categoria", { nullsFirst: false })
-      .order("nome");
-    if (error) {
+    const [{ data, error }, { data: listaMarcas, error: erroMarcas }] = await Promise.all([
+      supabase.from("produtos").select("*").eq("setor", setorSelecionado).order("nome"),
+      supabase.from("marcas_produto").select("*").eq("setor", setorSelecionado).order("ordem"),
+    ]);
+    if (error || erroMarcas) {
       setProdutos([]);
+      setMarcas([]);
       toast.error("Não foi possível carregar os produtos.");
     } else {
-      setProdutos(data ?? []);
+      const ordem = new Map((listaMarcas ?? []).map((marca) => [marca.nome, marca.ordem]));
+      setProdutos(
+        [...(data ?? [])].sort(
+          (a, b) =>
+            (ordem.get(a.categoria ?? "") ?? 999) - (ordem.get(b.categoria ?? "") ?? 999) ||
+            a.nome.localeCompare(b.nome),
+        ),
+      );
+      setMarcas(listaMarcas ?? []);
     }
     setCarregando(false);
   }
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!canManageProducts) {
       setCarregando(false);
       return;
     }
     void carregarProdutos(setor);
-  }, [isAdmin, setor]);
+  }, [canManageProducts, setor]);
 
   const rolosCalculados = useMemo(
     () => rolosManta(metragemPorPlt, metrosPorRolo),
@@ -85,12 +95,12 @@ function Produtos() {
         : setor === "mantas"
           ? Boolean(mantaValida)
           : true;
-  const valido = Boolean(nome.trim() && configuracaoValida);
+  const valido = Boolean(nome.trim() && categoria.trim() && configuracaoValida);
 
   function trocarSetor(novoSetor: SetorCodigo) {
     setSetor(novoSetor);
     setNome("");
-    setCategoria("Dryko");
+    setCategoria(novoSetor === "mantas" ? "DRYKO" : "");
     setRolosPorPlt(0);
     setLargura(0.93);
     setMetragemPorPlt(250);
@@ -107,10 +117,23 @@ function Produtos() {
   async function salvar() {
     if (!valido || salvando) return;
     setSalvando(true);
+    const marca = categoria.trim().toUpperCase();
+    if (!marcas.some((item) => item.nome === marca)) {
+      const { error: erroMarca } = await supabase.from("marcas_produto").insert({
+        setor,
+        nome: marca,
+        ordem: marcas.length + 1,
+      });
+      if (erroMarca && erroMarca.code !== "23505") {
+        setSalvando(false);
+        toast.error("Não foi possível cadastrar a marca do produto.");
+        return;
+      }
+    }
     const { error } = await supabase.from("produtos").insert({
       setor,
       nome: nome.trim(),
-      categoria: setor === "mantas" ? categoria.trim() : null,
+      categoria: marca,
       rolos_por_plt: setor === "corte" ? rolosPorPlt : setor === "mantas" ? rolosCalculados : null,
       largura: setor === "fitas" ? largura : null,
       metragem_por_plt: setor === "mantas" ? metragemPorPlt : null,
@@ -131,22 +154,40 @@ function Produtos() {
     await carregarProdutos(setor);
   }
 
+  async function moverMarca(indice: number, direcao: -1 | 1) {
+    const destino = indice + direcao;
+    if (destino < 0 || destino >= marcas.length) return;
+    const atual = marcas[indice];
+    const outra = marcas[destino];
+    if (!atual || !outra) return;
+    const { error } = await supabase.from("marcas_produto").upsert([
+      { id: atual.id, setor: atual.setor, nome: atual.nome, ordem: outra.ordem },
+      { id: outra.id, setor: outra.setor, nome: outra.nome, ordem: atual.ordem },
+    ]);
+    if (error) {
+      toast.error("Não foi possível alterar a ordem das marcas.");
+      return;
+    }
+    toast.success("Ordem das marcas atualizada.");
+    await carregarProdutos(setor);
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl space-y-4">
         <div>
           <h1 className="text-2xl font-bold">Produtos</h1>
           <p className="text-sm text-muted-foreground">
-            Cadastro disponível somente para administradores.
+            Cadastro disponível somente para usuários autorizados.
           </p>
         </div>
 
         {loading || carregando ? (
           <p className="text-sm text-muted-foreground">Carregando...</p>
-        ) : !isAdmin ? (
+        ) : !canManageProducts ? (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
-              Esta tela é exclusiva do administrador.
+              Você não tem permissão para gerenciar produtos.
             </CardContent>
           </Card>
         ) : (
@@ -170,6 +211,15 @@ function Produtos() {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="categoria-produto">Marca ou família *</Label>
+                  <Input
+                    id="categoria-produto"
+                    value={categoria}
+                    onChange={(e) => setCategoria(e.target.value.toUpperCase())}
+                    placeholder="Ex.: DRYKO"
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="nome-produto">Nome *</Label>
@@ -211,15 +261,6 @@ function Produtos() {
                 {setor === "mantas" && (
                   <>
                     <div className="space-y-1">
-                      <Label htmlFor="categoria-produto">Categoria *</Label>
-                      <Input
-                        id="categoria-produto"
-                        value={categoria}
-                        onChange={(e) => setCategoria(e.target.value)}
-                        placeholder="Ex.: Dryko"
-                      />
-                    </div>
-                    <div className="space-y-1">
                       <Label htmlFor="metragem-produto">Metragem por PLT *</Label>
                       <Input
                         id="metragem-produto"
@@ -257,6 +298,48 @@ function Produtos() {
                 >
                   {salvando ? "Cadastrando..." : "Cadastrar produto"}
                 </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Ordem das marcas</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {marcas.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma marca cadastrada.</p>
+                ) : (
+                  marcas.map((marca, indice) => (
+                    <div
+                      key={marca.id}
+                      className="flex items-center justify-between rounded-md border p-3"
+                    >
+                      <span className="font-medium">
+                        {indice + 1}. {marca.nome}
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          disabled={indice === 0}
+                          onClick={() => moverMarca(indice, -1)}
+                          aria-label={`Subir ${marca.nome}`}
+                        >
+                          <ArrowUp />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          disabled={indice === marcas.length - 1}
+                          onClick={() => moverMarca(indice, 1)}
+                          aria-label={`Descer ${marca.nome}`}
+                        >
+                          <ArrowDown />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </CardContent>
             </Card>
 

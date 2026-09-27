@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedApontarRouteImport } from './routes/_authenticated/apontar'
 import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
+import { Route as AuthenticatedControleApontamentosRouteImport } from './routes/_authenticated/controle-apontamentos'
 import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authenticated/historico'
 import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
@@ -48,6 +49,12 @@ const AuthenticatedContagemRoute = AuthenticatedContagemRouteImport.update({
   path: '/contagem',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedControleApontamentosRoute =
+  AuthenticatedControleApontamentosRouteImport.update({
+    id: '/controle-apontamentos',
+    path: '/controle-apontamentos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedHistoricoRoute = AuthenticatedHistoricoRouteImport.update({
   id: '/historico',
   path: '/historico',
@@ -101,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
+  '/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
   '/historico': typeof AuthenticatedHistoricoRoute
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
@@ -116,6 +124,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
+  '/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
   '/historico': typeof AuthenticatedHistoricoRoute
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
@@ -133,6 +142,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/apontar': typeof AuthenticatedApontarRoute
   '/_authenticated/contagem': typeof AuthenticatedContagemRoute
+  '/_authenticated/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
   '/_authenticated/historico': typeof AuthenticatedHistoricoRoute
   '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/apontar'
     | '/contagem'
+    | '/controle-apontamentos'
     | '/historico'
     | '/metas'
     | '/painel'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/apontar'
     | '/contagem'
+    | '/controle-apontamentos'
     | '/historico'
     | '/metas'
     | '/painel'
@@ -181,6 +193,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/apontar'
     | '/_authenticated/contagem'
+    | '/_authenticated/controle-apontamentos'
     | '/_authenticated/historico'
     | '/_authenticated/metas'
     | '/_authenticated/painel'
@@ -233,6 +246,13 @@ declare module '@tanstack/react-router' {
       path: '/contagem'
       fullPath: '/contagem'
       preLoaderRoute: typeof AuthenticatedContagemRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/controle-apontamentos': {
+      id: '/_authenticated/controle-apontamentos'
+      path: '/controle-apontamentos'
+      fullPath: '/controle-apontamentos'
+      preLoaderRoute: typeof AuthenticatedControleApontamentosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/historico': {
@@ -304,6 +324,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedApontarRoute: typeof AuthenticatedApontarRoute
   AuthenticatedContagemRoute: typeof AuthenticatedContagemRoute
+  AuthenticatedControleApontamentosRoute: typeof AuthenticatedControleApontamentosRoute
   AuthenticatedHistoricoRoute: typeof AuthenticatedHistoricoRoute
   AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
@@ -318,6 +339,8 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedApontarRoute: AuthenticatedApontarRoute,
   AuthenticatedContagemRoute: AuthenticatedContagemRoute,
+  AuthenticatedControleApontamentosRoute:
+    AuthenticatedControleApontamentosRoute,
   AuthenticatedHistoricoRoute: AuthenticatedHistoricoRoute,
   AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,

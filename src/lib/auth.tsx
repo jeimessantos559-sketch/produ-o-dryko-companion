@@ -17,6 +17,7 @@ type AuthValue = {
   loading: boolean;
   isAdmin: boolean;
   isAutorizado: boolean;
+  canManageProducts: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -71,7 +72,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     roles,
     loading,
     isAdmin: roles.includes("administrador"),
-    isAutorizado: roles.includes("autorizado_protheus") || roles.includes("administrador"),
+    isAutorizado:
+      roles.includes("autorizado_protheus") ||
+      roles.includes("administrador") ||
+      Boolean(profile?.pode_confirmar_protheus),
+    canManageProducts: roles.includes("administrador") || Boolean(profile?.pode_gerenciar_produtos),
     refresh: () => loadUserData(session?.user.id),
     signOut: async () => {
       await supabase.auth.signOut();

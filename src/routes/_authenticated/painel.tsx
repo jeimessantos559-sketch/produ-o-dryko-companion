@@ -10,17 +10,28 @@ import { dataSaoPaulo } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/painel")({ component: Painel });
 
-type Resumo = { registros: number; plts: number; rolos: number; metragem: number; area: number };
+type Resumo = {
+  registros: number;
+  pendentes: number;
+  lancados: number;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+};
 
 function Painel() {
-  const { profile, loading } = useAuth();
+  const { profile, loading, isAutorizado } = useAuth();
   const [resumo, setResumo] = useState<Resumo>({
     registros: 0,
+    pendentes: 0,
+    lancados: 0,
     plts: 0,
     rolos: 0,
     metragem: 0,
     area: 0,
   });
+  const [pendenciasAnteriores, setPendenciasAnteriores] = useState(0);
   const [recentes, setRecentes] = useState<
     Array<{
       id: string;
@@ -29,6 +40,7 @@ function Painel() {
       total_rolos: number | null;
       metragem: number | null;
       area_m2: number | null;
+      status: "pendente" | "lancado";
       created_at: string;
     }>
   >([]);
@@ -39,41 +51,75 @@ function Painel() {
     setErro(false);
     if (!profile?.setor_atual || !profile.turno_atual) {
       setRecentes([]);
-      setResumo({ registros: 0, plts: 0, rolos: 0, metragem: 0, area: 0 });
+      setResumo({
+        registros: 0,
+        pendentes: 0,
+        lancados: 0,
+        plts: 0,
+        rolos: 0,
+        metragem: 0,
+        area: 0,
+      });
+      setPendenciasAnteriores(0);
       return () => {
         ativo = false;
       };
     }
-    void supabase
-      .from("apontamentos")
-      .select("id, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, created_at")
-      .eq("setor", profile.setor_atual)
-      .eq("turno", profile.turno_atual)
-      .eq("data_local", dataSaoPaulo())
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (!ativo) return;
-        if (error) {
-          setErro(true);
-          setRecentes([]);
-          setResumo({ registros: 0, plts: 0, rolos: 0, metragem: 0, area: 0 });
-          return;
-        }
-        const itens = data ?? [];
-        setRecentes(itens.slice(0, 20));
-        setResumo(
-          itens.reduce(
-            (acc, item) => ({
-              registros: acc.registros + 1,
-              plts: acc.plts + (item.quantidade_plts ?? 0),
-              rolos: acc.rolos + (item.total_rolos ?? 0),
-              metragem: acc.metragem + Number(item.metragem ?? 0),
-              area: acc.area + Number(item.area_m2 ?? 0),
-            }),
-            { registros: 0, plts: 0, rolos: 0, metragem: 0, area: 0 },
-          ),
-        );
-      });
+    const hoje = dataSaoPaulo();
+    void Promise.all([
+      supabase
+        .from("apontamentos")
+        .select(
+          "id, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at",
+        )
+        .eq("setor", profile.setor_atual)
+        .eq("turno", profile.turno_atual)
+        .eq("data_local", hoje)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("apontamentos")
+        .select("turno, data_local")
+        .eq("setor", profile.setor_atual)
+        .eq("status", "pendente")
+        .limit(500),
+    ]).then(([{ data, error }, { data: pendencias }]) => {
+      if (!ativo) return;
+      if (error) {
+        setErro(true);
+        setRecentes([]);
+        setResumo({
+          registros: 0,
+          pendentes: 0,
+          lancados: 0,
+          plts: 0,
+          rolos: 0,
+          metragem: 0,
+          area: 0,
+        });
+        return;
+      }
+      setPendenciasAnteriores(
+        (pendencias ?? []).filter(
+          (item) => item.data_local !== hoje || item.turno !== profile.turno_atual,
+        ).length,
+      );
+      const itens = data ?? [];
+      setRecentes(itens.slice(0, 20));
+      setResumo(
+        itens.reduce(
+          (acc, item) => ({
+            registros: acc.registros + 1,
+            pendentes: acc.pendentes + (item.status === "pendente" ? 1 : 0),
+            lancados: acc.lancados + (item.status === "lancado" ? 1 : 0),
+            plts: acc.plts + (item.quantidade_plts ?? 0),
+            rolos: acc.rolos + (item.total_rolos ?? 0),
+            metragem: acc.metragem + Number(item.metragem ?? 0),
+            area: acc.area + Number(item.area_m2 ?? 0),
+          }),
+          { registros: 0, pendentes: 0, lancados: 0, plts: 0, rolos: 0, metragem: 0, area: 0 },
+        ),
+      );
+    });
     return () => {
       ativo = false;
     };
@@ -115,8 +161,23 @@ function Painel() {
             </CardContent>
           </Card>
         )}
+        {pendenciasAnteriores > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <span>
+              Há <strong>{pendenciasAnteriores}</strong> apontamento(s) pendente(s) de turnos
+              anteriores.
+            </span>
+            {isAutorizado && (
+              <Button asChild size="sm" variant="outline">
+                <Link to="/controle-apontamentos">Revisar pendências</Link>
+              </Button>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Indicador label="Apontamentos" valor={resumo.registros} />
+          <Indicador label="Pendentes" valor={resumo.pendentes} />
+          <Indicador label="Lançados" valor={resumo.lancados} />
           <Indicador
             label={setorFitas ? "Área" : "PLTs"}
             valor={

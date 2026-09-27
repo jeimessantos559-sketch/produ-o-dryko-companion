@@ -10,6 +10,7 @@ import {
   PackagePlus,
   PlusCircle,
   Repeat,
+  ShieldCheck,
   TriangleAlert,
   Users,
 } from "lucide-react";
@@ -31,16 +32,25 @@ const ITENS = [
 ] as const;
 
 function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
-  const { isAdmin, roles, profile } = useAuth();
+  const { isAdmin, isAutorizado, canManageProducts, roles, profile } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  const itens = isAdmin
-    ? [
-        ...ITENS,
-        { to: "/produtos", label: "Produtos", icon: PackagePlus } as const,
-        { to: "/usuarios", label: "Usuários", icon: Users } as const,
-      ]
-    : ITENS;
+  const itens = [
+    ...ITENS,
+    ...(isAutorizado
+      ? [
+          {
+            to: "/controle-apontamentos",
+            label: "Controle de apontamentos",
+            icon: ShieldCheck,
+          } as const,
+        ]
+      : []),
+    ...(canManageProducts
+      ? [{ to: "/produtos", label: "Produtos", icon: PackagePlus } as const]
+      : []),
+    ...(isAdmin ? [{ to: "/usuarios", label: "Usuários", icon: Users } as const] : []),
+  ];
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">

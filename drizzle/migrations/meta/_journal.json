@@ -22,6 +22,13 @@
       "when": 1790208000000,
       "tag": "0002_catalogo_mantas_produtos_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790532000000,
+      "tag": "0003_paridade_floot",
+      "breakpoints": true
     }
   ]
 }

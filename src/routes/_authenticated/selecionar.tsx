@@ -44,7 +44,7 @@ function Selecionar() {
     setSalvando(true);
     const { error } = await supabase
       .from("profiles")
-      .upsert({ id: user.id, setor_atual: setor, turno_atual: turno, onboarding_concluido: true })
+      .update({ setor_atual: setor, turno_atual: turno, onboarding_concluido: true })
       .eq("id", user.id);
     setSalvando(false);
     if (error) {

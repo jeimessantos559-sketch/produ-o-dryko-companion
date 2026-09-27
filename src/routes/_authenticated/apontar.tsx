@@ -54,19 +54,178 @@ function useProdutos(setor: "corte" | "fitas" | "mantas") {
   useEffect(() => {
     setCarregando(true);
     setErro(false);
-    void supabase
-      .from("produtos")
-      .select("id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo")
-      .eq("setor", setor)
-      .eq("ativo", true)
-      .order("nome")
-      .then(({ data, error }) => {
-        setProdutos(error ? [] : ((data ?? []) as Produto[]));
-        setErro(Boolean(error));
-        setCarregando(false);
-      });
+    void Promise.all([
+      supabase
+        .from("produtos")
+        .select("id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo")
+        .eq("setor", setor)
+        .eq("ativo", true),
+      supabase.from("marcas_produto").select("nome, ordem").eq("setor", setor),
+    ]).then(([resultadoProdutos, resultadoMarcas]) => {
+      const falhou = Boolean(resultadoProdutos.error || resultadoMarcas.error);
+      const ordem = new Map((resultadoMarcas.data ?? []).map((marca) => [marca.nome, marca.ordem]));
+      const lista = ((resultadoProdutos.data ?? []) as Produto[]).sort(
+        (a, b) =>
+          (ordem.get(a.categoria ?? "") ?? 999) - (ordem.get(b.categoria ?? "") ?? 999) ||
+          a.nome.localeCompare(b.nome),
+      );
+      setProdutos(falhou ? [] : lista);
+      setErro(falhou);
+      setCarregando(false);
+    });
   }, [setor]);
   return { produtos, carregando, erro };
+}
+
+type MetaAtiva = {
+  id: string;
+  quantidade_meta: number;
+  unidade: string;
+  created_at: string;
+};
+
+function useMetaAtiva(setor: "corte" | "fitas" | "mantas", op: string, produtoId: string) {
+  const [meta, setMeta] = useState<MetaAtiva | null>(null);
+  const [apontado, setApontado] = useState(0);
+  const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!op.trim() || !produtoId) {
+      setMeta(null);
+      setApontado(0);
+      return () => {
+        ativo = false;
+      };
+    }
+    setCarregando(true);
+    void supabase
+      .from("metas_op")
+      .select("id, quantidade_meta, unidade, created_at")
+      .eq("setor", setor)
+      .eq("op", op.trim())
+      .eq("produto_id", produtoId)
+      .eq("status", "ativa")
+      .maybeSingle()
+      .then(async ({ data }) => {
+        if (!ativo) return;
+        setMeta(data ?? null);
+        if (data) {
+          const { data: registros } = await supabase
+            .from("apontamentos")
+            .select("quantidade_plts, area_m2")
+            .eq("setor", setor)
+            .eq("op", op.trim())
+            .eq("produto_id", produtoId)
+            .gte("created_at", data.created_at);
+          if (!ativo) return;
+          setApontado(
+            (registros ?? []).reduce(
+              (total, item) =>
+                total +
+                (setor === "fitas" ? Number(item.area_m2 ?? 0) : (item.quantidade_plts ?? 0)),
+              0,
+            ),
+          );
+        } else {
+          setApontado(0);
+        }
+        setCarregando(false);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [op, produtoId, setor]);
+
+  return { meta, apontado, carregando };
+}
+
+function confirmarExcessoDaMeta(meta: MetaAtiva | null, apontado: number, incremento: number) {
+  if (!meta || apontado + incremento <= Number(meta.quantidade_meta)) return true;
+  const excesso = apontado + incremento - Number(meta.quantidade_meta);
+  return window.confirm(
+    `Este apontamento ultrapassa a meta em ${excesso.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} ${meta.unidade}. Deseja continuar?`,
+  );
+}
+
+async function cadastrarMetaOpcional({
+  userId,
+  setor,
+  op,
+  produto,
+  unidade,
+  quantidade,
+  metaExistente,
+}: {
+  userId: string;
+  setor: "corte" | "fitas" | "mantas";
+  op: string;
+  produto: Produto;
+  unidade: "PLTs" | "m²";
+  quantidade: number;
+  metaExistente: MetaAtiva | null;
+}) {
+  if (quantidade <= 0 || metaExistente) return true;
+  const { error } = await supabase.from("metas_op").insert({
+    setor,
+    op: op.trim(),
+    produto_id: produto.id,
+    produto_nome: produto.nome,
+    unidade,
+    quantidade_meta: quantidade,
+    criado_por: userId,
+  });
+  if (error && error.code !== "23505") {
+    toast.warning("O apontamento foi salvo, mas não foi possível cadastrar a meta da OP.");
+    return false;
+  }
+  return true;
+}
+
+function CampoMeta({
+  meta,
+  carregando,
+  valor,
+  onChange,
+  unidade,
+}: {
+  meta: MetaAtiva | null;
+  carregando: boolean;
+  valor: number;
+  onChange: (valor: number) => void;
+  unidade: "PLTs" | "m²";
+}) {
+  return (
+    <div className="space-y-1 sm:col-span-2">
+      <Label htmlFor={`meta-${unidade}`}>Meta da OP (opcional)</Label>
+      {carregando ? (
+        <div className="rounded-md bg-muted p-3 text-sm">Consultando meta ativa...</div>
+      ) : meta ? (
+        <div className="rounded-md border border-green-300 bg-green-50 p-3 text-sm font-medium text-green-800">
+          Meta ativa nos três turnos: {Number(meta.quantidade_meta).toLocaleString("pt-BR")}{" "}
+          {meta.unidade}
+        </div>
+      ) : (
+        <Input
+          id={`meta-${unidade}`}
+          type="number"
+          min={0}
+          step={unidade === "PLTs" ? 1 : 0.01}
+          placeholder={`Ex.: ${unidade === "PLTs" ? "20" : "1500"}`}
+          value={valor || ""}
+          onChange={(e) => onChange(Number(e.target.value))}
+        />
+      )}
+    </div>
+  );
+}
+
+function mensagemApontamento(error: { message?: string } | null) {
+  const mensagem = error?.message ?? "";
+  if (mensagem.toLowerCase().includes("turno esta fechado")) {
+    return "Este turno está fechado. Peça a reabertura ao administrador.";
+  }
+  return "Não foi possível salvar o apontamento. Revise os dados e tente novamente.";
 }
 
 function ApontarCorte() {
@@ -76,9 +235,11 @@ function ApontarCorte() {
   const [produtoId, setProdutoId] = useState("");
   const [grupos, setGrupos] = useState<GrupoCorte[]>([grupoInicial()]);
   const [salvando, setSalvando] = useState(false);
+  const [metaNova, setMetaNova] = useState(0);
   const [ultimoSalvo, setUltimoSalvo] = useState<string | null>(null);
   const enviando = useRef(false);
   const produto = produtos.find((item) => item.id === produtoId);
+  const { meta, apontado, carregando: carregandoMeta } = useMetaAtiva("corte", op, produtoId);
   const quantidade = useMemo(() => totalPlts(grupos), [grupos]);
   const rolos = useMemo(() => totalRolos(grupos), [grupos]);
   const gruposValidos = grupos.every(
@@ -136,6 +297,7 @@ function ApontarCorte() {
 
   async function salvar() {
     if (!valido || !user || !profile?.turno_atual || enviando.current) return;
+    if (!confirmarExcessoDaMeta(meta, apontado, quantidade)) return;
     enviando.current = true;
     setSalvando(true);
     const { data, error } = await supabase
@@ -158,13 +320,23 @@ function ApontarCorte() {
     setSalvando(false);
     enviando.current = false;
     if (error) {
-      toast.error("Não foi possível salvar o apontamento. Revise os dados.");
+      toast.error(mensagemApontamento(error));
       return;
     }
+    await cadastrarMetaOpcional({
+      userId: user.id,
+      setor: "corte",
+      op,
+      produto: produto!,
+      unidade: "PLTs",
+      quantidade: metaNova,
+      metaExistente: meta,
+    });
     setUltimoSalvo(`PLTs ${data.sequencia_inicio}–${data.sequencia_fim} registrados com sucesso.`);
     setOp("");
     setProdutoId("");
     setGrupos([grupoInicial()]);
+    setMetaNova(0);
     toast.success("Apontamento salvo e painel atualizado.");
   }
 
@@ -230,6 +402,13 @@ function ApontarCorte() {
                 <strong>Largura aguardando definição</strong>
               </div>
             )}
+            <CampoMeta
+              meta={meta}
+              carregando={carregandoMeta}
+              valor={metaNova}
+              onChange={setMetaNova}
+              unidade="PLTs"
+            />
           </CardContent>
         </Card>
 
@@ -337,18 +516,22 @@ function ApontarCorte() {
 function ApontarMantas() {
   const { user, profile } = useAuth();
   const { produtos, carregando, erro } = useProdutos("mantas");
+  const [op, setOp] = useState("");
   const [produtoId, setProdutoId] = useState("");
   const [lote, setLote] = useState("");
   const [metragem, setMetragem] = useState(0);
   const [quantidadePlts, setQuantidadePlts] = useState(1);
   const [salvando, setSalvando] = useState(false);
+  const [metaNova, setMetaNova] = useState(0);
   const [ultimoSalvo, setUltimoSalvo] = useState<string | null>(null);
   const enviando = useRef(false);
   const produto = produtos.find((item) => item.id === produtoId);
+  const { meta, apontado, carregando: carregandoMeta } = useMetaAtiva("mantas", op, produtoId);
   const metrosPorRolo = produto?.metros_por_rolo ?? 10;
   const rolos = rolosManta(metragem, metrosPorRolo);
   const rolosInteiros = Number.isInteger(rolos) && rolos > 0;
   const valido = Boolean(
+    op.trim() &&
     produto &&
     lote.trim() &&
     metragem > 0 &&
@@ -380,8 +563,38 @@ function ApontarMantas() {
     }
   }
 
+  async function repetirUltimo() {
+    if (!user || !profile?.turno_atual) return;
+    const { data, error } = await supabase
+      .from("apontamentos")
+      .select("op, lote, produto_id, quantidade_plts, metragem")
+      .eq("usuario_id", user.id)
+      .eq("setor", "mantas")
+      .eq("turno", profile.turno_atual)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      toast.error("Não foi possível consultar o último apontamento.");
+      return;
+    }
+    if (!data) {
+      toast.info("Ainda não há apontamento de Mantas para repetir.");
+      return;
+    }
+    setOp(data.op ?? "");
+    setLote(data.lote ?? "");
+    setProdutoId(data.produto_id);
+    setQuantidadePlts(data.quantidade_plts ?? 1);
+    setMetragem(Number(data.metragem ?? 0));
+    setMetaNova(0);
+    setUltimoSalvo(null);
+    toast.info("Dados copiados. Revise lote e quantidades antes de salvar.");
+  }
+
   async function salvar() {
     if (!valido || !user || !profile?.turno_atual || !produto || enviando.current) return;
+    if (!confirmarExcessoDaMeta(meta, apontado, quantidadePlts)) return;
     enviando.current = true;
     setSalvando(true);
     const { data, error } = await supabase
@@ -390,6 +603,7 @@ function ApontarMantas() {
         usuario_id: user.id,
         setor: "mantas",
         turno: profile.turno_atual,
+        op: op.trim(),
         lote: lote.trim(),
         produto_id: produto.id,
         produto_nome: produto.nome,
@@ -403,25 +617,41 @@ function ApontarMantas() {
     setSalvando(false);
     enviando.current = false;
     if (error) {
-      toast.error("Não foi possível salvar o apontamento de Mantas.");
+      toast.error(mensagemApontamento(error));
       return;
     }
+    await cadastrarMetaOpcional({
+      userId: user.id,
+      setor: "mantas",
+      op,
+      produto,
+      unidade: "PLTs",
+      quantidade: metaNova,
+      metaExistente: meta,
+    });
     setUltimoSalvo(`PLTs ${data.sequencia_inicio}–${data.sequencia_fim} registrados com sucesso.`);
     setProdutoId("");
+    setOp("");
     setLote("");
     setMetragem(0);
     setQuantidadePlts(1);
+    setMetaNova(0);
     toast.success("Apontamento de Mantas salvo.");
   }
 
   return (
     <AppShell>
       <div className="mx-auto max-w-2xl space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold">Apontamento de Mantas</h1>
-          <p className="text-sm text-muted-foreground">
-            Informe a metragem; cada rolo de manta corresponde a {metrosPorRolo} m.
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-bold">Apontamento de Mantas</h1>
+            <p className="text-sm text-muted-foreground">
+              Informe a metragem; cada rolo de manta corresponde a {metrosPorRolo} m.
+            </p>
+          </div>
+          <Button variant="outline" onClick={repetirUltimo}>
+            <RotateCcw /> Repetir último
+          </Button>
         </div>
         {ultimoSalvo && (
           <div
@@ -441,6 +671,15 @@ function ApontarMantas() {
         )}
         <Card>
           <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="op-manta">OP *</Label>
+              <Input
+                id="op-manta"
+                value={op}
+                onChange={(e) => setOp(e.target.value)}
+                className="h-12 text-base"
+              />
+            </div>
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="produto-manta">Produto *</Label>
               <select
@@ -511,6 +750,13 @@ function ApontarMantas() {
                 rolos/PLT
               </div>
             )}
+            <CampoMeta
+              meta={meta}
+              carregando={carregandoMeta}
+              valor={metaNova}
+              onChange={setMetaNova}
+              unidade="PLTs"
+            />
           </CardContent>
         </Card>
         {metragem > 0 && !rolosInteiros && (
@@ -535,9 +781,11 @@ function ApontarFitas() {
   const [velocidade, setVelocidade] = useState(0);
   const [largura, setLargura] = useState(0.93);
   const [salvando, setSalvando] = useState(false);
+  const [metaNova, setMetaNova] = useState(0);
   const enviando = useRef(false);
   const area = areaFitas(tempo, velocidade, largura);
   const produto = produtos.find((item) => item.id === produtoId);
+  const { meta, apontado, carregando: carregandoMeta } = useMetaAtiva("fitas", op, produtoId);
 
   function escolherProduto(id: string) {
     setProdutoId(id);
@@ -548,6 +796,7 @@ function ApontarFitas() {
   async function salvar() {
     if (!user || !profile?.turno_atual || !produto || !op.trim() || area <= 0 || enviando.current)
       return;
+    if (!confirmarExcessoDaMeta(meta, apontado, area)) return;
     enviando.current = true;
     setSalvando(true);
     const { error } = await supabase.from("apontamentos").insert({
@@ -565,15 +814,25 @@ function ApontarFitas() {
     setSalvando(false);
     enviando.current = false;
     if (error) {
-      toast.error("Não foi possível salvar o apontamento.");
+      toast.error(mensagemApontamento(error));
       return;
     }
+    await cadastrarMetaOpcional({
+      userId: user.id,
+      setor: "fitas",
+      op,
+      produto,
+      unidade: "m²",
+      quantidade: metaNova,
+      metaExistente: meta,
+    });
     toast.success("Apontamento de Fitas salvo.");
     setOp("");
     setProdutoId("");
     setTempo(0);
     setVelocidade(0);
     setLargura(0.93);
+    setMetaNova(0);
   }
 
   return (
@@ -657,6 +916,13 @@ function ApontarFitas() {
                 {area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
               </p>
             </div>
+            <CampoMeta
+              meta={meta}
+              carregando={carregandoMeta}
+              valor={metaNova}
+              onChange={setMetaNova}
+              unidade="m²"
+            />
           </CardContent>
         </Card>
         <Button
