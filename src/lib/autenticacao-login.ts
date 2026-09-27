@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { normalizarLogin } from "@/lib/login-operacional";
 
+const SENHA_INICIAL = "123456";
+
 const entrada = z.object({
   login: z.string().trim().min(2).max(80),
   senha: z.string().min(6).max(200),
@@ -47,6 +49,30 @@ export const entrarComLogin = createServerFn({ method: "POST" })
     const cliente = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    // Usuários que ainda não trocaram a senha podem entrar com o código inicial
+    // operacional. A senha real do Supabase continua forte e nunca é exposta.
+    if (perfilLogin.deve_alterar_senha && data.senha === SENHA_INICIAL) {
+      const { data: link, error: erroLink } = await supabaseAdmin.auth.admin.generateLink({
+        type: "magiclink",
+        email,
+      });
+      const tokenHash = link?.properties?.hashed_token;
+      if (erroLink || !tokenHash) throw new Error("Não foi possível iniciar o primeiro acesso.");
+
+      const { data: sessaoInicial, error: erroVerificacao } = await cliente.auth.verifyOtp({
+        type: "magiclink",
+        token_hash: tokenHash,
+      });
+      if (erroVerificacao || !sessaoInicial.session) throw new Error("Não foi possível iniciar o primeiro acesso.");
+
+      return {
+        accessToken: sessaoInicial.session.access_token,
+        refreshToken: sessaoInicial.session.refresh_token,
+        deveAlterarSenha: true,
+      };
+    }
+
     const { data: sessao, error: erroLogin } = await cliente.auth.signInWithPassword({
       email,
       password: data.senha,
