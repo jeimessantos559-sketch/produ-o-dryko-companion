@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { UserPlus } from "lucide-react";
+import { KeyRound, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -30,7 +30,7 @@ function Usuarios() {
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
-  const [email, setEmail] = useState("");
+  const [loginNovo, setLoginNovo] = useState("");
   const [senha, setSenha] = useState("");
 
   const carregar = useCallback(async () => {
@@ -48,7 +48,7 @@ function Usuarios() {
     for (const item of papeis ?? []) {
       mapaPapeis[item.user_id] = [...(mapaPapeis[item.user_id] ?? []), item.role];
     }
-    const lista = listaPerfis ?? [];
+    const lista = (listaPerfis ?? []) as Profile[];
     setPerfis(lista);
     setConfiguracoes(
       Object.fromEntries(
@@ -89,13 +89,15 @@ function Usuarios() {
   }
 
   async function criar() {
-    if (!nome.trim() || !email.trim() || senha.length < 6 || criando) return;
+    if (!nome.trim() || !loginNovo.trim() || senha.length < 6 || criando) return;
     setCriando(true);
     try {
-      await criarUsuario({ data: { nome: nome.trim(), email: email.trim(), senha } });
-      toast.success("Usuário criado como Facilitador.");
+      const criado = await criarUsuario({
+        data: { nome: nome.trim(), login: loginNovo.trim(), senha },
+      });
+      toast.success(`Usuário ${criado.login} criado. A senha deverá ser alterada no primeiro acesso.`);
       setNome("");
-      setEmail("");
+      setLoginNovo("");
       setSenha("");
       await carregar();
     } catch (erro) {
@@ -127,12 +129,12 @@ function Usuarios() {
   }
 
   return (
-    <AppShell>
+    <AppShell title="Usuários" eyebrow="Administração · Acessos">
       <div className="mx-auto max-w-4xl space-y-4">
         <div>
-          <h1 className="text-2xl font-bold">Usuários e permissões</h1>
+          <h2 className="text-2xl font-bold">Usuários e permissões</h2>
           <p className="text-sm text-muted-foreground">
-            Cadastre acessos e defina separadamente os papéis e permissões especiais.
+            Cadastre acessos somente com login e senha temporária. Não é necessário informar e-mail.
           </p>
         </div>
 
@@ -156,12 +158,14 @@ function Usuarios() {
                   <Input id="nome-usuario" value={nome} onChange={(e) => setNome(e.target.value)} />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="email-usuario">E-mail *</Label>
+                  <Label htmlFor="login-usuario">Login *</Label>
                   <Input
-                    id="email-usuario"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="login-usuario"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    placeholder="Ex.: Jeimes.Santos"
+                    value={loginNovo}
+                    onChange={(e) => setLoginNovo(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1">
@@ -170,13 +174,17 @@ function Usuarios() {
                     id="senha-usuario"
                     type="password"
                     minLength={6}
+                    placeholder="Ex.: 123456"
                     value={senha}
                     onChange={(e) => setSenha(e.target.value)}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    A senha é temporária. No primeiro acesso o usuário será obrigado a criar uma senha pessoal.
+                  </p>
                 </div>
                 <Button
                   className="self-end"
-                  disabled={!nome.trim() || !email.trim() || senha.length < 6 || criando}
+                  disabled={!nome.trim() || !loginNovo.trim() || senha.length < 6 || criando}
                   onClick={criar}
                 >
                   <UserPlus /> {criando ? "Criando..." : "Criar como Facilitador"}
@@ -193,10 +201,18 @@ function Usuarios() {
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <CardTitle className="text-base">{perfil.nome || "Sem nome"}</CardTitle>
+                        <p className="text-sm font-semibold text-primary">
+                          Login: {perfil.login || "acesso anterior sem login definido"}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {perfil.setor_atual ? nomeSetor(perfil.setor_atual) : "Sem setor"} ·{" "}
                           {perfil.turno_atual ? `Turno ${perfil.turno_atual}` : "Sem turno"}
                         </p>
+                        {perfil.deve_alterar_senha && (
+                          <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
+                            <KeyRound className="size-3.5" /> Troca de senha pendente no primeiro acesso
+                          </p>
+                        )}
                       </div>
                       <label className="flex items-center gap-2 text-sm font-medium">
                         <input
