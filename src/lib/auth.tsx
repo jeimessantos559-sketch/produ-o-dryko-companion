@@ -7,7 +7,12 @@ import type { Database } from "@/integrations/supabase/types";
 export type AppRole = Database["public"]["Enums"]["app_role"];
 export type SetorCodigo = Database["public"]["Enums"]["setor_codigo"];
 export type TurnoCodigo = Database["public"]["Enums"]["turno_codigo"];
-export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type ProfileBase = Database["public"]["Tables"]["profiles"]["Row"];
+export type Profile = ProfileBase & {
+  login: string | null;
+  login_key: string | null;
+  deve_alterar_senha: boolean;
+};
 
 type AuthValue = {
   session: Session | null;
@@ -18,6 +23,7 @@ type AuthValue = {
   isAdmin: boolean;
   isAutorizado: boolean;
   canManageProducts: boolean;
+  mustChangePassword: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -40,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
     ]);
-    setProfile(perfil ?? null);
+    setProfile((perfil as Profile | null) ?? null);
     setRoles((papeis ?? []).map((p) => p.role));
   }
 
@@ -77,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles.includes("administrador") ||
       Boolean(profile?.pode_confirmar_protheus),
     canManageProducts: roles.includes("administrador") || Boolean(profile?.pode_gerenciar_produtos),
+    mustChangePassword: Boolean(profile?.deve_alterar_senha),
     refresh: () => loadUserData(session?.user.id),
     signOut: async () => {
       await supabase.auth.signOut();
