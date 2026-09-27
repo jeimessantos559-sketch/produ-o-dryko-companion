@@ -1,16 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Clipboard, Eye, EyeOff, KeyRound, RefreshCw, UserPlus } from "lucide-react";
+import { Clipboard, KeyRound, Pencil, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { NOMES_PAPEIS, useAuth, type AppRole, type Profile } from "@/lib/auth";
-import { criarUsuario } from "@/lib/usuarios-admin";
+import { criarUsuario, gerenciarUsuarioAdmin } from "@/lib/usuarios-admin";
 
 export const Route = createFileRoute("/_authenticated/usuarios")({ component: Usuarios });
 
@@ -22,58 +30,20 @@ type Configuracao = {
 };
 
 const PAPEIS: AppRole[] = ["facilitador", "autorizado_protheus", "administrador"];
-
-function indiceSeguro(maximo: number) {
-  const valor = new Uint32Array(1);
-  crypto.getRandomValues(valor);
-  return valor[0] % maximo;
-}
-
-function gerarSenhaTemporaria() {
-  const maiusculas = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const minusculas = "abcdefghijkmnopqrstuvwxyz";
-  const numeros = "23456789";
-  const simbolos = "!@#$%*-_";
-  const todos = maiusculas + minusculas + numeros + simbolos;
-  const caracteres = [
-    maiusculas[indiceSeguro(maiusculas.length)],
-    minusculas[indiceSeguro(minusculas.length)],
-    numeros[indiceSeguro(numeros.length)],
-    simbolos[indiceSeguro(simbolos.length)],
-  ];
-
-  while (caracteres.length < 12) {
-    caracteres.push(todos[indiceSeguro(todos.length)]);
-  }
-
-  for (let i = caracteres.length - 1; i > 0; i -= 1) {
-    const j = indiceSeguro(i + 1);
-    [caracteres[i], caracteres[j]] = [caracteres[j], caracteres[i]];
-  }
-  return caracteres.join("");
-}
-
-function senhaTemFormatoSeguro(valor: string) {
-  return (
-    valor.length >= 8 &&
-    /[A-Z]/.test(valor) &&
-    /[a-z]/.test(valor) &&
-    /\d/.test(valor) &&
-    /[^A-Za-z0-9]/.test(valor)
-  );
-}
+const SENHA_INICIAL = "123456";
 
 function Usuarios() {
-  const { isAdmin, loading, refresh } = useAuth();
+  const { isAdmin, loading, refresh, user } = useAuth();
   const [perfis, setPerfis] = useState<Profile[]>([]);
   const [configuracoes, setConfiguracoes] = useState<Record<string, Configuracao>>({});
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
-  const [loginNovo, setLoginNovo] = useState("");
-  const [senha, setSenha] = useState("");
-  const [mostrarSenha, setMostrarSenha] = useState(true);
+  const [credencialCriada, setCredencialCriada] = useState<{ login: string; senha: string } | null>(null);
+  const [editando, setEditando] = useState<Profile | null>(null);
+  const [nomeEditado, setNomeEditado] = useState("");
+  const [loginEditado, setLoginEditado] = useState("");
 
   const carregar = useCallback(async () => {
     if (!isAdmin) {
@@ -86,6 +56,7 @@ function Usuarios() {
       supabase.from("user_roles").select("user_id, role"),
     ]);
     if (error) toast.error("Não foi possível carregar os usuários.");
+
     const mapaPapeis: Record<string, AppRole[]> = {};
     for (const item of papeis ?? []) {
       mapaPapeis[item.user_id] = [...(mapaPapeis[item.user_id] ?? []), item.role];
@@ -130,46 +101,28 @@ function Usuarios() {
     });
   }
 
-  function gerarSenha() {
-    const nova = gerarSenhaTemporaria();
-    setSenha(nova);
-    setMostrarSenha(true);
-    toast.success("Senha temporária segura gerada.");
-  }
-
-  async function copiarSenha() {
-    if (!senha) return;
-    try {
-      await navigator.clipboard.writeText(senha);
-      toast.success("Senha temporária copiada.");
-    } catch {
-      toast.error("Não foi possível copiar automaticamente.");
-    }
-  }
-
   async function criar() {
-    if (!nome.trim() || !loginNovo.trim() || criando) return;
-    if (!senhaTemFormatoSeguro(senha)) {
-      toast.error("Use uma senha temporária forte ou toque em 'Gerar senha segura'.");
-      return;
-    }
-
+    if (!nome.trim() || criando) return;
     setCriando(true);
     try {
-      const criado = await criarUsuario({
-        data: { nome: nome.trim(), login: loginNovo.trim(), senha },
-      });
-      toast.success(
-        `Usuário ${criado.login} criado. Entregue a senha temporária ao usuário; ela será trocada no primeiro acesso.`,
-      );
+      const criado = await criarUsuario({ data: { nome: nome.trim() } });
+      setCredencialCriada({ login: criado.login, senha: criado.senhaInicial });
       setNome("");
-      setLoginNovo("");
-      setSenha("");
+      toast.success(`Usuário ${criado.login} criado com a senha inicial ${criado.senhaInicial}.`);
       await carregar();
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o usuário.");
     } finally {
       setCriando(false);
+    }
+  }
+
+  async function copiarCredencial(login: string, senha = SENHA_INICIAL) {
+    try {
+      await navigator.clipboard.writeText(`Login: ${login}\nSenha: ${senha}`);
+      toast.success("Login e senha inicial copiados.");
+    } catch {
+      toast.error("Não foi possível copiar automaticamente.");
     }
   }
 
@@ -194,122 +147,131 @@ function Usuarios() {
     await carregar();
   }
 
+  function abrirEdicao(perfil: Profile) {
+    setEditando(perfil);
+    setNomeEditado(perfil.nome || "");
+    setLoginEditado(perfil.login || "");
+  }
+
+  async function salvarEdicao() {
+    if (!editando || !nomeEditado.trim() || !loginEditado.trim() || salvandoId) return;
+    setSalvandoId(editando.id);
+    try {
+      await gerenciarUsuarioAdmin({
+        data: {
+          action: "rename",
+          userId: editando.id,
+          nome: nomeEditado.trim(),
+          login: loginEditado.trim(),
+        },
+      });
+      toast.success("Nome e login atualizados.");
+      setEditando(null);
+      await carregar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível editar o usuário.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
+  async function redefinirSenha(perfil: Profile) {
+    if (!window.confirm(`Redefinir o acesso de ${perfil.nome} para a senha inicial ${SENHA_INICIAL}?`)) return;
+    setSalvandoId(perfil.id);
+    try {
+      await gerenciarUsuarioAdmin({ data: { action: "reset", userId: perfil.id } });
+      toast.success(`Senha inicial redefinida para ${SENHA_INICIAL}. No próximo acesso será exigida uma nova senha pessoal.`);
+      await carregar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível redefinir a senha.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
+  async function excluir(perfil: Profile) {
+    if (perfil.id === user?.id) {
+      toast.error("Você não pode excluir seu próprio usuário.");
+      return;
+    }
+    if (!window.confirm(`Excluir definitivamente o usuário ${perfil.nome}?`)) return;
+    setSalvandoId(perfil.id);
+    try {
+      await gerenciarUsuarioAdmin({ data: { action: "delete", userId: perfil.id } });
+      toast.success("Usuário excluído.");
+      await carregar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível excluir o usuário.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
   return (
-    <AppShell title="Usuários" eyebrow="Administração · Acessos">
+    <AppShell title="Usuários" eyebrow="ADMINISTRAÇÃO · ACESSOS">
       <div className="mx-auto max-w-4xl space-y-4">
         <div>
           <h2 className="text-2xl font-bold">Usuários e permissões</h2>
           <p className="text-sm text-muted-foreground">
-            Cadastre acessos somente com login e senha temporária. Não é necessário informar e-mail.
+            Informe apenas o nome. O login é criado automaticamente e a senha inicial é {SENHA_INICIAL}.
           </p>
         </div>
 
         {loading || carregando ? (
           <p className="text-sm text-muted-foreground">Carregando...</p>
         ) : !isAdmin ? (
-          <Card>
-            <CardContent className="pt-6 text-sm text-muted-foreground">
-              Esta tela é exclusiva do administrador.
-            </CardContent>
-          </Card>
+          <Card><CardContent className="pt-6 text-sm text-muted-foreground">Esta tela é exclusiva do administrador.</CardContent></Card>
         ) : (
           <>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Cadastrar usuário</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-2">
+            <Card className="rounded-3xl">
+              <CardHeader><CardTitle className="text-base">Cadastrar usuário</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
                 <div className="space-y-1">
                   <Label htmlFor="nome-usuario">Nome completo *</Label>
-                  <Input id="nome-usuario" value={nome} onChange={(e) => setNome(e.target.value)} />
+                  <Input id="nome-usuario" className="h-12 text-base" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: João Gomes" />
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="login-usuario">Login *</Label>
-                  <Input
-                    id="login-usuario"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    placeholder="Ex.: Jeimes.Santos"
-                    value={loginNovo}
-                    onChange={(e) => setLoginNovo(e.target.value)}
-                  />
+                <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
+                  <strong>Senha inicial padrão:</strong> {SENHA_INICIAL}. No primeiro acesso o usuário será obrigado a criar uma senha pessoal.
                 </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="senha-usuario">Senha inicial *</Label>
-                  <div className="flex gap-2">
-                    <div className="relative min-w-0 flex-1">
-                      <Input
-                        id="senha-usuario"
-                        type={mostrarSenha ? "text" : "password"}
-                        minLength={8}
-                        className="h-12 pr-12 font-mono text-base"
-                        placeholder="Use o botão Gerar senha segura"
-                        value={senha}
-                        onChange={(e) => setSenha(e.target.value)}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1 h-10 w-10"
-                        onClick={() => setMostrarSenha((valor) => !valor)}
-                        aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
-                      >
-                        {mostrarSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                      </Button>
-                    </div>
-                    <Button type="button" variant="outline" size="icon" className="h-12 w-12" onClick={copiarSenha} disabled={!senha} aria-label="Copiar senha">
-                      <Clipboard className="size-4" />
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={gerarSenha}>
-                      <RefreshCw className="size-4" /> Gerar senha segura
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Senhas simples como 123456 são recusadas pelo sistema de segurança. A senha é temporária e será trocada no primeiro acesso.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  className="h-12 sm:col-span-2"
-                  disabled={!nome.trim() || !loginNovo.trim() || !senhaTemFormatoSeguro(senha) || criando}
-                  onClick={criar}
-                >
-                  <UserPlus /> {criando ? "Criando..." : "Criar como Facilitador"}
+                <Button className="h-12 w-full" disabled={!nome.trim() || criando} onClick={criar}>
+                  <UserPlus /> {criando ? "Criando..." : "Criar usuário"}
                 </Button>
               </CardContent>
             </Card>
+
+            {credencialCriada && (
+              <Card className="rounded-3xl border-emerald-200 bg-emerald-50/50">
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                  <div>
+                    <p className="font-bold">Usuário criado</p>
+                    <p className="font-mono text-sm">Login: {credencialCriada.login}</p>
+                    <p className="font-mono text-sm">Senha inicial: {credencialCriada.senha}</p>
+                  </div>
+                  <Button variant="outline" onClick={() => copiarCredencial(credencialCriada.login, credencialCriada.senha)}><Clipboard /> Copiar acesso</Button>
+                </CardContent>
+              </Card>
+            )}
 
             {perfis.map((perfil) => {
               const config = configuracoes[perfil.id];
               if (!config) return null;
               return (
-                <Card key={perfil.id}>
+                <Card key={perfil.id} className="rounded-3xl">
                   <CardHeader className="pb-2">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <CardTitle className="text-base">{perfil.nome || "Sem nome"}</CardTitle>
-                        <p className="text-sm font-semibold text-primary">
-                          Login: {perfil.login || "acesso anterior sem login definido"}
-                        </p>
+                        <p className="text-sm font-semibold text-primary">Login: {perfil.login || "acesso antigo sem login"}</p>
                         <p className="text-xs text-muted-foreground">
-                          {perfil.setor_atual ? nomeSetor(perfil.setor_atual) : "Sem setor"} ·{" "}
-                          {perfil.turno_atual ? `Turno ${perfil.turno_atual}` : "Sem turno"}
+                          {perfil.setor_atual ? nomeSetor(perfil.setor_atual) : "Primeiro acesso pendente"} · {perfil.turno_atual ? `Turno ${perfil.turno_atual}` : "Sem turno"}
                         </p>
-                        {perfil.deve_alterar_senha && (
-                          <p className="mt-1 flex items-center gap-1 text-xs font-medium text-amber-700">
-                            <KeyRound className="size-3.5" /> Troca de senha pendente no primeiro acesso
-                          </p>
-                        )}
+                        <p className={`mt-1 flex items-center gap-1 text-xs font-medium ${perfil.deve_alterar_senha ? "text-amber-700" : "text-emerald-700"}`}>
+                          <KeyRound className="size-3.5" />
+                          {perfil.deve_alterar_senha ? `Senha inicial: ${SENHA_INICIAL}` : "Senha pessoal definida (não pode ser visualizada)"}
+                        </p>
                       </div>
                       <label className="flex items-center gap-2 text-sm font-medium">
-                        <input
-                          type="checkbox"
-                          checked={config.ativo}
-                          onChange={(e) => alterar(perfil.id, { ativo: e.target.checked })}
-                        />
-                        Usuário ativo
+                        <input type="checkbox" checked={config.ativo} onChange={(e) => alterar(perfil.id, { ativo: e.target.checked })} /> Usuário ativo
                       </label>
                     </div>
                   </CardHeader>
@@ -319,49 +281,25 @@ function Usuarios() {
                       <div className="flex flex-wrap gap-4">
                         {PAPEIS.map((papel) => (
                           <label key={papel} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={config.papeis.includes(papel)}
-                              onChange={() => alternarPapel(perfil.id, papel)}
-                            />
-                            {NOMES_PAPEIS[papel]}
+                            <input type="checkbox" checked={config.papeis.includes(papel)} onChange={() => alternarPapel(perfil.id, papel)} /> {NOMES_PAPEIS[papel]}
                           </label>
                         ))}
                       </div>
-                      {config.papeis.length === 0 && (
-                        <p className="mt-2 text-xs font-medium text-amber-700">
-                          Sem papel: o usuário não terá acesso operacional.
-                        </p>
-                      )}
                     </div>
                     <div>
                       <p className="mb-2 text-sm font-semibold">Permissões adicionais</p>
                       <div className="flex flex-col gap-2 text-sm sm:flex-row sm:gap-6">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={config.podeGerenciarProdutos}
-                            onChange={(e) =>
-                              alterar(perfil.id, { podeGerenciarProdutos: e.target.checked })
-                            }
-                          />
-                          Cadastrar produtos e ordenar marcas
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={config.podeConfirmarProtheus}
-                            onChange={(e) =>
-                              alterar(perfil.id, { podeConfirmarProtheus: e.target.checked })
-                            }
-                          />
-                          Confirmar lançamentos Protheus
-                        </label>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={config.podeGerenciarProdutos} onChange={(e) => alterar(perfil.id, { podeGerenciarProdutos: e.target.checked })} /> Gerenciar produtos</label>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={config.podeConfirmarProtheus} onChange={(e) => alterar(perfil.id, { podeConfirmarProtheus: e.target.checked })} /> Confirmar Protheus</label>
                       </div>
                     </div>
-                    <Button disabled={salvandoId !== null} onClick={() => salvar(perfil)}>
-                      {salvandoId === perfil.id ? "Salvando..." : "Salvar permissões"}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button disabled={salvandoId !== null} onClick={() => salvar(perfil)}>{salvandoId === perfil.id ? "Salvando..." : "Salvar permissões"}</Button>
+                      <Button variant="outline" onClick={() => abrirEdicao(perfil)}><Pencil /> Editar</Button>
+                      <Button variant="outline" onClick={() => void redefinirSenha(perfil)}><KeyRound /> Redefinir para {SENHA_INICIAL}</Button>
+                      {perfil.login && perfil.deve_alterar_senha && <Button variant="outline" onClick={() => copiarCredencial(perfil.login!)}><Clipboard /> Copiar acesso</Button>}
+                      {perfil.id !== user?.id && <Button variant="destructive" onClick={() => void excluir(perfil)}><Trash2 /> Excluir</Button>}
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -369,6 +307,23 @@ function Usuarios() {
           </>
         )}
       </div>
+
+      <Dialog open={Boolean(editando)} onOpenChange={(aberto) => { if (!aberto) setEditando(null); }}>
+        <DialogContent className="rounded-3xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar usuário</DialogTitle>
+            <DialogDescription>Altere o nome ou o login operacional.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1"><Label>Nome</Label><Input value={nomeEditado} onChange={(e) => setNomeEditado(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Login</Label><Input autoCapitalize="none" value={loginEditado} onChange={(e) => setLoginEditado(e.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
+            <Button disabled={!nomeEditado.trim() || !loginEditado.trim() || salvandoId !== null} onClick={() => void salvarEdicao()}>Salvar alterações</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
