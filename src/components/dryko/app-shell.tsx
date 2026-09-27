@@ -12,6 +12,7 @@ import {
   PackagePlus,
   Plus,
   Repeat,
+  Settings2,
   ShieldCheck,
   TriangleAlert,
   Users,
@@ -25,6 +26,7 @@ import { useAuth, NOMES_PAPEIS } from "@/lib/auth";
 
 const ITENS = [
   { to: "/painel", label: "Painel do turno", icon: Gauge },
+  { to: "/selecionar", label: "Setor e turno", icon: Settings2 },
   { to: "/metas", label: "Metas das OPs", icon: BarChart3 },
   { to: "/contagem", label: "Contagem por produto", icon: ClipboardList },
   { to: "/historico", label: "Histórico", icon: History },
@@ -51,13 +53,7 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
   const itens = [
     ...ITENS,
     ...(isAutorizado
-      ? [
-          {
-            to: "/controle-apontamentos",
-            label: "Controle de apontamentos",
-            icon: ShieldCheck,
-          } as const,
-        ]
+      ? [{ to: "/controle-apontamentos", label: "Controle de apontamentos", icon: ShieldCheck } as const]
       : []),
     ...(canManageProducts
       ? [{ to: "/produtos", label: "Produtos", icon: PackagePlus } as const]
@@ -77,7 +73,6 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
         <DrykoLogo />
         <p className="mt-2 text-sm text-sidebar-foreground/70">Aponta Produção</p>
       </div>
-
       <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
         {itens.map((item) => {
           const ativo = pathname.startsWith(item.to);
@@ -86,11 +81,7 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
               key={item.to}
               to={item.to}
               onClick={onNavigate}
-              className={`flex min-h-12 items-center gap-3 rounded-xl px-3 text-base font-medium transition-colors ${
-                ativo
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
-              }`}
+              className={`flex min-h-12 items-center gap-3 rounded-xl px-3 text-base font-medium transition-colors ${ativo ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}
             >
               <item.icon className="size-5 shrink-0" />
               {item.label}
@@ -98,19 +89,12 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </nav>
-
       <div className="space-y-3 border-t border-sidebar-border p-4 text-sm">
         <div>
           <p className="font-semibold">{profile?.nome || "Usuário"}</p>
-          <p className="text-sidebar-foreground/70">
-            {roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}
-          </p>
+          <p className="text-sidebar-foreground/70">{roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}</p>
         </div>
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          onClick={sair}
-        >
+        <Button variant="ghost" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={sair}>
           <LogOut className="size-4" /> Sair
         </Button>
       </div>
@@ -118,138 +102,54 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function AppShell({
-  children,
-  title,
-  eyebrow,
-  notificationCount = 0,
-  onNotifications,
-  onRepeat,
-  onApontar,
-}: AppShellProps) {
+export function AppShell({ children, title, eyebrow, notificationCount = 0, onNotifications, onRepeat, onApontar }: AppShellProps) {
   const [aberto, setAberto] = useState(false);
   const { profile, isAutorizado } = useAuth();
-  const contexto = profile?.setor_atual
-    ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}`
-    : "Escolher setor e turno";
+  const contexto = profile?.setor_atual ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}` : "Escolher setor e turno";
   const destinoNotificacoes = isAutorizado ? "/controle-apontamentos" : "/passagem-turno";
 
   return (
     <div className="flex min-h-screen bg-[#eef3f7]">
-      <aside className="hidden w-72 shrink-0 md:block">
-        <div className="fixed h-screen w-72">
-          <Navegacao />
-        </div>
-      </aside>
-
+      <aside className="hidden w-72 shrink-0 md:block"><div className="fixed h-screen w-72"><Navegacao /></div></aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-[#eef3f7]/95 backdrop-blur">
           <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5">
             <Sheet open={aberto} onOpenChange={setAberto}>
               <SheetTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-primary shadow-none md:hidden"
-                  aria-label="Abrir menu"
-                >
-                  <Menu className="size-6" />
-                </Button>
+                <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-primary shadow-none md:hidden" aria-label="Abrir menu"><Menu className="size-6" /></Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-0">
-                <SheetTitle className="sr-only">Menu</SheetTitle>
-                <Navegacao onNavigate={() => setAberto(false)} />
-              </SheetContent>
+              <SheetContent side="left" className="w-72 p-0"><SheetTitle className="sr-only">Menu</SheetTitle><Navegacao onNavigate={() => setAberto(false)} /></SheetContent>
             </Sheet>
 
             <Link to="/selecionar" className="min-w-0 flex-1 py-1" title="Alterar setor e turno">
-              <p className="truncate text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 sm:text-xs">
-                {eyebrow ?? contexto}
-              </p>
-              <h1 className="truncate text-xl font-extrabold leading-tight tracking-tight text-slate-950 min-[390px]:text-2xl sm:text-3xl">
-                {title ?? contexto}
-              </h1>
+              <p className="truncate text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 sm:text-xs">{eyebrow ?? contexto}</p>
+              <h1 className="truncate text-xl font-extrabold leading-tight tracking-tight text-slate-950 min-[390px]:text-2xl sm:text-3xl">{title ?? contexto}</h1>
             </Link>
 
             {onNotifications ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none"
-                onClick={onNotifications}
-                aria-label="Ver pendências de turnos anteriores"
-              >
+              <Button type="button" variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none" onClick={onNotifications} aria-label="Ver pendências de turnos anteriores">
                 <Bell className="size-6" />
-                {notificationCount > 0 && (
-                  <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">
-                    {notificationCount > 99 ? "99+" : notificationCount}
-                  </span>
-                )}
+                {notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}
               </Button>
             ) : (
-              <Button
-                asChild
-                variant="outline"
-                size="icon"
-                className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none"
-              >
-                <Link to={destinoNotificacoes} aria-label="Ver pendências">
-                  <Bell className="size-6" />
-                  {notificationCount > 0 && (
-                    <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">
-                      {notificationCount > 99 ? "99+" : notificationCount}
-                    </span>
-                  )}
-                </Link>
+              <Button asChild variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none">
+                <Link to={destinoNotificacoes} aria-label="Ver pendências"><Bell className="size-6" />{notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}</Link>
               </Button>
             )}
 
             {onRepeat ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"
-                onClick={onRepeat}
-                aria-label="Repetir último apontamento"
-                title="Repetir último apontamento"
-              >
-                <Copy className="size-5" />
-              </Button>
+              <Button type="button" variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none" onClick={onRepeat} aria-label="Repetir último apontamento" title="Repetir último apontamento"><Copy className="size-5" /></Button>
             ) : (
-              <Button
-                asChild
-                variant="outline"
-                size="icon"
-                className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"
-              >
-                <Link to="/historico" aria-label="Abrir histórico">
-                  <History className="size-5" />
-                </Link>
-              </Button>
+              <Button asChild variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"><Link to="/historico" aria-label="Abrir histórico"><History className="size-5" /></Link></Button>
             )}
 
             {onApontar ? (
-              <Button
-                type="button"
-                className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5"
-                onClick={onApontar}
-              >
-                <Plus className="size-6" />
-                <span className="hidden min-[360px]:inline">Apontar</span>
-              </Button>
+              <Button type="button" className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5" onClick={onApontar}><Plus className="size-6" /><span className="hidden min-[360px]:inline">Apontar</span></Button>
             ) : (
-              <Button asChild className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5">
-                <Link to="/apontar">
-                  <Plus className="size-6" />
-                  <span className="hidden min-[360px]:inline">Apontar</span>
-                </Link>
-              </Button>
+              <Button asChild className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5"><Link to="/apontar"><Plus className="size-6" /><span className="hidden min-[360px]:inline">Apontar</span></Link></Button>
             )}
           </div>
         </header>
-
         <main className="flex-1 px-3 pb-16 pt-4 sm:px-5 sm:pt-5">{children}</main>
       </div>
     </div>
@@ -257,16 +157,7 @@ export function AppShell({
 }
 
 export function nomeSetor(codigo: string) {
-  const mapa: Record<string, string> = {
-    corte: "Corte",
-    fitas: "Fitas",
-    mantas: "Mantas",
-    asfox: "Asfox",
-    misturadores: "Misturadores",
-    liquidos: "Líquidos",
-    pos: "Pós",
-    avulsos: "Avulsos",
-  };
+  const mapa: Record<string, string> = { corte: "Corte", fitas: "Fitas", mantas: "Mantas", asfox: "Asfox", misturadores: "Misturadores", liquidos: "Líquidos", pos: "Pós", avulsos: "Avulsos" };
   return mapa[codigo] ?? codigo;
 }
 
