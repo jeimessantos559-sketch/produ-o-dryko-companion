@@ -50,7 +50,10 @@ function AlterarSenha() {
 
       await refresh();
       toast.success("Senha pessoal criada com sucesso.");
-      void navigate({ to: "/selecionar", replace: true });
+      void navigate({
+        to: profile?.onboarding_concluido ? "/painel" : "/selecionar",
+        replace: true,
+      });
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível alterar a senha.");
     } finally {
