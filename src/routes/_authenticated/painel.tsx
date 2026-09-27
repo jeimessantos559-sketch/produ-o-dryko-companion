@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
@@ -82,6 +83,8 @@ function Painel() {
   const [statusFiltro, setStatusFiltro] = useState<"todos" | "pendente" | "lancado">("todos");
   const [notificacoesAbertas, setNotificacoesAbertas] = useState(false);
   const [apontarAberto, setApontarAberto] = useState(false);
+  const [modoApontamento, setModoApontamento] = useState<"novo" | "repetir">("novo");
+  const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
 
   const carregarPainel = useCallback(async () => {
     if (!profile?.setor_atual || !profile.turno_atual) {
@@ -94,13 +97,36 @@ function Painel() {
 
     setErro(false);
     const hoje = dataSaoPaulo();
-    const { data, error } = await (supabase.rpc as any)("painel_turno", {
+    const rpc = await (supabase.rpc as any)("painel_turno", {
       p_setor: profile.setor_atual,
       p_turno: profile.turno_atual,
       p_data: hoje,
     });
 
-    if (error) {
+    if (!rpc.error) {
+      aplicarPayload((rpc.data ?? {}) as PainelPayload);
+      return;
+    }
+
+    // Compatibilidade enquanto a migration de otimização ainda não foi aplicada no ambiente.
+    const [{ data, error }, { data: pendenciasData, error: erroPendencias }] = await Promise.all([
+      supabase
+        .from("apontamentos")
+        .select("id, op, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at")
+        .eq("setor", profile.setor_atual)
+        .eq("turno", profile.turno_atual)
+        .eq("data_local", hoje)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("apontamentos")
+        .select("id, op, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_local, turno")
+        .eq("setor", profile.setor_atual)
+        .eq("status", "pendente")
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
+
+    if (error || erroPendencias) {
       setErro(true);
       setRecentes([]);
       setResumo(RESUMO_VAZIO);
@@ -108,20 +134,39 @@ function Painel() {
       return;
     }
 
-    const payload = (data ?? {}) as PainelPayload;
-    const resumoRecebido = payload.resumo ?? {};
+    const itens = (data ?? []) as RegistroRecente[];
+    setRecentes(itens.slice(0, 40));
+    setPendencias((pendenciasData ?? []) as Pendencia[]);
+    setResumo(
+      itens.reduce(
+        (acc, item) => ({
+          registros: acc.registros + 1,
+          pendentes: acc.pendentes + (item.status === "pendente" ? 1 : 0),
+          lancados: acc.lancados + (item.status === "lancado" ? 1 : 0),
+          plts: acc.plts + (item.quantidade_plts ?? 0),
+          rolos: acc.rolos + (item.total_rolos ?? 0),
+          metragem: acc.metragem + Number(item.metragem ?? 0),
+          area: acc.area + Number(item.area_m2 ?? 0),
+        }),
+        { ...RESUMO_VAZIO },
+      ),
+    );
+  }, [profile?.setor_atual, profile?.turno_atual]);
+
+  function aplicarPayload(payload: PainelPayload) {
+    const r = payload.resumo ?? {};
     setResumo({
-      registros: Number(resumoRecebido.registros ?? 0),
-      pendentes: Number(resumoRecebido.pendentes ?? 0),
-      lancados: Number(resumoRecebido.lancados ?? 0),
-      plts: Number(resumoRecebido.plts ?? 0),
-      rolos: Number(resumoRecebido.rolos ?? 0),
-      metragem: Number(resumoRecebido.metragem ?? 0),
-      area: Number(resumoRecebido.area ?? 0),
+      registros: Number(r.registros ?? 0),
+      pendentes: Number(r.pendentes ?? 0),
+      lancados: Number(r.lancados ?? 0),
+      plts: Number(r.plts ?? 0),
+      rolos: Number(r.rolos ?? 0),
+      metragem: Number(r.metragem ?? 0),
+      area: Number(r.area ?? 0),
     });
     setRecentes(payload.recentes ?? []);
     setPendencias(payload.pendencias ?? []);
-  }, [profile?.setor_atual, profile?.turno_atual]);
+  }
 
   useEffect(() => {
     void carregarPainel();
@@ -129,10 +174,7 @@ function Painel() {
 
   const hoje = dataSaoPaulo();
   const pendenciasAnteriores = useMemo(
-    () =>
-      pendencias.filter(
-        (item) => item.data_local !== hoje || item.turno !== profile?.turno_atual,
-      ),
+    () => pendencias.filter((item) => item.data_local !== hoje || item.turno !== profile?.turno_atual),
     [hoje, pendencias, profile?.turno_atual],
   );
 
@@ -154,6 +196,26 @@ function Painel() {
     });
   }, [busca, recentes, statusFiltro]);
 
+  function abrirApontamento(modo: "novo" | "repetir") {
+    setModoApontamento(modo);
+    setApontarAberto(true);
+  }
+
+  async function confirmarPendencia(id: string) {
+    if (!isAutorizado || confirmandoId) return;
+    setConfirmandoId(id);
+    const { data, error } = await supabase.rpc("confirmar_apontamentos_protheus", {
+      p_ids: [id],
+    });
+    setConfirmandoId(null);
+    if (error) {
+      toast.error("Não foi possível confirmar este apontamento no Protheus.");
+      return;
+    }
+    toast.success(`${data ?? 1} apontamento confirmado no Protheus.`);
+    await carregarPainel();
+  }
+
   return (
     <>
       <AppShell
@@ -161,14 +223,12 @@ function Painel() {
         eyebrow={`HOJE · ${setorNome.toUpperCase()} · ${turnoNome.toUpperCase()}`}
         notificationCount={pendenciasAnteriores.length}
         onNotifications={() => setNotificacoesAbertas(true)}
-        onApontar={() => setApontarAberto(true)}
+        onRepeat={() => abrirApontamento("repetir")}
+        onApontar={() => abrirApontamento("novo")}
       >
         <div className="mx-auto max-w-5xl space-y-5">
           {erro && (
-            <div
-              role="alert"
-              className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm font-medium text-red-800"
-            >
+            <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 p-4 text-sm font-medium text-red-800">
               Não foi possível carregar o painel. Tente novamente em instantes.
             </div>
           )}
@@ -177,22 +237,14 @@ function Painel() {
             <Card className="rounded-3xl border-slate-200 shadow-sm">
               <CardContent className="flex flex-col gap-3 p-5">
                 <p className="text-sm">Você ainda não escolheu setor e turno.</p>
-                <Button asChild className="h-12 w-fit rounded-xl">
-                  <Link to="/selecionar">Escolher agora</Link>
-                </Button>
+                <Button asChild className="h-12 w-fit rounded-xl"><Link to="/selecionar">Escolher agora</Link></Button>
               </CardContent>
             </Card>
           )}
 
           {pendenciasAnteriores.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setNotificacoesAbertas(true)}
-              className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-left text-sm text-amber-950"
-            >
-              <span>
-                Há <strong>{pendenciasAnteriores.length}</strong> apontamento(s) pendente(s) de turnos anteriores.
-              </span>
+            <button type="button" onClick={() => setNotificacoesAbertas(true)} className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-left text-sm text-amber-950">
+              <span>Há <strong>{pendenciasAnteriores.length}</strong> apontamento(s) pendente(s) de turnos anteriores.</span>
               <span className="font-semibold">Ver pendências</span>
             </button>
           )}
@@ -200,23 +252,11 @@ function Painel() {
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <IndicadorOperacional icon={Clock3} label="Pendentes" valor={resumo.pendentes} detalhe="para lançar" tone="amber" />
             <IndicadorOperacional icon={PackageCheck} label="Lançados" valor={resumo.lancados} detalhe="no Protheus" tone="green" />
-            <IndicadorOperacional
-              icon={Boxes}
-              label={setorFitas ? "Apontamentos" : "PLTs fechados"}
-              valor={setorFitas ? resumo.registros : resumo.plts}
-              detalhe="neste turno"
-              tone="slate"
-            />
+            <IndicadorOperacional icon={Boxes} label={setorFitas ? "Apontamentos" : "PLTs fechados"} valor={setorFitas ? resumo.registros : resumo.plts} detalhe="neste turno" tone="slate" />
             <IndicadorOperacional
               icon={Gauge}
               label="Metragem produzida"
-              valor={
-                setorFitas
-                  ? formatarNumero(resumo.area)
-                  : setorMantas || resumo.metragem > 0
-                    ? formatarNumero(resumo.metragem)
-                    : "0"
-              }
+              valor={setorFitas ? formatarNumero(resumo.area) : setorMantas || resumo.metragem > 0 ? formatarNumero(resumo.metragem) : "0"}
               detalhe={setorFitas || setorCorte ? "m² apontados" : "m apontados"}
               tone="slate"
             />
@@ -225,54 +265,31 @@ function Painel() {
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div className="space-y-1 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
               <h2 className="text-2xl font-extrabold tracking-tight text-slate-950">Apontamentos do turno</h2>
-              <p className="text-sm leading-relaxed text-slate-500 sm:text-base">
-                Um registro por apontamento, mesmo quando houver vários PLTs.
-              </p>
+              <p className="text-sm leading-relaxed text-slate-500 sm:text-base">Um registro por apontamento, mesmo quando houver vários PLTs.</p>
             </div>
-
             <div className="grid gap-3 border-b border-slate-200 px-4 pb-5 sm:grid-cols-[1fr_180px] sm:px-6">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={busca}
-                  onChange={(event) => setBusca(event.target.value)}
-                  placeholder="Buscar OP ou produto"
-                  className="h-12 rounded-xl border-slate-200 pl-10 text-base"
-                  aria-label="Buscar OP ou produto"
-                />
+                <Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar OP ou produto" className="h-12 rounded-xl border-slate-200 pl-10 text-base" aria-label="Buscar OP ou produto" />
               </div>
-              <select
-                value={statusFiltro}
-                onChange={(event) => setStatusFiltro(event.target.value as "todos" | "pendente" | "lancado")}
-                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 outline-none focus:ring-2 focus:ring-primary/40"
-                aria-label="Filtrar situação"
-              >
-                <option value="todos">Todos</option>
-                <option value="pendente">Pendentes</option>
-                <option value="lancado">Lançados</option>
+              <select value={statusFiltro} onChange={(event) => setStatusFiltro(event.target.value as "todos" | "pendente" | "lancado")} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 outline-none focus:ring-2 focus:ring-primary/40" aria-label="Filtrar situação">
+                <option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="lancado">Lançados</option>
               </select>
             </div>
-
             <div className="p-4 sm:p-6">
               {filtrados.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-9 text-center text-sm leading-relaxed text-slate-500 sm:text-base">
-                  {recentes.length === 0
-                    ? "Nenhum apontamento neste turno. Toque em “Apontar” para começar."
-                    : "Nenhum apontamento corresponde à busca ou ao filtro selecionado."}
+                  {recentes.length === 0 ? "Nenhum apontamento neste turno. Toque em “Apontar” para começar." : "Nenhum apontamento corresponde à busca ou ao filtro selecionado."}
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
                   {filtrados.map((item) => (
                     <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-950">
-                          {item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}
-                        </p>
+                        <p className="truncate font-semibold text-slate-950">{item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}</p>
                         <p className="text-sm text-slate-500">{resumoRegistro(item, setorFitas, setorMantas)}</p>
                       </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${item.status === "lancado" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                        {item.status === "lancado" ? "Lançado" : "Pendente"}
-                      </span>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${item.status === "lancado" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status === "lancado" ? "Lançado" : "Pendente"}</span>
                     </div>
                   ))}
                 </div>
@@ -282,54 +299,59 @@ function Painel() {
 
           <section className="rounded-3xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm sm:p-5">
             <div className="flex items-center gap-3">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-                <CheckCircle2 className="size-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-bold text-slate-950">Turno aberto</h2>
-                <p className="text-sm text-slate-500">{resumo.registros} apontamento(s) · {resumo.pendentes} pendente(s)</p>
-              </div>
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><CheckCircle2 className="size-6" /></div>
+              <div className="min-w-0 flex-1"><h2 className="text-lg font-bold text-slate-950">Turno aberto</h2><p className="text-sm text-slate-500">{resumo.registros} apontamento(s) · {resumo.pendentes} pendente(s)</p></div>
             </div>
-            <Button asChild variant="secondary" className="mt-4 h-11 w-full rounded-xl bg-slate-200/90 text-base font-medium text-slate-800 hover:bg-slate-300">
-              <Link to="/passagem-turno"><LockKeyhole className="size-5" /> Encerrar turno</Link>
-            </Button>
+            <Button asChild variant="secondary" className="mt-4 h-11 w-full rounded-xl bg-slate-200/90 text-base font-medium text-slate-800 hover:bg-slate-300"><Link to="/passagem-turno"><LockKeyhole className="size-5" /> Encerrar turno</Link></Button>
           </section>
         </div>
       </AppShell>
 
-      <ApontamentoRapido open={apontarAberto} onOpenChange={setApontarAberto} onSaved={carregarPainel} />
+      <ApontamentoRapido
+        open={apontarAberto}
+        onOpenChange={setApontarAberto}
+        repeatLatest={modoApontamento === "repetir"}
+        onSaved={carregarPainel}
+      />
 
       <Dialog open={notificacoesAbertas} onOpenChange={setNotificacoesAbertas}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-3xl sm:max-w-xl">
+        <DialogContent className="max-h-[88vh] overflow-y-auto rounded-3xl sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Pendências de turnos anteriores</DialogTitle>
-            <DialogDescription>Apontamentos que ainda aguardam confirmação no Protheus.</DialogDescription>
+            <DialogDescription>Apontamentos que ainda precisam ser conferidos e lançados no Protheus.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          {pendenciasAnteriores.length > 0 && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+              <p className="text-lg font-bold text-red-800">{pendenciasAnteriores.length} apontamento(s) pendente(s)</p>
+              <p className="text-sm text-slate-500">{pendenciasAnteriores.reduce((total, item) => total + (item.quantidade_plts ?? 0), 0)} PLTs aguardando lançamento</p>
+            </div>
+          )}
+          <div className="space-y-3">
             {pendenciasAnteriores.length === 0 ? (
               <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Nenhuma pendência anterior.</div>
             ) : (
               pendenciasAnteriores.map((item) => (
-                <article key={item.id} className="rounded-2xl border border-slate-200 p-4">
+                <article key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-bold text-slate-950">{item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}</p>
                       <p className="mt-1 text-sm text-slate-500">{formatarData(item.data_local)} · {nomeTurno(item.turno)}</p>
                     </div>
-                    <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Pendente</span>
+                    <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Pendente</span>
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">{resumoRegistro(item, setorFitas, setorMantas)}</p>
+                  <p className="mt-3 text-sm font-medium text-slate-600">{resumoRegistro(item, setorFitas, setorMantas)}</p>
+                  {isAutorizado && (
+                    <Button type="button" variant="outline" className="mt-3 w-full rounded-xl border-primary text-primary" disabled={confirmandoId !== null} onClick={() => void confirmarPendencia(item.id)}>
+                      {confirmandoId === item.id ? "Confirmando..." : "Conferir e confirmar"}
+                    </Button>
+                  )}
                 </article>
               ))
             )}
           </div>
           <DialogFooter>
-            {isAutorizado && pendenciasAnteriores.length > 0 && (
-              <Button asChild>
-                <Link to="/controle-apontamentos" onClick={() => setNotificacoesAbertas(false)}>Conferir no Protheus</Link>
-              </Button>
-            )}
             <Button variant="outline" onClick={() => setNotificacoesAbertas(false)}>Fechar</Button>
+            <Button asChild><Link to="/passagem-turno" onClick={() => setNotificacoesAbertas(false)}>Ver passagem de turno</Link></Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -343,11 +365,7 @@ function IndicadorOperacional({ icon: Icon, label, valor, detalhe, tone }: { ico
     <Card className="rounded-3xl border-slate-200 shadow-sm">
       <CardContent className="flex min-h-36 items-center gap-3 p-4 sm:min-h-40 sm:p-5">
         <div className={`flex size-12 shrink-0 items-center justify-center rounded-2xl ${toneClasses}`}><Icon className="size-6" /></div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-500 sm:text-base">{label}</p>
-          <p className="text-3xl font-extrabold leading-none tracking-tight text-slate-950 sm:text-4xl">{valor}</p>
-          <p className="mt-1 text-sm text-slate-400 sm:text-base">{detalhe}</p>
-        </div>
+        <div className="min-w-0"><p className="text-sm font-semibold text-slate-500 sm:text-base">{label}</p><p className="text-3xl font-extrabold leading-none tracking-tight text-slate-950 sm:text-4xl">{valor}</p><p className="mt-1 text-sm text-slate-400 sm:text-base">{detalhe}</p></div>
       </CardContent>
     </Card>
   );
