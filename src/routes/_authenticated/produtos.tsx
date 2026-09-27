@@ -33,15 +33,15 @@ const SETORES: SetorCodigo[] = [
 
 function Produtos() {
   const { canManageProducts, loading } = useAuth();
-  const [setor, setSetor] = useState<SetorCodigo>("mantas");
+  const [setor, setSetor] = useState<SetorCodigo>("corte");
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [marcas, setMarcas] = useState<Marca[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
-  const [categoria, setCategoria] = useState("DRYKO");
+  const [categoria, setCategoria] = useState("");
   const [rolosPorPlt, setRolosPorPlt] = useState(0);
-  const [largura, setLargura] = useState(0.93);
+  const [largura, setLargura] = useState(0);
   const [metragemPorPlt, setMetragemPorPlt] = useState(250);
   const [metrosPorRolo, setMetrosPorRolo] = useState(10);
 
@@ -89,7 +89,7 @@ function Produtos() {
     rolosCalculados > 0;
   const configuracaoValida =
     setor === "corte"
-      ? Number.isInteger(rolosPorPlt) && rolosPorPlt > 0
+      ? Number.isInteger(rolosPorPlt) && rolosPorPlt > 0 && largura > 0
       : setor === "fitas"
         ? largura > 0
         : setor === "mantas"
@@ -102,13 +102,18 @@ function Produtos() {
     setNome("");
     setCategoria(novoSetor === "mantas" ? "DRYKO" : "");
     setRolosPorPlt(0);
-    setLargura(0.93);
+    setLargura(novoSetor === "fitas" ? 0.93 : 0);
     setMetragemPorPlt(250);
     setMetrosPorRolo(10);
   }
 
   function alterarNome(valor: string) {
     setNome(valor);
+    if (setor === "corte") {
+      const tamanho = valor.match(/(?:^|\s)(5|10|15|20|30|45|60|90)(?:$|\D)/)?.[1];
+      if (tamanho) setLargura(Number(tamanho));
+      return;
+    }
     if (setor !== "mantas") return;
     if (/4/.test(valor)) setMetragemPorPlt(200);
     else if (/3/.test(valor)) setMetragemPorPlt(250);
@@ -135,7 +140,7 @@ function Produtos() {
       nome: nome.trim(),
       categoria: marca,
       rolos_por_plt: setor === "corte" ? rolosPorPlt : setor === "mantas" ? rolosCalculados : null,
-      largura: setor === "fitas" ? largura : null,
+      largura: setor === "corte" || setor === "fitas" ? largura : null,
       metragem_por_plt: setor === "mantas" ? metragemPorPlt : null,
       metros_por_rolo: setor === "mantas" ? metrosPorRolo : null,
       ativo: true,
@@ -151,6 +156,8 @@ function Produtos() {
     }
     toast.success("Produto cadastrado.");
     setNome("");
+    setRolosPorPlt(0);
+    setLargura(setor === "fitas" ? 0.93 : 0);
     await carregarProdutos(setor);
   }
 
@@ -173,15 +180,8 @@ function Produtos() {
   }
 
   return (
-    <AppShell>
+    <AppShell title="Produtos" eyebrow="ADMINISTRAÇÃO · CATÁLOGO">
       <div className="mx-auto max-w-3xl space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold">Produtos</h1>
-          <p className="text-sm text-muted-foreground">
-            Cadastro disponível somente para usuários autorizados.
-          </p>
-        </div>
-
         {loading || carregando ? (
           <p className="text-sm text-muted-foreground">Carregando...</p>
         ) : !canManageProducts ? (
@@ -192,7 +192,7 @@ function Produtos() {
           </Card>
         ) : (
           <>
-            <Card>
+            <Card className="rounded-3xl border-slate-200 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-base">Cadastrar novo produto</CardTitle>
               </CardHeader>
@@ -227,21 +227,46 @@ function Produtos() {
                     id="nome-produto"
                     value={nome}
                     onChange={(e) => alterarNome(e.target.value)}
+                    placeholder={setor === "corte" ? "Ex.: FVD 10" : undefined}
                   />
                 </div>
 
                 {setor === "corte" && (
-                  <div className="space-y-1 sm:col-span-2">
-                    <Label htmlFor="rolos-produto">Rolos por PLT *</Label>
-                    <Input
-                      id="rolos-produto"
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={rolosPorPlt || ""}
-                      onChange={(e) => setRolosPorPlt(Number(e.target.value))}
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-1">
+                      <Label htmlFor="largura-corte">Largura (cm) *</Label>
+                      <Input
+                        id="largura-corte"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        value={largura || ""}
+                        onChange={(e) => setLargura(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label htmlFor="rolos-produto">Rolos por PLT *</Label>
+                      <Input
+                        id="rolos-produto"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={rolosPorPlt || ""}
+                        onChange={(e) => setRolosPorPlt(Number(e.target.value))}
+                      />
+                    </div>
+                    {largura > 0 && rolosPorPlt > 0 && (
+                      <div className="rounded-xl bg-muted p-3 sm:col-span-2">
+                        <span className="text-xs text-muted-foreground">Metragem por PLT</span>
+                        <p className="text-xl font-bold">
+                          {(largura * rolosPorPlt / 10).toLocaleString("pt-BR", {
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          m²
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {setor === "fitas" && (
@@ -301,7 +326,7 @@ function Produtos() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="rounded-3xl border-slate-200 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-base">Ordem das marcas</CardTitle>
               </CardHeader>
@@ -343,7 +368,7 @@ function Produtos() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="rounded-3xl border-slate-200 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-base">Produtos de {nomeSetor(setor)}</CardTitle>
               </CardHeader>
@@ -371,7 +396,16 @@ function Produtos() {
 }
 
 function descricaoProduto(produto: Produto) {
-  if (produto.setor === "corte") return `${produto.rolos_por_plt} rolos/PLT`;
+  if (produto.setor === "corte") {
+    const largura = Number(produto.largura ?? 0);
+    const rolos = Number(produto.rolos_por_plt ?? 0);
+    const metragem = largura > 0 && rolos > 0 ? largura * rolos / 10 : null;
+    return `${largura > 0 ? `${largura.toLocaleString("pt-BR")} cm · ` : ""}${rolos} rolos/PLT${
+      metragem == null
+        ? ""
+        : ` · ${metragem.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²/PLT`
+    }`;
+  }
   if (produto.setor === "fitas") return `largura ${produto.largura} m`;
   if (produto.setor === "mantas") {
     return `${produto.categoria ?? "Sem categoria"} · ${produto.metragem_por_plt} m/PLT · ${produto.rolos_por_plt} rolos/PLT`;
