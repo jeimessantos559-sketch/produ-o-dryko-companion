@@ -29,7 +29,7 @@ type Produto = {
 
 type CacheItem = { expiresAt: number; produtos: Produto[] };
 const cacheProdutos = new Map<string, CacheItem>();
-const CACHE_MS = 60_000;
+const CACHE_MS = 5 * 60_000;
 
 async function obterProdutos(setor: string) {
   const cache = cacheProdutos.get(setor);
@@ -58,9 +58,15 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved?: () => void | Promise<void>;
+  repeatLatest?: boolean;
 };
 
-export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
+export function ApontamentoRapido({
+  open,
+  onOpenChange,
+  onSaved,
+  repeatLatest = false,
+}: Props) {
   const { user, profile } = useAuth();
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
@@ -80,27 +86,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
 
   const produto = produtos.find((item) => item.id === produtoId) ?? null;
 
-  useEffect(() => {
-    if (!open || !setor || !["corte", "fitas", "mantas"].includes(setor)) return;
-    let ativo = true;
-    setCarregando(true);
-    void obterProdutos(setor)
-      .then((lista) => {
-        if (ativo) setProdutos(lista);
-      })
-      .catch(() => {
-        if (ativo) toast.error("Não foi possível carregar os produtos.");
-      })
-      .finally(() => {
-        if (ativo) setCarregando(false);
-      });
-    return () => {
-      ativo = false;
-    };
-  }, [open, setor]);
-
-  useEffect(() => {
-    if (!open) return;
+  function limparFormulario() {
     setOp("");
     setProdutoId("");
     setQuantidadePlts(1);
@@ -111,7 +97,74 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
     setTempo(60);
     setVelocidade(25);
     setLargura(0.93);
-  }, [open, setor]);
+  }
+
+  useEffect(() => {
+    if (!open || !setor || !["corte", "fitas", "mantas"].includes(setor)) return;
+    let ativo = true;
+    setCarregando(true);
+    limparFormulario();
+
+    void obterProdutos(setor)
+      .then(async (lista) => {
+        if (!ativo) return;
+        setProdutos(lista);
+        if (!repeatLatest || !user || !turno) return;
+
+        const { data, error } = await supabase
+          .from("apontamentos")
+          .select("op, lote, produto_id, quantidade_plts, rolos_por_plt, grupos, tempo, velocidade, largura, metragem")
+          .eq("usuario_id", user.id)
+          .eq("setor", setor as never)
+          .eq("turno", turno)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!ativo) return;
+        if (error) {
+          toast.error("Não foi possível consultar o último apontamento.");
+          return;
+        }
+        if (!data) {
+          toast.info("Ainda não existe apontamento neste setor para repetir.");
+          return;
+        }
+
+        setProdutoId(data.produto_id);
+        setOp(data.op ?? "");
+        if (setor === "corte") {
+          const grupos = Array.isArray(data.grupos) ? data.grupos : [];
+          const primeiro = (grupos[0] ?? {}) as {
+            quantidadePlts?: number;
+            rolosPorPlt?: number;
+            pltPicadoRolos?: number | null;
+          };
+          setQuantidadePlts(Number(primeiro.quantidadePlts ?? data.quantidade_plts ?? 1));
+          setRolosPorPlt(Number(primeiro.rolosPorPlt ?? data.rolos_por_plt ?? 1));
+          setPltPicado(primeiro.pltPicadoRolos == null ? "" : Number(primeiro.pltPicadoRolos));
+        } else if (setor === "fitas") {
+          setTempo(Number(data.tempo ?? 60));
+          setVelocidade(Number(data.velocidade ?? 25));
+          setLargura(Number(data.largura ?? 0.93));
+        } else if (setor === "mantas") {
+          setLote(data.lote ?? "");
+          setQuantidadePlts(Number(data.quantidade_plts ?? 1));
+          setMetragemManta(Number(data.metragem ?? 0));
+        }
+        toast.info("Último apontamento carregado. Revise os dados antes de salvar.");
+      })
+      .catch(() => {
+        if (ativo) toast.error("Não foi possível carregar os produtos.");
+      })
+      .finally(() => {
+        if (ativo) setCarregando(false);
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, [open, repeatLatest, setor, turno, user]);
 
   function selecionarProduto(id: string) {
     setProdutoId(id);
@@ -121,7 +174,11 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
       setRolosPorPlt(escolhido.rolos_por_plt ?? 1);
       setPltPicado("");
     }
-    if (setor === "fitas") setLargura(Number(escolhido.largura ?? 0.93));
+    if (setor === "fitas") {
+      setTempo(60);
+      setVelocidade(25);
+      setLargura(Number(escolhido.largura ?? 0.93));
+    }
     if (setor === "mantas") {
       setMetragemManta(Number(escolhido.metragem_por_plt ?? 0));
       setQuantidadePlts(1);
@@ -239,10 +296,13 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
       <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            Novo apontamento {setor ? `· ${nomeSetorRapido(setor)}` : ""}
+            {repeatLatest ? "Repetir último apontamento" : "Novo apontamento"}
+            {setor ? ` · ${nomeSetorRapido(setor)}` : ""}
           </DialogTitle>
           <DialogDescription>
-            Registre sem sair do painel. Os valores padrão podem ser alterados antes de salvar.
+            {repeatLatest
+              ? "Os dados do último registro foram copiados. Revise antes de confirmar."
+              : "Registre sem sair do painel. Os valores padrão podem ser alterados antes de salvar."}
           </DialogDescription>
         </DialogHeader>
 
@@ -324,9 +384,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
                     className="h-12 text-base"
                     placeholder="Deixe vazio para todos fechados"
                     value={pltPicado}
-                    onChange={(event) =>
-                      setPltPicado(event.target.value ? Number(event.target.value) : "")
-                    }
+                    onChange={(event) => setPltPicado(event.target.value ? Number(event.target.value) : "")}
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-950 p-3 text-center text-white">
@@ -345,49 +403,22 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <Label htmlFor="rapido-tempo">Tempo (min)</Label>
-                    <Input
-                      id="rapido-tempo"
-                      type="number"
-                      min={1}
-                      className="h-12 text-base"
-                      value={tempo}
-                      onChange={(event) => setTempo(Number(event.target.value))}
-                    />
+                    <Input id="rapido-tempo" type="number" min={1} className="h-12 text-base" value={tempo} onChange={(event) => setTempo(Number(event.target.value))} />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="rapido-velocidade">Velocidade</Label>
-                    <Input
-                      id="rapido-velocidade"
-                      type="number"
-                      min={0.01}
-                      step="0.01"
-                      className="h-12 text-base"
-                      value={velocidade}
-                      onChange={(event) => setVelocidade(Number(event.target.value))}
-                    />
+                    <Input id="rapido-velocidade" type="number" min={0.01} step="0.01" className="h-12 text-base" value={velocidade} onChange={(event) => setVelocidade(Number(event.target.value))} />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="rapido-largura">Largura (m)</Label>
-                    <Input
-                      id="rapido-largura"
-                      type="number"
-                      min={0.01}
-                      step="0.01"
-                      className="h-12 text-base"
-                      value={largura}
-                      onChange={(event) => setLargura(Number(event.target.value))}
-                    />
+                    <Input id="rapido-largura" type="number" min={0.01} step="0.01" className="h-12 text-base" value={largura} onChange={(event) => setLargura(Number(event.target.value))} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl bg-slate-950 p-4 text-white">
                   <Calculator className="size-6 text-primary" />
                   <div>
-                    <p className="text-xs text-slate-300">
-                      {tempo} min × {velocidade} m/min × {largura} m
-                    </p>
-                    <p className="text-2xl font-extrabold">
-                      {areaFitasCalculada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
-                    </p>
+                    <p className="text-xs text-slate-300">{tempo} min × {velocidade} m/min × {largura} m</p>
+                    <p className="text-2xl font-extrabold">{areaFitasCalculada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²</p>
                   </div>
                 </div>
               </>
@@ -397,45 +428,23 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
               <>
                 <div className="space-y-1">
                   <Label htmlFor="rapido-lote">Lote *</Label>
-                  <Input
-                    id="rapido-lote"
-                    className="h-12 text-base"
-                    value={lote}
-                    onChange={(event) => setLote(event.target.value)}
-                  />
+                  <Input id="rapido-lote" className="h-12 text-base" value={lote} onChange={(event) => setLote(event.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="rapido-plts-manta">PLTs</Label>
-                    <Input
-                      id="rapido-plts-manta"
-                      type="number"
-                      min={1}
-                      className="h-12 text-base"
-                      value={quantidadePlts}
-                      onChange={(event) => alterarPltsManta(Number(event.target.value))}
-                    />
+                    <Input id="rapido-plts-manta" type="number" min={1} className="h-12 text-base" value={quantidadePlts} onChange={(event) => alterarPltsManta(Number(event.target.value))} />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="rapido-metragem-manta">Metragem</Label>
-                    <Input
-                      id="rapido-metragem-manta"
-                      type="number"
-                      min={1}
-                      step={produto.metros_por_rolo ?? 10}
-                      className="h-12 text-base"
-                      value={metragemManta}
-                      onChange={(event) => setMetragemManta(Number(event.target.value))}
-                    />
+                    <Input id="rapido-metragem-manta" type="number" min={1} step={produto.metros_por_rolo ?? 10} className="h-12 text-base" value={metragemManta} onChange={(event) => setMetragemManta(Number(event.target.value))} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl bg-slate-100 p-4 text-slate-900">
                   <PackageCheck className="size-6 text-primary" />
                   <div>
                     <p className="text-xs text-slate-500">Produção calculada</p>
-                    <p className="font-bold">
-                      {quantidadePlts} PLT(s) · {metragemManta.toLocaleString("pt-BR")} m · {produto.metros_por_rolo ? metragemManta / produto.metros_por_rolo : 0} rolos
-                    </p>
+                    <p className="font-bold">{quantidadePlts} PLT(s) · {metragemManta.toLocaleString("pt-BR")} m · {produto.metros_por_rolo ? metragemManta / produto.metros_por_rolo : 0} rolos</p>
                   </div>
                 </div>
               </>
@@ -444,9 +453,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved }: Props) {
         )}
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button type="button" disabled={!valido || salvando} onClick={salvar}>
             {salvando ? "Salvando..." : "Registrar apontamento"}
           </Button>
