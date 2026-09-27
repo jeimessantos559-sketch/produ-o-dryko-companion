@@ -38,6 +38,8 @@ type AppShellProps = {
   title?: string;
   eyebrow?: string;
   notificationCount?: number;
+  onNotifications?: () => void;
+  onApontar?: () => void;
 };
 
 function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
@@ -70,12 +72,12 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="p-4">
+      <div className="border-b border-sidebar-border p-4">
         <DrykoLogo />
         <p className="mt-2 text-sm text-sidebar-foreground/70">Aponta Produção</p>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
         {itens.map((item) => {
           const ativo = pathname.startsWith(item.to);
           return (
@@ -120,6 +122,8 @@ export function AppShell({
   title,
   eyebrow,
   notificationCount = 0,
+  onNotifications,
+  onApontar,
 }: AppShellProps) {
   const [aberto, setAberto] = useState(false);
   const { profile, isAutorizado } = useAuth();
@@ -165,21 +169,39 @@ export function AppShell({
               </h1>
             </Link>
 
-            <Button
-              asChild
-              variant="outline"
-              size="icon"
-              className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none"
-            >
-              <Link to={destinoNotificacoes} aria-label="Ver pendências">
+            {onNotifications ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none"
+                onClick={onNotifications}
+                aria-label="Ver pendências"
+              >
                 <Bell className="size-6" />
                 {notificationCount > 0 && (
                   <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">
                     {notificationCount > 99 ? "99+" : notificationCount}
                   </span>
                 )}
-              </Link>
-            </Button>
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant="outline"
+                size="icon"
+                className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none"
+              >
+                <Link to={destinoNotificacoes} aria-label="Ver pendências">
+                  <Bell className="size-6" />
+                  {notificationCount > 0 && (
+                    <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">
+                      {notificationCount > 99 ? "99+" : notificationCount}
+                    </span>
+                  )}
+                </Link>
+              </Button>
+            )}
 
             <Button
               asChild
@@ -192,12 +214,23 @@ export function AppShell({
               </Link>
             </Button>
 
-            <Button asChild className="h-12 shrink-0 rounded-2xl px-4 text-base font-semibold shadow-sm sm:px-5">
-              <Link to="/apontar">
+            {onApontar ? (
+              <Button
+                type="button"
+                className="h-12 shrink-0 rounded-2xl px-4 text-base font-semibold shadow-sm sm:px-5"
+                onClick={onApontar}
+              >
                 <Plus className="size-6" />
                 <span className="hidden min-[360px]:inline">Apontar</span>
-              </Link>
-            </Button>
+              </Button>
+            ) : (
+              <Button asChild className="h-12 shrink-0 rounded-2xl px-4 text-base font-semibold shadow-sm sm:px-5">
+                <Link to="/apontar">
+                  <Plus className="size-6" />
+                  <span className="hidden min-[360px]:inline">Apontar</span>
+                </Link>
+              </Button>
+            )}
           </div>
         </header>
 
