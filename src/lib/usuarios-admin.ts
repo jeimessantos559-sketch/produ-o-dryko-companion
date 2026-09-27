@@ -7,7 +7,7 @@ import { emailInternoDoLogin, normalizarLogin } from "@/lib/login-operacional";
 const entrada = z.object({
   login: z.string().trim().min(2).max(80),
   nome: z.string().trim().min(2),
-  senha: z.string().min(6).max(200),
+  senha: z.string().min(8).max(200),
 });
 
 export const criarUsuario = createServerFn({ method: "POST" })
@@ -41,9 +41,21 @@ export const criarUsuario = createServerFn({ method: "POST" })
         deve_alterar_senha: true,
       },
     });
+
     if (error || !criado.user) {
-      if (error?.message?.toLowerCase().includes("already")) {
+      const mensagem = error?.message?.toLowerCase() ?? "";
+      if (mensagem.includes("already") || mensagem.includes("registered")) {
         throw new Error("Este login já está cadastrado.");
+      }
+      if (
+        mensagem.includes("weak") ||
+        mensagem.includes("easy to guess") ||
+        mensagem.includes("pwned") ||
+        mensagem.includes("compromised")
+      ) {
+        throw new Error(
+          "A senha temporária foi recusada por segurança. Use o botão 'Gerar senha segura' e tente novamente.",
+        );
       }
       throw new Error(error?.message || "Não foi possível criar o usuário.");
     }
