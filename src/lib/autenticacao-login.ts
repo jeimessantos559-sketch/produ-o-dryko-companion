@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { aliasDoNome, normalizarLogin } from "@/lib/login-operacional";
+import { normalizarLogin } from "@/lib/login-operacional";
 
 const entrada = z.object({
   login: z.string().trim().min(2).max(80),
@@ -10,7 +10,6 @@ const entrada = z.object({
 
 type PerfilLogin = {
   id: string;
-  nome: string;
   login: string | null;
   login_key: string | null;
   ativo: boolean;
@@ -24,19 +23,17 @@ export const entrarComLogin = createServerFn({ method: "POST" })
     if (!chave) throw new Error("Usuário ou senha inválidos.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: perfis, error: erroPerfis } = await (supabaseAdmin.from("profiles") as any)
-      .select("id, nome, login, login_key, ativo, deve_alterar_senha")
-      .eq("ativo", true);
+    const { data: perfil, error: erroPerfil } = await (supabaseAdmin.from("profiles") as any)
+      .select("id, login, login_key, ativo, deve_alterar_senha")
+      .eq("login_key", chave)
+      .eq("ativo", true)
+      .maybeSingle();
 
-    if (erroPerfis) throw new Error("Não foi possível entrar agora.");
-
-    const lista = (perfis ?? []) as PerfilLogin[];
-    const perfil = lista.find((item) => item.login_key === chave)
-      ?? lista.find((item) => aliasDoNome(item.nome) === chave);
-
+    if (erroPerfil) throw new Error("Não foi possível entrar agora.");
     if (!perfil) throw new Error("Usuário ou senha inválidos.");
 
-    const { data: usuario, error: erroUsuario } = await supabaseAdmin.auth.admin.getUserById(perfil.id);
+    const perfilLogin = perfil as PerfilLogin;
+    const { data: usuario, error: erroUsuario } = await supabaseAdmin.auth.admin.getUserById(perfilLogin.id);
     const email = usuario.user?.email;
     if (erroUsuario || !email) throw new Error("Usuário ou senha inválidos.");
 
@@ -60,6 +57,6 @@ export const entrarComLogin = createServerFn({ method: "POST" })
     return {
       accessToken: sessao.session.access_token,
       refreshToken: sessao.session.refresh_token,
-      deveAlterarSenha: perfil.deve_alterar_senha,
+      deveAlterarSenha: perfilLogin.deve_alterar_senha,
     };
   });
