@@ -39,6 +39,7 @@ type AppShellProps = {
   eyebrow?: string;
   notificationCount?: number;
   onNotifications?: () => void;
+  onRepeat?: () => void;
   onApontar?: () => void;
 };
 
@@ -123,6 +124,7 @@ export function AppShell({
   eyebrow,
   notificationCount = 0,
   onNotifications,
+  onRepeat,
   onApontar,
 }: AppShellProps) {
   const [aberto, setAberto] = useState(false);
@@ -160,11 +162,11 @@ export function AppShell({
               </SheetContent>
             </Sheet>
 
-            <Link to="/selecionar" className="min-w-0 flex-1 py-1">
+            <Link to="/selecionar" className="min-w-0 flex-1 py-1" title="Alterar setor e turno">
               <p className="truncate text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 sm:text-xs">
                 {eyebrow ?? contexto}
               </p>
-              <h1 className="truncate text-2xl font-extrabold leading-tight tracking-tight text-slate-950 sm:text-3xl">
+              <h1 className="truncate text-xl font-extrabold leading-tight tracking-tight text-slate-950 min-[390px]:text-2xl sm:text-3xl">
                 {title ?? contexto}
               </h1>
             </Link>
@@ -176,7 +178,7 @@ export function AppShell({
                 size="icon"
                 className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none"
                 onClick={onNotifications}
-                aria-label="Ver pendências"
+                aria-label="Ver pendências de turnos anteriores"
               >
                 <Bell className="size-6" />
                 {notificationCount > 0 && (
@@ -203,28 +205,42 @@ export function AppShell({
               </Button>
             )}
 
-            <Button
-              asChild
-              variant="outline"
-              size="icon"
-              className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"
-            >
-              <Link to="/historico" aria-label="Abrir histórico">
+            {onRepeat ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"
+                onClick={onRepeat}
+                aria-label="Repetir último apontamento"
+                title="Repetir último apontamento"
+              >
                 <Copy className="size-5" />
-              </Link>
-            </Button>
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant="outline"
+                size="icon"
+                className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"
+              >
+                <Link to="/historico" aria-label="Abrir histórico">
+                  <History className="size-5" />
+                </Link>
+              </Button>
+            )}
 
             {onApontar ? (
               <Button
                 type="button"
-                className="h-12 shrink-0 rounded-2xl px-4 text-base font-semibold shadow-sm sm:px-5"
+                className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5"
                 onClick={onApontar}
               >
                 <Plus className="size-6" />
                 <span className="hidden min-[360px]:inline">Apontar</span>
               </Button>
             ) : (
-              <Button asChild className="h-12 shrink-0 rounded-2xl px-4 text-base font-semibold shadow-sm sm:px-5">
+              <Button asChild className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5">
                 <Link to="/apontar">
                   <Plus className="size-6" />
                   <span className="hidden min-[360px]:inline">Apontar</span>
