@@ -35,11 +35,7 @@ async function gerarLoginUnico(supabaseAdmin: any, nome: string) {
   let tentativa = base;
   let sufixo = 2;
   while (true) {
-    const { data } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("login_key", tentativa)
-      .maybeSingle();
+    const { data } = await supabaseAdmin.from("profiles").select("id").eq("login_key", tentativa).maybeSingle();
     if (!data) return tentativa;
     tentativa = `${base}${sufixo}`;
     sufixo += 1;
@@ -73,13 +69,7 @@ export const criarUsuario = createServerFn({ method: "POST" })
     if (error || !criado.user) throw new Error(error?.message || "Não foi possível criar o usuário.");
 
     const { error: erroPerfil } = await (supabaseAdmin.from("profiles") as any)
-      .update({
-        nome: data.nome,
-        login,
-        login_key: loginKey,
-        deve_alterar_senha: true,
-        ativo: true,
-      })
+      .update({ nome: data.nome, login, login_key: loginKey, deve_alterar_senha: true, ativo: true })
       .eq("id", criado.user.id);
 
     if (erroPerfil) {
@@ -102,6 +92,11 @@ export const gerenciarUsuarioAdmin = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     if (data.action === "reset") {
+      const { error: erroSenha } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
+        password: gerarSenhaTecnica(),
+      });
+      if (erroSenha) throw new Error("Não foi possível redefinir a senha do usuário.");
+
       const { error } = await (supabaseAdmin.from("profiles") as any)
         .update({ deve_alterar_senha: true })
         .eq("id", data.userId);
@@ -111,7 +106,9 @@ export const gerenciarUsuarioAdmin = createServerFn({ method: "POST" })
 
     if (data.action === "delete") {
       const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
-      if (error) throw new Error("Não foi possível excluir o usuário.");
+      if (error) {
+        throw new Error("Este usuário possui vínculos no histórico ou não pôde ser excluído. Desative-o para preservar os registros.");
+      }
       return { ok: true };
     }
 
