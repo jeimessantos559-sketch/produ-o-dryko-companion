@@ -70,15 +70,13 @@ function Contagem() {
 
   const fitas = profile?.setor_atual === "fitas";
   const mantas = profile?.setor_atual === "mantas";
+  const corte = profile?.setor_atual === "corte";
   return (
-    <AppShell>
+    <AppShell title="Contagem por produto" eyebrow="PRODUÇÃO · ACUMULADO DO TURNO">
       <div className="mx-auto max-w-3xl space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold">Contagem por produto</h1>
-          <p className="text-sm text-muted-foreground">
-            Totais de hoje no turno {profile?.turno_atual ?? "—"}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Totais de hoje no turno {profile?.turno_atual ?? "—"}
+        </p>
         {erro && (
           <div
             role="alert"
@@ -87,7 +85,7 @@ function Contagem() {
             Não foi possível carregar a contagem.
           </div>
         )}
-        <Card>
+        <Card className="rounded-3xl border-slate-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">Produção acumulada</CardTitle>
           </CardHeader>
@@ -98,7 +96,7 @@ function Contagem() {
               linhas.map((linha) => (
                 <div
                   key={linha.produto}
-                  className={`grid grid-cols-2 gap-2 rounded-md border p-3 text-sm ${mantas ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}
+                  className={`grid grid-cols-2 gap-2 rounded-xl border border-slate-200 p-3 text-sm ${mantas || corte ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}
                 >
                   <strong>{linha.produto}</strong>
                   <span>{linha.apontamentos} apontamento(s)</span>
@@ -113,6 +111,14 @@ function Contagem() {
                         {linha.metragem.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m
                       </span>
                       <span>{linha.rolos} rolos</span>
+                    </>
+                  ) : corte ? (
+                    <>
+                      <span>{linha.plts} PLTs</span>
+                      <span>{linha.rolos} rolos</span>
+                      <span>
+                        {linha.metragem.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
+                      </span>
                     </>
                   ) : (
                     <>
