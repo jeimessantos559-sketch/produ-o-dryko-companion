@@ -50,18 +50,30 @@ function escaparPdf(valor: string) {
   return semAcentos(valor).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
+function unidadeMetragem(setor: string) {
+  return setor.includes("manta") ? "m" : "m2";
+}
+
 export function linhasDoRelatorio(resumo: Json) {
   const raiz = registro(resumo);
   const totais = registro(raiz.totais);
   const apontamentos = Array.isArray(raiz.apontamentos) ? raiz.apontamentos : [];
   const metas = Array.isArray(raiz.metas) ? raiz.metas : [];
+  const setor = texto(raiz.setor).toLowerCase();
+  const fitas = setor.includes("fita");
+  const mantas = setor.includes("manta");
+
+  const producaoResumo = fitas
+    ? `Producao: ${texto(totais.area)} m2`
+    : `PLTs: ${texto(totais.plts)} | Rolos: ${texto(totais.rolos)} | ${mantas ? "Metragem" : "Metragem produzida"}: ${texto(totais.metragem)} ${unidadeMetragem(setor)}`;
+
   const linhas = [
     `Setor: ${texto(raiz.setor)} | Turno: ${texto(raiz.turno)} | Data: ${texto(raiz.data)}`,
     `Responsavel: ${texto(raiz.responsavel)} | Gerado em: ${texto(raiz.geradoEm)}`,
     "",
     "RESUMO",
     `Apontamentos: ${texto(totais.apontamentos)} | Pendentes: ${texto(totais.pendentes)} | Lancados: ${texto(totais.lancados)}`,
-    `PLTs: ${texto(totais.plts)} | Rolos: ${texto(totais.rolos)} | Metragem: ${texto(totais.metragem)} m | Area: ${texto(totais.area)} m2`,
+    producaoResumo,
     "",
   ];
 
@@ -83,7 +95,7 @@ export function linhasDoRelatorio(resumo: Json) {
     const quantidade =
       apontamento.area_m2 !== null && apontamento.area_m2 !== undefined
         ? `${texto(apontamento.area_m2)} m2`
-        : `${texto(apontamento.quantidade_plts)} PLTs | ${texto(apontamento.total_rolos)} rolos | ${texto(apontamento.metragem)} m`;
+        : `${texto(apontamento.quantidade_plts)} PLTs | ${texto(apontamento.total_rolos)} rolos | ${texto(apontamento.metragem)} ${unidadeMetragem(setor)}`;
     linhas.push(
       `${texto(identificador)} | ${texto(apontamento.produto_nome)} | ${quantidade} | ${texto(apontamento.status)}`,
     );
@@ -141,8 +153,14 @@ export function baixarPdf(resumo: Json, nome: string) {
   const link = document.createElement("a");
   link.href = url;
   link.download = nome;
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 60_000);
 }
 
 export function imprimirPdf(resumo: Json, nome: string) {
