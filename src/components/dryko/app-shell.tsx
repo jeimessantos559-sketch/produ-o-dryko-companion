@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { DrykoLogo } from "@/components/dryko/logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -104,55 +105,60 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children, title, eyebrow, notificationCount = 0, onNotifications, onRepeat, onApontar }: AppShellProps) {
   const [aberto, setAberto] = useState(false);
+  const [modalRapido, setModalRapido] = useState<"novo" | "repetir" | null>(null);
   const { profile, isAutorizado } = useAuth();
   const contexto = profile?.setor_atual ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}` : "Escolher setor e turno";
   const destinoNotificacoes = isAutorizado ? "/controle-apontamentos" : "/passagem-turno";
+  const abrirNovo = onApontar ?? (() => setModalRapido("novo"));
+  const abrirRepetir = onRepeat ?? (() => setModalRapido("repetir"));
 
   return (
-    <div className="flex min-h-screen bg-[#eef3f7]">
-      <aside className="hidden w-72 shrink-0 md:block"><div className="fixed h-screen w-72"><Navegacao /></div></aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-[#eef3f7]/95 backdrop-blur">
-          <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5">
-            <Sheet open={aberto} onOpenChange={setAberto}>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-primary shadow-none md:hidden" aria-label="Abrir menu"><Menu className="size-6" /></Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-72 p-0"><SheetTitle className="sr-only">Menu</SheetTitle><Navegacao onNavigate={() => setAberto(false)} /></SheetContent>
-            </Sheet>
+    <>
+      <div className="flex min-h-screen bg-[#eef3f7]">
+        <aside className="hidden w-72 shrink-0 md:block"><div className="fixed h-screen w-72"><Navegacao /></div></aside>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-[#eef3f7]/95 backdrop-blur">
+            <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-5">
+              <Sheet open={aberto} onOpenChange={setAberto}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-primary shadow-none md:hidden" aria-label="Abrir menu"><Menu className="size-6" /></Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-72 p-0"><SheetTitle className="sr-only">Menu</SheetTitle><Navegacao onNavigate={() => setAberto(false)} /></SheetContent>
+              </Sheet>
 
-            <Link to="/selecionar" className="min-w-0 flex-1 py-1" title="Alterar setor e turno">
-              <p className="truncate text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 sm:text-xs">{eyebrow ?? contexto}</p>
-              <h1 className="truncate text-xl font-extrabold leading-tight tracking-tight text-slate-950 min-[390px]:text-2xl sm:text-3xl">{title ?? contexto}</h1>
-            </Link>
+              <Link to="/selecionar" className="min-w-0 flex-1 py-1" title="Alterar setor e turno">
+                <p className="truncate text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 sm:text-xs">{eyebrow ?? contexto}</p>
+                <h1 className="truncate text-xl font-extrabold leading-tight tracking-tight text-slate-950 min-[390px]:text-2xl sm:text-3xl">{title ?? contexto}</h1>
+              </Link>
 
-            {onNotifications ? (
-              <Button type="button" variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none" onClick={onNotifications} aria-label="Ver pendências de turnos anteriores">
-                <Bell className="size-6" />
-                {notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}
-              </Button>
-            ) : (
-              <Button asChild variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none">
-                <Link to={destinoNotificacoes} aria-label="Ver pendências"><Bell className="size-6" />{notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}</Link>
-              </Button>
-            )}
+              {onNotifications ? (
+                <Button type="button" variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none" onClick={onNotifications} aria-label="Ver pendências de turnos anteriores">
+                  <Bell className="size-6" />
+                  {notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}
+                </Button>
+              ) : (
+                <Button asChild variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none">
+                  <Link to={destinoNotificacoes} aria-label="Ver pendências"><Bell className="size-6" />{notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}</Link>
+                </Button>
+              )}
 
-            {onRepeat ? (
-              <Button type="button" variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none" onClick={onRepeat} aria-label="Repetir último apontamento" title="Repetir último apontamento"><Copy className="size-5" /></Button>
-            ) : (
-              <Button asChild variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"><Link to="/historico" aria-label="Abrir histórico"><History className="size-5" /></Link></Button>
-            )}
+              <Button type="button" variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none" onClick={abrirRepetir} aria-label="Repetir último apontamento" title="Repetir último apontamento"><Copy className="size-5" /></Button>
 
-            {onApontar ? (
-              <Button type="button" className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5" onClick={onApontar}><Plus className="size-6" /><span className="hidden min-[360px]:inline">Apontar</span></Button>
-            ) : (
-              <Button asChild className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5"><Link to="/apontar"><Plus className="size-6" /><span className="hidden min-[360px]:inline">Apontar</span></Link></Button>
-            )}
-          </div>
-        </header>
-        <main className="flex-1 px-3 pb-16 pt-4 sm:px-5 sm:pt-5">{children}</main>
+              <Button type="button" className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5" onClick={abrirNovo}><Plus className="size-6" /><span className="hidden min-[360px]:inline">Apontar</span></Button>
+            </div>
+          </header>
+          <main className="flex-1 px-3 pb-16 pt-4 sm:px-5 sm:pt-5">{children}</main>
+        </div>
       </div>
-    </div>
+
+      {!onApontar && !onRepeat && (
+        <ApontamentoRapido
+          open={modalRapido !== null}
+          onOpenChange={(open) => { if (!open) setModalRapido(null); }}
+          repeatLatest={modalRapido === "repetir"}
+        />
+      )}
+    </>
   );
 }
 
