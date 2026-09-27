@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { LockKeyhole, RotateCcw } from "lucide-react";
+import { Download, FileText, LockKeyhole, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import { dataSaoPaulo } from "@/lib/producao";
+import { baixarPdf } from "@/lib/relatorio-pdf";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
   component: PassagemTurno,
@@ -32,6 +33,7 @@ function PassagemTurno() {
   const [nomes, setNomes] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
   const [processando, setProcessando] = useState(false);
+  const [gerando, setGerando] = useState(false);
   const [justificativa, setJustificativa] = useState("");
 
   const carregar = useCallback(async () => {
@@ -102,32 +104,82 @@ function PassagemTurno() {
     [apontamentos],
   );
 
-  async function fechar() {
-    if (!profile?.setor_atual || !profile.turno_atual || !user || processando) return;
-    const resumo: Json = {
-      setor: nomeSetor(profile.setor_atual),
-      turno: profile.turno_atual,
+  function montarResumo(): Json {
+    return {
+      setor: profile?.setor_atual ? nomeSetor(profile.setor_atual) : "",
+      turno: profile?.turno_atual ?? "",
       data,
-      responsavel: profile.nome || nomes[user.id] || "Usuário",
+      responsavel: profile?.nome || (user ? nomes[user.id] : "") || "Usuário",
       geradoEm: new Date().toISOString(),
       totais,
       metas: metas as unknown as Json,
       apontamentos: apontamentos as unknown as Json,
     };
+  }
+
+  function nomeArquivo() {
+    return `relatorio-${profile?.setor_atual ?? "setor"}-${data}-${profile?.turno_atual ?? "turno"}.pdf`;
+  }
+
+  async function baixarRelatorioPorId(relatorioId: string) {
+    const { data: relatorio, error } = await supabase
+      .from("relatorios")
+      .select("id, resumo")
+      .eq("id", relatorioId)
+      .single();
+    if (error || !relatorio) throw new Error("O relatório foi criado, mas não foi possível abrir o PDF.");
+    baixarPdf(relatorio.resumo, nomeArquivo());
+  }
+
+  async function fechar() {
+    if (!profile?.setor_atual || !profile.turno_atual || !user || processando) return;
+    if (apontamentos.length === 0) {
+      toast.error("Registre ao menos um apontamento antes de encerrar e gerar o relatório.");
+      return;
+    }
+
     setProcessando(true);
-    const { error } = await supabase.rpc("fechar_turno", {
+    const { data: relatorioId, error } = await supabase.rpc("fechar_turno", {
       p_setor: profile.setor_atual,
       p_turno: profile.turno_atual,
       p_data: data,
-      p_resumo: resumo,
+      p_resumo: montarResumo(),
     });
     setProcessando(false);
     if (error) {
       toast.error(error.message || "Não foi possível fechar o turno.");
       return;
     }
+
     toast.success("Turno fechado e relatório gerado.");
     await carregar();
+    if (relatorioId) {
+      try {
+        await baixarRelatorioPorId(relatorioId);
+      } catch (erro) {
+        toast.warning(erro instanceof Error ? erro.message : "Abra o relatório pela tela de Relatórios.");
+      }
+    }
+  }
+
+  async function gerarRelatorio() {
+    if (!profile?.setor_atual || !profile.turno_atual || !fechamento || gerando) return;
+    setGerando(true);
+    try {
+      const { data: relatorioId, error } = await (supabase as any).rpc("gerar_relatorio_turno", {
+        p_setor: profile.setor_atual,
+        p_turno: profile.turno_atual,
+        p_data: data,
+        p_resumo: montarResumo(),
+      });
+      if (error || !relatorioId) throw new Error(error?.message || "Não foi possível gerar o relatório.");
+      await baixarRelatorioPorId(relatorioId);
+      toast.success("Relatório PDF gerado com sucesso.");
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível gerar o relatório.");
+    } finally {
+      setGerando(false);
+    }
   }
 
   async function reabrir() {
@@ -149,13 +201,12 @@ function PassagemTurno() {
 
   const fechado = fechamento?.status === "fechado";
   return (
-    <AppShell>
+    <AppShell title="Fechamento do turno" eyebrow={profile?.setor_atual ? nomeSetor(profile.setor_atual) : undefined}>
       <div className="mx-auto max-w-5xl space-y-4">
         <div>
-          <h1 className="text-2xl font-bold">Passagem e fechamento de turno</h1>
+          <h2 className="text-2xl font-bold">Passagem e fechamento de turno</h2>
           <p className="text-sm text-muted-foreground">
-            Revise produção, metas e pendências antes de encerrar. O fechamento bloqueia novos
-            apontamentos.
+            Revise produção, metas e pendências antes de encerrar. Ao fechar, o PDF do relatório é gerado automaticamente.
           </p>
         </div>
 
@@ -199,26 +250,18 @@ function PassagemTurno() {
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Indicador label="Apontamentos" valor={totais.apontamentos} />
-              <Indicador
-                label="Pendentes"
-                valor={totais.pendentes}
-                destaque={totais.pendentes > 0}
-              />
+              <Indicador label="Pendentes" valor={totais.pendentes} destaque={totais.pendentes > 0} />
               <Indicador label="Lançados" valor={totais.lancados} />
               <Indicador label="Metas ativas" valor={metas.length} />
               <Indicador label="PLTs" valor={totais.plts} />
               <Indicador label="Rolos" valor={totais.rolos} />
               <Indicador label="Metragem" valor={`${totais.metragem.toLocaleString("pt-BR")} m`} />
-              <Indicador
-                label="Área"
-                valor={`${totais.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`}
-              />
+              <Indicador label="Área" valor={`${totais.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`} />
             </div>
 
             {totais.pendentes > 0 && !fechado && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-                Há {totais.pendentes} apontamento(s) ainda pendente(s) de confirmação no Protheus. O
-                fechamento é permitido, mas esta pendência ficará registrada no relatório.
+                Há {totais.pendentes} apontamento(s) ainda pendente(s) de confirmação no Protheus. A pendência continuará registrada no relatório.
               </div>
             )}
 
@@ -231,17 +274,13 @@ function PassagemTurno() {
                   <p className="text-sm text-muted-foreground">Nenhum apontamento neste turno.</p>
                 ) : (
                   apontamentos.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm"
-                    >
+                    <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm">
                       <span className="font-medium">
                         {item.op ? `OP ${item.op} · ` : ""}
                         {item.produto_nome}
                       </span>
                       <span className="text-muted-foreground">
-                        {resumoApontamento(item)} ·{" "}
-                        {item.status === "lancado" ? "Lançado" : "Pendente"}
+                        {resumoApontamento(item)} · {item.status === "lancado" ? "Lançado" : "Pendente"}
                       </span>
                     </div>
                   ))
@@ -252,15 +291,19 @@ function PassagemTurno() {
             {!fechado ? (
               <Button
                 className="h-14 w-full text-base"
-                disabled={!profile?.setor_atual || !profile.turno_atual || processando}
+                disabled={!profile?.setor_atual || !profile.turno_atual || processando || apontamentos.length === 0}
                 onClick={fechar}
               >
-                <LockKeyhole /> {processando ? "Fechando..." : "Encerrar turno e gerar relatório"}
+                <LockKeyhole /> {processando ? "Encerrando e gerando..." : "Encerrar e gerar relatório"}
               </Button>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
-                <Button asChild className="h-12">
-                  <Link to="/relatorios">Abrir relatório</Link>
+                <Button className="h-12" disabled={gerando} onClick={gerarRelatorio}>
+                  {gerando ? <FileText className="animate-pulse" /> : <Download />}
+                  {gerando ? "Gerando..." : "Gerar relatório PDF"}
+                </Button>
+                <Button asChild variant="outline" className="h-12">
+                  <Link to="/relatorios">Histórico de relatórios</Link>
                 </Button>
                 {isAdmin && (
                   <Card className="sm:col-span-2">
@@ -293,16 +336,10 @@ function PassagemTurno() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {anteriores.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm"
-                    >
-                      <span>
-                        {item.data_local} · {item.turno}
-                      </span>
+                    <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm">
+                      <span>{item.data_local} · {item.turno}</span>
                       <span className="text-muted-foreground">
-                        {item.status === "fechado" ? "Fechado" : "Reaberto"} ·{" "}
-                        {nomes[item.fechado_por] ?? "Usuário"}
+                        {item.status === "fechado" ? "Fechado" : "Reaberto"} · {nomes[item.fechado_por] ?? "Usuário"}
                       </span>
                     </div>
                   ))}
@@ -316,15 +353,7 @@ function PassagemTurno() {
   );
 }
 
-function Indicador({
-  label,
-  valor,
-  destaque = false,
-}: {
-  label: string;
-  valor: string | number;
-  destaque?: boolean;
-}) {
+function Indicador({ label, valor, destaque = false }: { label: string; valor: string | number; destaque?: boolean }) {
   return (
     <Card className={destaque ? "border-amber-400" : undefined}>
       <CardContent className="pt-5">
@@ -337,7 +366,8 @@ function Indicador({
 
 function resumoApontamento(item: Apontamento) {
   if (item.setor === "fitas") return `${Number(item.area_m2 ?? 0).toLocaleString("pt-BR")} m²`;
-  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
+  if (item.setor === "mantas") return `${item.quantidade_plts ?? 0} PLTs · ${Number(item.metragem ?? 0).toLocaleString("pt-BR")} m · ${item.total_rolos ?? 0} rolos`;
+  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos · ${Number(item.metragem ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
 }
 
 function formatar(valor: string) {
