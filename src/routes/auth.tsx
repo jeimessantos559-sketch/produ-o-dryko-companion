@@ -16,10 +16,7 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Entrar | Aponta Produção DRYKO" },
-      {
-        name: "description",
-        content: "Acesso individual ao aplicativo de apontamento de produção DRYKO.",
-      },
+      { name: "description", content: "Acesso individual ao aplicativo de apontamento de produção DRYKO." },
     ],
   }),
   component: AuthPage,
@@ -35,9 +32,18 @@ function AuthPage() {
   useEffect(() => {
     void supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session) return;
-      const { data: perfil } = await supabase.from("profiles").select("*").eq("id", data.session.user.id).maybeSingle();
-      const precisaTrocar = Boolean((perfil as { deve_alterar_senha?: boolean } | null)?.deve_alterar_senha);
-      void navigate({ to: precisaTrocar ? "/alterar-senha" : "/painel", replace: true });
+      const { data: perfil } = await supabase
+        .from("profiles")
+        .select("deve_alterar_senha, onboarding_concluido")
+        .eq("id", data.session.user.id)
+        .maybeSingle();
+      const estado = perfil as { deve_alterar_senha?: boolean; onboarding_concluido?: boolean } | null;
+      const destino = estado?.deve_alterar_senha
+        ? "/alterar-senha"
+        : estado?.onboarding_concluido
+          ? "/painel"
+          : "/selecionar";
+      void navigate({ to: destino, replace: true });
     });
   }, [navigate]);
 
@@ -54,7 +60,11 @@ function AuthPage() {
       if (error) throw error;
       setSenha("");
       void navigate({
-        to: resultado.deveAlterarSenha ? "/alterar-senha" : "/selecionar",
+        to: resultado.deveAlterarSenha
+          ? "/alterar-senha"
+          : resultado.onboardingConcluido
+            ? "/painel"
+            : "/selecionar",
         replace: true,
       });
     } catch (erro) {
@@ -68,9 +78,7 @@ function AuthPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-secondary px-4 py-10">
       <DrykoLogo size="lg" />
       <h1 className="mt-3 text-center text-2xl font-extrabold">Aponta Produção</h1>
-      <p className="mt-1 text-center text-sm text-muted-foreground">
-        Sistema interno de apontamento
-      </p>
+      <p className="mt-1 text-center text-sm text-muted-foreground">Sistema interno de apontamento</p>
 
       <Card className="mt-6 w-full max-w-sm shadow-sm">
         <CardHeader className="pb-3">
@@ -110,14 +118,7 @@ function AuthPage() {
                   minLength={6}
                   required
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1 h-10 w-10"
-                  onClick={() => setMostrarSenha((valor) => !valor)}
-                  aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
-                >
+                <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-10 w-10" onClick={() => setMostrarSenha((valor) => !valor)} aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}>
                   {mostrarSenha ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
                 </Button>
               </div>
@@ -127,7 +128,7 @@ function AuthPage() {
             </Button>
           </form>
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Use as credenciais fornecidas pelo administrador. No primeiro acesso a senha deverá ser alterada.
+            Primeiro acesso: use a senha inicial 123456. Depois o sistema solicitará uma senha pessoal.
           </p>
         </CardContent>
       </Card>
