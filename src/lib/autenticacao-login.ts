@@ -16,6 +16,7 @@ type PerfilLogin = {
   login_key: string | null;
   ativo: boolean;
   deve_alterar_senha: boolean;
+  onboarding_concluido: boolean;
 };
 
 export const entrarComLogin = createServerFn({ method: "POST" })
@@ -26,7 +27,7 @@ export const entrarComLogin = createServerFn({ method: "POST" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: perfil, error: erroPerfil } = await (supabaseAdmin.from("profiles") as any)
-      .select("id, login, login_key, ativo, deve_alterar_senha")
+      .select("id, login, login_key, ativo, deve_alterar_senha, onboarding_concluido")
       .eq("login_key", chave)
       .eq("ativo", true)
       .maybeSingle();
@@ -41,22 +42,15 @@ export const entrarComLogin = createServerFn({ method: "POST" })
 
     const SUPABASE_URL = process.env["SUPABASE_URL"];
     const SUPABASE_PUBLISHABLE_KEY = process.env["SUPABASE_PUBLISHABLE_KEY"];
-    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-      throw new Error("Autenticação indisponível no momento.");
-    }
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) throw new Error("Autenticação indisponível no momento.");
 
     const { createClient } = await import("@supabase/supabase-js");
     const cliente = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // Usuários que ainda não trocaram a senha podem entrar com o código inicial
-    // operacional. A senha real do Supabase continua forte e nunca é exposta.
     if (perfilLogin.deve_alterar_senha && data.senha === SENHA_INICIAL) {
-      const { data: link, error: erroLink } = await supabaseAdmin.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-      });
+      const { data: link, error: erroLink } = await supabaseAdmin.auth.admin.generateLink({ type: "magiclink", email });
       const tokenHash = link?.properties?.hashed_token;
       if (erroLink || !tokenHash) throw new Error("Não foi possível iniciar o primeiro acesso.");
 
@@ -70,19 +64,17 @@ export const entrarComLogin = createServerFn({ method: "POST" })
         accessToken: sessaoInicial.session.access_token,
         refreshToken: sessaoInicial.session.refresh_token,
         deveAlterarSenha: true,
+        onboardingConcluido: perfilLogin.onboarding_concluido,
       };
     }
 
-    const { data: sessao, error: erroLogin } = await cliente.auth.signInWithPassword({
-      email,
-      password: data.senha,
-    });
-
+    const { data: sessao, error: erroLogin } = await cliente.auth.signInWithPassword({ email, password: data.senha });
     if (erroLogin || !sessao.session) throw new Error("Usuário ou senha inválidos.");
 
     return {
       accessToken: sessao.session.access_token,
       refreshToken: sessao.session.refresh_token,
       deveAlterarSenha: perfilLogin.deve_alterar_senha,
+      onboardingConcluido: perfilLogin.onboarding_concluido,
     };
   });
