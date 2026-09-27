@@ -12,9 +12,33 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { areaFitas, rolosManta, totalPlts, totalRolos, type GrupoCorte } from "@/lib/producao";
+import {
+  areaFitas,
+  metragemCorte,
+  rolosManta,
+  totalPlts,
+  totalRolos,
+  type GrupoCorte,
+} from "@/lib/producao";
 
-export const Route = createFileRoute("/_authenticated/apontar")({ component: Apontar });
+export const Route = createFileRoute("/_authenticated/apontar")({
+  component: Apontar,
+  head: () => ({
+    meta: [
+      { title: "Apontar produção — DRYKO" },
+      { name: "description", content: "Registrar apontamento de produção do turno." },
+    ],
+  }),
+});
+
+function ResumoEscuro({ label, valor, pequeno }: { label: string; valor: string; pequeno?: boolean }) {
+  return (
+    <div className="px-2 py-3 text-center">
+      <p className="text-[11px] font-bold uppercase opacity-70">{label}</p>
+      <p className={pequeno ? "text-xs font-semibold" : "text-xl font-extrabold"}>{valor}</p>
+    </div>
+  );
+}
 
 type Produto = {
   id: string;
@@ -340,22 +364,28 @@ function ApontarCorte() {
     toast.success("Apontamento salvo e painel atualizado.");
   }
 
+  const largura = produto?.largura != null && Number(produto.largura) > 0 ? Number(produto.largura) : null;
+  const metragem = largura === null ? null : metragemCorte(largura, rolos);
+  const fmt = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="mx-auto max-w-2xl space-y-3">
+        <div className="flex items-center justify-between gap-2 border-b-2 border-primary pb-2">
           <div>
-            <h1 className="text-2xl font-bold">Apontamento de Corte</h1>
-            <p className="text-sm text-muted-foreground">De 1 a 20 PLTs por apontamento</p>
+            <h1 className="text-xl font-extrabold uppercase tracking-tight">Apontar Corte</h1>
+            <p className="text-xs text-muted-foreground">
+              Turno {profile?.turno_atual ?? "—"} · 1 a 20 PLTs
+            </p>
           </div>
-          <Button variant="outline" onClick={repetirUltimo}>
+          <Button variant="outline" size="sm" onClick={repetirUltimo}>
             <RotateCcw /> Repetir último
           </Button>
         </div>
         {ultimoSalvo && (
           <div
             role="status"
-            className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm font-medium text-green-800"
+            className="rounded-md border-l-4 border-green-600 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800"
           >
             {ultimoSalvo}
           </div>
@@ -363,27 +393,29 @@ function ApontarCorte() {
         {erro && (
           <div
             role="alert"
-            className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800"
+            className="rounded-md border-l-4 border-destructive bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
           >
             Não foi possível carregar o catálogo. Tente novamente em instantes.
           </div>
         )}
-        <Card>
-          <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
+
+        <section className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label htmlFor="op">OP *</Label>
+              <Label htmlFor="op" className="text-xs font-bold uppercase">OP *</Label>
               <Input
                 id="op"
+                inputMode="numeric"
                 value={op}
                 onChange={(e) => setOp(e.target.value)}
-                className="h-12 text-base"
+                className="h-12 text-base font-semibold"
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="produto">Produto *</Label>
+              <Label htmlFor="produto" className="text-xs font-bold uppercase">Produto *</Label>
               <select
                 id="produto"
-                className="h-12 w-full rounded-md border bg-background px-3 text-base"
+                className="h-12 w-full rounded-md border border-input bg-background px-2 text-base font-semibold"
                 value={produtoId}
                 onChange={(e) => escolherProduto(e.target.value)}
                 disabled={carregando}
@@ -396,36 +428,45 @@ function ApontarCorte() {
                 ))}
               </select>
             </div>
-            {produto && (
-              <div className="sm:col-span-2 rounded-md bg-muted p-3 text-sm">
-                <strong>Padrão:</strong> {produto.rolos_por_plt} rolos/PLT ·{" "}
-                <strong>Largura aguardando definição</strong>
-              </div>
-            )}
-            <CampoMeta
-              meta={meta}
-              carregando={carregandoMeta}
-              valor={metaNova}
-              onChange={setMetaNova}
-              unidade="PLTs"
-            />
-          </CardContent>
-        </Card>
+          </div>
+          {produto && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-muted px-3 py-2 text-sm">
+              <span>
+                Padrão: <strong>{produto.rolos_por_plt} rolos/PLT</strong>
+              </span>
+              <span data-testid="largura-produto">
+                Largura:{" "}
+                {largura === null ? (
+                  <strong className="text-amber-700">aguardando definição</strong>
+                ) : (
+                  <strong>{fmt(largura)}</strong>
+                )}
+              </span>
+            </div>
+          )}
+          <CampoMeta
+            meta={meta}
+            carregando={carregandoMeta}
+            valor={metaNova}
+            onChange={setMetaNova}
+            unidade="PLTs"
+          />
+        </section>
 
         {produto && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Grupos de PLTs</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {grupos.map((grupo, indice) => (
-                <div key={indice} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-3">
+          <section className="space-y-2">
+            <h2 className="text-xs font-bold uppercase text-muted-foreground">PLTs</h2>
+            {grupos.map((grupo, indice) => (
+              <div key={indice} className="rounded-md border border-input p-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <Label>Quantidade de PLTs</Label>
+                    <Label className="text-[11px] uppercase">Qtd. PLTs</Label>
                     <Input
                       type="number"
+                      inputMode="numeric"
                       min={1}
                       max={20}
+                      className="h-11 text-base font-semibold"
                       value={grupo.quantidadePlts}
                       onChange={(e) =>
                         atualizarGrupo(indice, { quantidadePlts: Number(e.target.value) })
@@ -433,10 +474,12 @@ function ApontarCorte() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>Rolos por PLT</Label>
+                    <Label className="text-[11px] uppercase">Rolos/PLT</Label>
                     <Input
                       type="number"
+                      inputMode="numeric"
                       min={1}
+                      className="h-11 text-base font-semibold"
                       value={grupo.rolosPorPlt}
                       onChange={(e) =>
                         atualizarGrupo(indice, { rolosPorPlt: Number(e.target.value) })
@@ -444,12 +487,14 @@ function ApontarCorte() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label>PLT picado (rolos reais)</Label>
+                    <Label className="text-[11px] uppercase">PLT picado</Label>
                     <Input
                       type="number"
+                      inputMode="numeric"
                       min={1}
                       max={Math.max(1, grupo.rolosPorPlt - 1)}
-                      placeholder="Sem PLT picado"
+                      placeholder="—"
+                      className="h-11 text-base font-semibold"
                       value={grupo.pltPicadoRolos ?? ""}
                       onChange={(e) =>
                         atualizarGrupo(indice, {
@@ -458,43 +503,48 @@ function ApontarCorte() {
                       }
                     />
                   </div>
-                  {grupos.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="sm:col-span-3 justify-self-start"
-                      onClick={() => setGrupos((atuais) => atuais.filter((_, i) => i !== indice))}
-                    >
-                      <Trash2 /> Remover grupo
-                    </Button>
-                  )}
                 </div>
-              ))}
-              <Button
-                type="button"
-                variant="outline"
-                disabled={quantidade >= 20}
-                onClick={() =>
-                  setGrupos((atuais) => [...atuais, grupoInicial(produto.rolos_por_plt ?? 1)])
-                }
-              >
-                <Plus /> Adicionar grupo
-              </Button>
-            </CardContent>
-          </Card>
+                {grupos.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 text-destructive"
+                    onClick={() => setGrupos((atuais) => atuais.filter((_, i) => i !== indice))}
+                  >
+                    <Trash2 /> Remover
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={quantidade >= 20}
+              onClick={() =>
+                setGrupos((atuais) => [...atuais, grupoInicial(produto.rolos_por_plt ?? 1)])
+              }
+            >
+              <Plus /> Grupo com outra quantidade
+            </Button>
+          </section>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Resumo antes de salvar</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <Resumo label="PLTs" valor={quantidade} />
-            <Resumo label="Rolos" valor={rolos} />
-            <Resumo label="Metragem" valor="Aguardando largura" />
-            <Resumo label="Turno" valor={profile?.turno_atual ?? "—"} />
-          </CardContent>
-        </Card>
+        <section className="grid grid-cols-3 divide-x divide-sidebar-border overflow-hidden rounded-md bg-sidebar text-sidebar-foreground">
+          <ResumoEscuro label="PLTs" valor={String(quantidade)} />
+          <ResumoEscuro label="Rolos" valor={rolos.toLocaleString("pt-BR")} />
+          <ResumoEscuro
+            label="Metragem"
+            valor={metragem === null ? "Aguardando largura" : `${fmt(metragem)} m`}
+            pequeno={metragem === null}
+          />
+        </section>
+        {largura !== null && rolos > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {fmt(largura)} × {rolos.toLocaleString("pt-BR")} rolos ÷ 10 = {fmt(metragem ?? 0)} m
+          </p>
+        )}
         {quantidade > 20 && (
           <p className="text-sm font-medium text-destructive">
             O limite é de 20 PLTs por apontamento.
@@ -505,7 +555,11 @@ function ApontarCorte() {
             Revise as quantidades. O PLT picado deve ter menos rolos que o padrão do grupo.
           </p>
         )}
-        <Button className="h-14 w-full text-base" disabled={!valido || salvando} onClick={salvar}>
+        <Button
+          className="sticky bottom-3 h-14 w-full text-lg font-extrabold uppercase shadow-lg"
+          disabled={!valido || salvando}
+          onClick={salvar}
+        >
           {salvando ? "Apontando..." : "Apontar"}
         </Button>
       </div>

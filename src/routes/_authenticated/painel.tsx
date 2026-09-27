@@ -191,7 +191,7 @@ function Painel() {
             <Indicador
               label="Metragem"
               valor={
-                setorMantas
+                setorMantas || resumo.metragem > 0
                   ? `${resumo.metragem.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m`
                   : "Aguardando largura"
               }
@@ -219,7 +219,7 @@ function Painel() {
                       ? `${Number(item.area_m2).toLocaleString("pt-BR")} m²`
                       : setorMantas
                         ? `${item.quantidade_plts} PLTs · ${Number(item.metragem).toLocaleString("pt-BR")} m · ${item.total_rolos} rolos`
-                        : `${item.quantidade_plts} PLTs · ${item.total_rolos} rolos`}
+                        : `${item.quantidade_plts} PLTs · ${item.total_rolos} rolos${item.metragem != null ? ` · ${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m` : ""}`}
                   </span>
                 </div>
               ))
