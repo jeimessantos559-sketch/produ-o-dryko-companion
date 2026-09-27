@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { KeyRound, UserPlus } from "lucide-react";
+import { Clipboard, Eye, EyeOff, KeyRound, RefreshCw, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -20,7 +20,48 @@ type Configuracao = {
   podeConfirmarProtheus: boolean;
   papeis: AppRole[];
 };
+
 const PAPEIS: AppRole[] = ["facilitador", "autorizado_protheus", "administrador"];
+
+function indiceSeguro(maximo: number) {
+  const valor = new Uint32Array(1);
+  crypto.getRandomValues(valor);
+  return valor[0] % maximo;
+}
+
+function gerarSenhaTemporaria() {
+  const maiusculas = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const minusculas = "abcdefghijkmnopqrstuvwxyz";
+  const numeros = "23456789";
+  const simbolos = "!@#$%*-_";
+  const todos = maiusculas + minusculas + numeros + simbolos;
+  const caracteres = [
+    maiusculas[indiceSeguro(maiusculas.length)],
+    minusculas[indiceSeguro(minusculas.length)],
+    numeros[indiceSeguro(numeros.length)],
+    simbolos[indiceSeguro(simbolos.length)],
+  ];
+
+  while (caracteres.length < 12) {
+    caracteres.push(todos[indiceSeguro(todos.length)]);
+  }
+
+  for (let i = caracteres.length - 1; i > 0; i -= 1) {
+    const j = indiceSeguro(i + 1);
+    [caracteres[i], caracteres[j]] = [caracteres[j], caracteres[i]];
+  }
+  return caracteres.join("");
+}
+
+function senhaTemFormatoSeguro(valor: string) {
+  return (
+    valor.length >= 8 &&
+    /[A-Z]/.test(valor) &&
+    /[a-z]/.test(valor) &&
+    /\d/.test(valor) &&
+    /[^A-Za-z0-9]/.test(valor)
+  );
+}
 
 function Usuarios() {
   const { isAdmin, loading, refresh } = useAuth();
@@ -32,6 +73,7 @@ function Usuarios() {
   const [nome, setNome] = useState("");
   const [loginNovo, setLoginNovo] = useState("");
   const [senha, setSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(true);
 
   const carregar = useCallback(async () => {
     if (!isAdmin) {
@@ -88,14 +130,38 @@ function Usuarios() {
     });
   }
 
+  function gerarSenha() {
+    const nova = gerarSenhaTemporaria();
+    setSenha(nova);
+    setMostrarSenha(true);
+    toast.success("Senha temporária segura gerada.");
+  }
+
+  async function copiarSenha() {
+    if (!senha) return;
+    try {
+      await navigator.clipboard.writeText(senha);
+      toast.success("Senha temporária copiada.");
+    } catch {
+      toast.error("Não foi possível copiar automaticamente.");
+    }
+  }
+
   async function criar() {
-    if (!nome.trim() || !loginNovo.trim() || senha.length < 6 || criando) return;
+    if (!nome.trim() || !loginNovo.trim() || criando) return;
+    if (!senhaTemFormatoSeguro(senha)) {
+      toast.error("Use uma senha temporária forte ou toque em 'Gerar senha segura'.");
+      return;
+    }
+
     setCriando(true);
     try {
       const criado = await criarUsuario({
         data: { nome: nome.trim(), login: loginNovo.trim(), senha },
       });
-      toast.success(`Usuário ${criado.login} criado. A senha deverá ser alterada no primeiro acesso.`);
+      toast.success(
+        `Usuário ${criado.login} criado. Entregue a senha temporária ao usuário; ela será trocada no primeiro acesso.`,
+      );
       setNome("");
       setLoginNovo("");
       setSenha("");
@@ -168,23 +234,46 @@ function Usuarios() {
                     onChange={(e) => setLoginNovo(e.target.value)}
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="senha-usuario">Senha inicial *</Label>
-                  <Input
-                    id="senha-usuario"
-                    type="password"
-                    minLength={6}
-                    placeholder="Ex.: 123456"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    A senha é temporária. No primeiro acesso o usuário será obrigado a criar uma senha pessoal.
-                  </p>
+                  <div className="flex gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <Input
+                        id="senha-usuario"
+                        type={mostrarSenha ? "text" : "password"}
+                        minLength={8}
+                        className="h-12 pr-12 font-mono text-base"
+                        placeholder="Use o botão Gerar senha segura"
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1 h-10 w-10"
+                        onClick={() => setMostrarSenha((valor) => !valor)}
+                        aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                      >
+                        {mostrarSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </Button>
+                    </div>
+                    <Button type="button" variant="outline" size="icon" className="h-12 w-12" onClick={copiarSenha} disabled={!senha} aria-label="Copiar senha">
+                      <Clipboard className="size-4" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={gerarSenha}>
+                      <RefreshCw className="size-4" /> Gerar senha segura
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Senhas simples como 123456 são recusadas pelo sistema de segurança. A senha é temporária e será trocada no primeiro acesso.
+                    </p>
+                  </div>
                 </div>
                 <Button
-                  className="self-end"
-                  disabled={!nome.trim() || !loginNovo.trim() || senha.length < 6 || criando}
+                  className="h-12 sm:col-span-2"
+                  disabled={!nome.trim() || !loginNovo.trim() || !senhaTemFormatoSeguro(senha) || criando}
                   onClick={criar}
                 >
                   <UserPlus /> {criando ? "Criando..." : "Criar como Facilitador"}
