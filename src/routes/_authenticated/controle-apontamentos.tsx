@@ -165,7 +165,7 @@ function ControleApontamentos() {
                         </div>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${grupo.item.status === "lancado" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>{grupo.item.status === "lancado" ? "Lançado" : "Pendente"}</span>
                       </div>
-                      {grupo.item.status === "pendente" && <Button className="mt-3 w-full" size="sm" disabled={confirmando} onClick={() => void confirmar(grupo.ids)}>{confirmando ? "Lançando..." : setor === "mantas" && agrupado ? `Confirmar lote · ${fmt(grupo.metragem)} m` : "Confirmar no Protheus"}</Button>}
+                      {grupo.item.status === "pendente" && <Button className="mt-3 w-full" size="sm" disabled={confirmando} onClick={() => void confirmar(grupo.ids)}>{confirmando ? "Lançando..." : setor === "mantas" && agrupado ? `Confirmar lote · ${fmt(grupo.metragem)} m` : agrupado ? `Confirmar agrupado (${grupo.quantidadeRegistros})` : "Confirmar no Protheus"}</Button>}
                     </article>
                   );
                 })}
@@ -178,14 +178,19 @@ function ControleApontamentos() {
   );
 }
 
+function normalizarChave(valor: string | null | undefined) {
+  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
+}
+
 function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo) {
   const mapa = new Map<string, GrupoLancamento>();
   for (const item of itens) {
     let chave = `item:${item.id}`;
     if (item.status === "pendente") {
-      if (setor === "mantas" && item.lote) chave = `manta:${item.produto_id}:${item.lote}`;
-      else if (setor === "corte" && item.op) chave = `corte:${item.produto_id}:${item.op}`;
-      else if (setor === "fitas" && item.op) chave = `fitas:${item.produto_id}:${item.op}`;
+      const produto = normalizarChave(item.produto_nome);
+      if (setor === "mantas" && item.lote) chave = `manta:${produto}:${normalizarChave(item.lote)}`;
+      else if (setor === "corte" && item.op) chave = `corte:${produto}:${normalizarChave(item.op)}`;
+      else if (setor === "fitas" && item.op) chave = `fitas:${produto}:${normalizarChave(item.op)}`;
     }
     const atual = mapa.get(chave);
     if (!atual) {
