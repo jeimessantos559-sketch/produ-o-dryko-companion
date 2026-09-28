@@ -26,6 +26,14 @@ export type GrupoCorte = {
   picadoAdicional?: boolean;
 };
 
+export type TurnoOperacional = "T1" | "T2" | "T3";
+
+export const HORARIOS_TURNO: Record<TurnoOperacional, string> = {
+  T1: "06:00–15:38",
+  T2: "15:38–02:00",
+  T3: "01:00–06:00",
+};
+
 export function totalPlts(grupos: GrupoCorte[]) {
   return grupos.reduce((total, grupo) => total + Math.max(0, grupo.quantidadePlts), 0);
 }
@@ -58,14 +66,38 @@ export function rolosManta(metragem: number, metrosPorRolo = 10) {
   return metrosPorRolo > 0 ? metragem / metrosPorRolo : 0;
 }
 
-export function dataSaoPaulo(date = new Date()) {
+function partesSaoPaulo(date = new Date()) {
   const partes = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   }).formatToParts(date);
   const valor = (tipo: Intl.DateTimeFormatPartTypes) =>
     partes.find((parte) => parte.type === tipo)?.value ?? "";
-  return `${valor("year")}-${valor("month")}-${valor("day")}`;
+  return {
+    ano: valor("year"),
+    mes: valor("month"),
+    dia: valor("day"),
+    hora: Number(valor("hour") || 0),
+  };
+}
+
+export function dataSaoPaulo(date = new Date()) {
+  const { ano, mes, dia } = partesSaoPaulo(date);
+  return `${ano}-${mes}-${dia}`;
+}
+
+export function dataOperacional(turno: TurnoOperacional | null | undefined, date = new Date()) {
+  const { ano, mes, dia, hora } = partesSaoPaulo(date);
+  const hoje = `${ano}-${mes}-${dia}`;
+  if ((turno === "T2" || turno === "T3") && hora < 6) {
+    const meioDiaUtc = new Date(`${hoje}T12:00:00Z`);
+    meioDiaUtc.setUTCDate(meioDiaUtc.getUTCDate() - 1);
+    return meioDiaUtc.toISOString().slice(0, 10);
+  }
+  return hoje;
 }
