@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { dataSaoPaulo } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 
@@ -131,6 +132,27 @@ function PassagemTurno() {
     baixarPdf(relatorio.resumo, nomeArquivo());
   }
 
+  async function enviarAutomaticamente(relatorioId: string) {
+    const { data: grupo } = await (supabase as any)
+      .from("grupos_email_relatorio")
+      .select("nome, emails")
+      .eq("automatico", true)
+      .eq("ativo", true)
+      .maybeSingle();
+
+    const emails = Array.isArray(grupo?.emails) ? grupo.emails.filter(Boolean) : [];
+    if (emails.length === 0) return;
+
+    try {
+      await enviarRelatorio({ data: { relatorioId, destinatarios: emails } });
+      toast.success(`Relatório enviado automaticamente para ${grupo.nome}.`);
+    } catch (erro) {
+      toast.warning(
+        `Turno fechado, mas o envio automático falhou. ${erro instanceof Error ? erro.message : "Você pode reenviar pela tela de Relatórios."}`,
+      );
+    }
+  }
+
   async function fechar() {
     if (!profile?.setor_atual || !profile.turno_atual || !user || processando) return;
     if (apontamentos.length === 0) {
@@ -154,6 +176,7 @@ function PassagemTurno() {
     toast.success("Turno fechado e relatório gerado.");
     await carregar();
     if (relatorioId) {
+      await enviarAutomaticamente(relatorioId);
       try {
         await baixarRelatorioPorId(relatorioId);
       } catch (erro) {
@@ -206,7 +229,7 @@ function PassagemTurno() {
         <div>
           <h2 className="text-2xl font-bold">Passagem e fechamento de turno</h2>
           <p className="text-sm text-muted-foreground">
-            Revise produção, metas e pendências antes de encerrar. Ao fechar, o PDF do relatório é gerado automaticamente.
+            Revise produção, metas e pendências antes de encerrar. Ao fechar, o PDF é gerado e, se houver um grupo automático salvo, enviado por e-mail.
           </p>
         </div>
 
@@ -276,7 +299,7 @@ function PassagemTurno() {
                   apontamentos.map((item) => (
                     <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm">
                       <span className="font-medium">
-                        {item.op ? `OP ${item.op} · ` : ""}
+                        {item.op ? `OP ${item.op} · ` : item.lote ? `Lote ${item.lote} · ` : ""}
                         {item.produto_nome}
                       </span>
                       <span className="text-muted-foreground">
@@ -367,7 +390,7 @@ function Indicador({ label, valor, destaque = false }: { label: string; valor: s
 function resumoApontamento(item: Apontamento) {
   if (item.setor === "fitas") return `${Number(item.area_m2 ?? 0).toLocaleString("pt-BR")} m²`;
   if (item.setor === "mantas") return `${item.quantidade_plts ?? 0} PLTs · ${Number(item.metragem ?? 0).toLocaleString("pt-BR")} m · ${item.total_rolos ?? 0} rolos`;
-  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos · ${Number(item.metragem ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
+  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} unidades · ${Number(item.metragem ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
 }
 
 function formatar(valor: string) {
