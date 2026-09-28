@@ -12,6 +12,7 @@ export type Profile = ProfileBase & {
   login: string | null;
   login_key: string | null;
   deve_alterar_senha: boolean;
+  pode_finalizar_metas: boolean;
 };
 
 type AuthValue = {
@@ -23,6 +24,7 @@ type AuthValue = {
   isAdmin: boolean;
   isAutorizado: boolean;
   canManageProducts: boolean;
+  canFinalizeGoals: boolean;
   mustChangePassword: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -96,9 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     roles,
     loading,
     isAdmin,
-    // A partir daqui a caixa "Pode lançar no Protheus" é a fonte de verdade.
     isAutorizado: isAdmin || Boolean(profile?.pode_confirmar_protheus),
     canManageProducts: isAdmin || Boolean(profile?.pode_gerenciar_produtos),
+    canFinalizeGoals: isAdmin || Boolean(profile?.pode_finalizar_metas),
     mustChangePassword: Boolean(profile?.deve_alterar_senha),
     refresh: () => loadUserData(session?.user.id, true),
     signOut: async () => {
