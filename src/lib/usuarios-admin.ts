@@ -10,6 +10,10 @@ const criarEntrada = z.object({
   nome: z.string().trim().min(2).max(120),
 });
 
+const criarLoteEntrada = z.object({
+  nomes: z.array(z.string().trim().min(2).max(120)).min(1).max(30),
+});
+
 const editarEntrada = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("rename"),
@@ -49,42 +53,81 @@ async function gerarLoginUnico(supabaseAdmin: SupabaseClient<Database>, nome: st
   }
 }
 
+async function criarUsuarioInterno(supabaseAdmin: SupabaseClient<Database>, nome: string) {
+  const loginKey = await gerarLoginUnico(supabaseAdmin, nome);
+  const login = loginKey
+    .split(".")
+    .map((parte) => parte ? parte[0]?.toUpperCase() + parte.slice(1) : parte)
+    .join(".");
+
+  const { data: criado, error } = await supabaseAdmin.auth.admin.createUser({
+    email: emailInternoDoLogin(loginKey),
+    password: gerarSenhaTecnica(),
+    email_confirm: true,
+    user_metadata: {
+      nome,
+      login,
+      login_key: loginKey,
+      deve_alterar_senha: true,
+    },
+  });
+
+  if (error || !criado.user) throw new Error(error?.message || "Não foi possível criar o usuário.");
+
+  const { error: erroPerfil } = await supabaseAdmin.from("profiles")
+    .update({ nome, login, login_key: loginKey, deve_alterar_senha: true, ativo: true })
+    .eq("id", criado.user.id);
+
+  if (erroPerfil) {
+    await supabaseAdmin.auth.admin.deleteUser(criado.user.id);
+    throw new Error("Não foi possível concluir o cadastro do usuário.");
+  }
+
+  return { id: criado.user.id, login, senhaInicial: "123456" };
+}
+
 export const criarUsuario = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(criarEntrada)
   .handler(async ({ data, context }) => {
     await exigirAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const loginKey = await gerarLoginUnico(supabaseAdmin, data.nome);
-    const login = loginKey
-      .split(".")
-      .map((parte) => parte ? parte[0]?.toUpperCase() + parte.slice(1) : parte)
-      .join(".");
+    return criarUsuarioInterno(supabaseAdmin, data.nome);
+  });
 
-    const { data: criado, error } = await supabaseAdmin.auth.admin.createUser({
-      email: emailInternoDoLogin(loginKey),
-      password: gerarSenhaTecnica(),
-      email_confirm: true,
-      user_metadata: {
-        nome: data.nome,
-        login,
-        login_key: loginKey,
-        deve_alterar_senha: true,
-      },
-    });
+export const criarUsuariosEmLote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(criarLoteEntrada)
+  .handler(async ({ data, context }) => {
+    await exigirAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const nomes = [...new Set(data.nomes.map((nome) => nome.trim()).filter(Boolean))];
+    const criados: Array<{ nome: string; login: string; senhaInicial: string }> = [];
+    const existentes: string[] = [];
+    const falhas: Array<{ nome: string; erro: string }> = [];
 
-    if (error || !criado.user) throw new Error(error?.message || "Não foi possível criar o usuário.");
+    for (const nome of nomes) {
+      const loginBase = normalizarLogin(aliasDoNome(nome) ?? "");
+      if (loginBase) {
+        const { data: existente } = await supabaseAdmin.from("profiles")
+          .select("id")
+          .eq("login_key", loginBase)
+          .maybeSingle();
+        if (existente) {
+          existentes.push(nome);
+          continue;
+        }
+      }
 
-    const { error: erroPerfil } = await supabaseAdmin.from("profiles")
-      .update({ nome: data.nome, login, login_key: loginKey, deve_alterar_senha: true, ativo: true })
-      .eq("id", criado.user.id);
-
-    if (erroPerfil) {
-      await supabaseAdmin.auth.admin.deleteUser(criado.user.id);
-      throw new Error("Não foi possível concluir o cadastro do usuário.");
+      try {
+        const criado = await criarUsuarioInterno(supabaseAdmin, nome);
+        criados.push({ nome, login: criado.login, senhaInicial: criado.senhaInicial });
+      } catch (erro) {
+        falhas.push({ nome, erro: erro instanceof Error ? erro.message : "Falha ao criar usuário." });
+      }
     }
 
-    return { id: criado.user.id, login, senhaInicial: "123456" };
+    return { criados, existentes, falhas };
   });
 
 export const gerenciarUsuarioAdmin = createServerFn({ method: "POST" })
