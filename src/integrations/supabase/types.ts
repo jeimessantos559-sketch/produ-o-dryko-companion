@@ -195,6 +195,39 @@ export type Database = {
         }
         Relationships: []
       }
+      grupos_email_relatorio: {
+        Row: {
+          ativo: boolean
+          automatico: boolean
+          created_at: string
+          criado_por: string
+          emails: string[]
+          id: string
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          automatico?: boolean
+          created_at?: string
+          criado_por?: string
+          emails?: string[]
+          id?: string
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          automatico?: boolean
+          created_at?: string
+          criado_por?: string
+          emails?: string[]
+          id?: string
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       marcas_produto: {
         Row: {
           created_at: string
