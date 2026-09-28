@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Download, Eye, Mail, Printer, Share2 } from "lucide-react";
+import { Download, Eye, Mail, Printer, Share2, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -17,6 +17,7 @@ import { baixarPdf, compartilharPdf, imprimirPdf } from "@/lib/relatorio-pdf";
 export const Route = createFileRoute("/_authenticated/relatorios")({ component: Relatorios });
 
 type Relatorio = Database["public"]["Tables"]["relatorios"]["Row"];
+type GrupoEmail = { id: string; nome: string; emails: string[]; automatico: boolean; ativo: boolean };
 type Objeto = Record<string, Json | undefined> & {
   totais?: Json;
   area?: Json;
@@ -39,12 +40,20 @@ function formatarNumero(valor: number, casas = 2) {
   return valor.toLocaleString("pt-BR", { maximumFractionDigits: casas });
 }
 
+function normalizarEmails(valor: string) {
+  return [...new Set(valor.split(/[;,\s]+/).map((email) => email.trim().toLowerCase()).filter(Boolean))].slice(0, 10);
+}
+
 function Relatorios() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [relatorios, setRelatorios] = useState<Relatorio[]>([]);
+  const [grupos, setGrupos] = useState<GrupoEmail[]>([]);
   const [turno, setTurno] = useState("");
   const [status, setStatus] = useState("");
   const [destinatarios, setDestinatarios] = useState("");
+  const [nomeGrupo, setNomeGrupo] = useState("");
+  const [usarAutomatico, setUsarAutomatico] = useState(false);
+  const [salvandoGrupo, setSalvandoGrupo] = useState(false);
   const [enviandoId, setEnviandoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
 
@@ -54,17 +63,31 @@ function Relatorios() {
       return;
     }
     setCarregando(true);
-    const { data, error } = await supabase
-      .from("relatorios")
-      .select("*")
-      .eq("setor", profile.setor_atual)
-      .order("data_local", { ascending: false })
-      .order("turno", { ascending: false });
-    if (error) toast.error("Não foi possível carregar os relatórios.");
-    const lista = data ?? [];
+    const [resultadoRelatorios, resultadoGrupos] = await Promise.all([
+      supabase
+        .from("relatorios")
+        .select("*")
+        .eq("setor", profile.setor_atual)
+        .order("data_local", { ascending: false })
+        .order("turno", { ascending: false }),
+      (supabase as any)
+        .from("grupos_email_relatorio")
+        .select("id, nome, emails, automatico, ativo")
+        .eq("ativo", true)
+        .order("automatico", { ascending: false })
+        .order("created_at", { ascending: true }),
+    ]);
+
+    if (resultadoRelatorios.error) toast.error("Não foi possível carregar os relatórios.");
+    const lista = resultadoRelatorios.data ?? [];
+    const gruposSalvos = (resultadoGrupos.data ?? []) as GrupoEmail[];
     setRelatorios(lista);
-    if (!destinatarios && lista[0]?.destinatarios?.length) {
-      setDestinatarios(lista[0].destinatarios.join("; "));
+    setGrupos(gruposSalvos);
+
+    const automatico = gruposSalvos.find((grupo) => grupo.automatico);
+    if (!destinatarios) {
+      if (automatico?.emails?.length) setDestinatarios(automatico.emails.join("; "));
+      else if (lista[0]?.destinatarios?.length) setDestinatarios(lista[0].destinatarios.join("; "));
     }
     setCarregando(false);
   }, [destinatarios, profile?.setor_atual]);
@@ -92,7 +115,7 @@ function Relatorios() {
   }
 
   async function enviar(item: Relatorio) {
-    const lista = destinatarios.split(/[;,\s]+/).map((valor) => valor.trim().toLowerCase()).filter(Boolean);
+    const lista = normalizarEmails(destinatarios);
     if (lista.length === 0) {
       toast.error("Informe ao menos um e-mail destinatário.");
       return;
@@ -110,12 +133,72 @@ function Relatorios() {
     }
   }
 
+  async function salvarGrupo() {
+    if (!isAdmin || salvandoGrupo) return;
+    const emails = normalizarEmails(destinatarios);
+    if (emails.length === 0) {
+      toast.error("Informe ao menos um e-mail válido para salvar.");
+      return;
+    }
+    const nome = nomeGrupo.trim() || (emails.length === 1 ? emails[0] : `Grupo com ${emails.length} e-mails`);
+    setSalvandoGrupo(true);
+    try {
+      if (usarAutomatico) {
+        const { error } = await (supabase as any)
+          .from("grupos_email_relatorio")
+          .update({ automatico: false, updated_at: new Date().toISOString() })
+          .eq("automatico", true);
+        if (error) throw error;
+      }
+      const { error } = await (supabase as any).from("grupos_email_relatorio").insert({
+        nome,
+        emails,
+        automatico: usarAutomatico,
+        ativo: true,
+      });
+      if (error) throw error;
+      setNomeGrupo("");
+      setUsarAutomatico(false);
+      toast.success(emails.length === 1 ? "E-mail salvo." : "Grupo de e-mails salvo.");
+      await carregar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar os destinatários.");
+    } finally {
+      setSalvandoGrupo(false);
+    }
+  }
+
+  async function definirAutomatico(grupo: GrupoEmail) {
+    if (!isAdmin) return;
+    try {
+      await (supabase as any).from("grupos_email_relatorio").update({ automatico: false, updated_at: new Date().toISOString() }).eq("automatico", true);
+      const { error } = await (supabase as any).from("grupos_email_relatorio").update({ automatico: true, updated_at: new Date().toISOString() }).eq("id", grupo.id);
+      if (error) throw error;
+      setDestinatarios(grupo.emails.join("; "));
+      toast.success(`${grupo.nome} será usado no envio automático ao fechar o turno.`);
+      await carregar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível definir o grupo automático.");
+    }
+  }
+
+  async function excluirGrupo(grupo: GrupoEmail) {
+    if (!isAdmin || !window.confirm(`Excluir ${grupo.nome}?`)) return;
+    const { error } = await (supabase as any).from("grupos_email_relatorio").delete().eq("id", grupo.id);
+    if (error) {
+      toast.error("Não foi possível excluir o grupo.");
+      return;
+    }
+    toast.success("Destinatário salvo removido.");
+    await carregar();
+  }
+
   return (
     <AppShell title="Relatórios" eyebrow="PRODUÇÃO · HISTÓRICO">
       <div className="mx-auto max-w-5xl space-y-5">
         <div>
           <h2 className="text-2xl font-black text-slate-950">Relatórios de turno</h2>
-          <p className="text-sm text-slate-500">Visualize o relatório completo, baixe o PDF profissional, compartilhe ou envie por e-mail.</p>
+          <p className="text-sm text-slate-500">Visualize o relatório, envie manualmente ou deixe um grupo salvo para envio automático no fechamento.</p>
         </div>
 
         <Card className="rounded-3xl border-slate-200 shadow-sm">
@@ -133,12 +216,43 @@ function Relatorios() {
               </select>
             </div>
             <div className="space-y-1 sm:col-span-3">
-              <Label htmlFor="emails-relatorio">Destinatários padrão deste envio (até 10)</Label>
+              <Label htmlFor="emails-relatorio">Destinatário ou grupo de e-mails (até 10)</Label>
               <Input id="emails-relatorio" className="h-11" value={destinatarios} onChange={(e) => setDestinatarios(e.target.value)} placeholder="producao@empresa.com; qualidade@empresa.com" />
-              <p className="text-xs text-slate-500">Separe os e-mails por ponto e vírgula, vírgula ou espaço.</p>
+              <p className="text-xs text-slate-500">Um único e-mail também pode ser salvo. Separe vários por ponto e vírgula, vírgula ou espaço.</p>
             </div>
+
+            {isAdmin && (
+              <div className="grid gap-2 rounded-2xl border bg-slate-50 p-3 sm:col-span-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                <div className="space-y-1">
+                  <Label htmlFor="nome-grupo-email">Nome para salvar</Label>
+                  <Input id="nome-grupo-email" className="h-10 bg-white" value={nomeGrupo} onChange={(e) => setNomeGrupo(e.target.value)} placeholder="Ex.: Produção / Gestores" />
+                </div>
+                <label className="flex h-10 items-center gap-2 rounded-xl border bg-white px-3 text-sm font-medium">
+                  <input type="checkbox" checked={usarAutomatico} onChange={(e) => setUsarAutomatico(e.target.checked)} /> Envio automático
+                </label>
+                <Button className="h-10" disabled={salvandoGrupo} onClick={() => void salvarGrupo()}>{salvandoGrupo ? "Salvando..." : "Salvar"}</Button>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {grupos.length > 0 && (
+          <Card className="rounded-3xl border-slate-200 shadow-sm">
+            <CardContent className="space-y-2 pt-6">
+              <div><h3 className="font-black text-slate-950">Destinatários salvos</h3><p className="text-xs text-slate-500">O grupo marcado como automático recebe o PDF ao encerrar o turno.</p></div>
+              {grupos.map((grupo) => (
+                <div key={grupo.id} className={`flex flex-wrap items-center gap-2 rounded-2xl border p-3 ${grupo.automatico ? "border-emerald-300 bg-emerald-50" : "bg-white"}`}>
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setDestinatarios(grupo.emails.join("; "))}>
+                    <p className="font-bold text-slate-950">{grupo.nome}{grupo.automatico ? " · Automático" : ""}</p>
+                    <p className="truncate text-xs text-slate-500">{grupo.emails.join(", ")}</p>
+                  </button>
+                  {isAdmin && !grupo.automatico && <Button size="sm" variant="outline" onClick={() => void definirAutomatico(grupo)}><Star className="size-4" /> Automático</Button>}
+                  {isAdmin && <Button size="icon" variant="ghost" onClick={() => void excluirGrupo(grupo)} aria-label={`Excluir ${grupo.nome}`}><Trash2 className="size-4" /></Button>}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {carregando ? (
           <p className="text-sm text-slate-500">Carregando relatórios...</p>
