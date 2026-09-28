@@ -38,23 +38,27 @@ export function ProdutoSelect<T extends ProdutoOrdenavel>({
       <SelectTrigger
         id={id}
         className={cn(
-          "h-12 rounded-xl border-slate-300 bg-white px-3 text-base font-semibold shadow-sm",
+          "h-11 rounded-xl border-slate-300 bg-white px-3 text-base font-semibold shadow-sm",
           className,
         )}
       >
         <SelectValue placeholder={carregando ? "Carregando..." : placeholder} />
       </SelectTrigger>
-      <SelectContent className="max-h-[min(70vh,32rem)] rounded-2xl border-slate-200 bg-white p-1.5 shadow-2xl">
+      <SelectContent
+        position="popper"
+        sideOffset={6}
+        className="max-h-[min(46dvh,20rem)] w-[var(--radix-select-trigger-width)] rounded-xl border-slate-200 bg-white p-1 shadow-2xl [&_[data-radix-select-viewport]]:max-h-[min(44dvh,19rem)]"
+      >
         {grupos.map(([marca, itens]) => (
           <SelectGroup key={marca}>
-            <SelectLabel className="px-3 pb-1 pt-3 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+            <SelectLabel className="px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
               {marca}
             </SelectLabel>
             {itens.map((produto) => (
               <SelectItem
                 key={produto.id}
                 value={produto.id}
-                className="min-h-11 rounded-xl px-3 pr-9 text-base font-medium focus:bg-red-50 focus:text-slate-950"
+                className="min-h-9 rounded-lg px-2 pr-8 text-sm font-medium focus:bg-red-50 focus:text-slate-950"
               >
                 {produto.nome}
               </SelectItem>
