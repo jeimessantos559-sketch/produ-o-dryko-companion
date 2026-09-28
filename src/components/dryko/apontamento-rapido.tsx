@@ -352,15 +352,18 @@ export function ApontamentoRapido({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="rapido-plts">Quantidade de PLTs</Label>
-                    <Input
+                    <select
                       id="rapido-plts"
-                      type="number"
-                      min={1}
-                      max={20}
-                      className="h-12 text-base"
+                      className="h-12 w-full rounded-xl border border-input bg-background px-3 text-base"
                       value={quantidadePlts}
                       onChange={(event) => setQuantidadePlts(Number(event.target.value))}
-                    />
+                    >
+                      {Array.from({ length: 20 }, (_, indice) => indice + 1).map((quantidade) => (
+                        <option key={quantidade} value={quantidade}>
+                          {quantidade} {quantidade === 1 ? "PLT" : "PLTs"}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="rapido-rolos">Rolos/PLT</Label>
