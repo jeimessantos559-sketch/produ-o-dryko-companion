@@ -44,6 +44,15 @@ const EQUIPE_PENDENTE = [
   "Roberto Melo",
 ] as const;
 
+function chaveNome(valor: string | null | undefined) {
+  return (valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .replace(/\s+/g, " ");
+}
+
 function Usuarios() {
   const { isAdmin, loading, refresh, user } = useAuth();
   const [perfis, setPerfis] = useState<Profile[]>([]);
@@ -58,6 +67,10 @@ function Usuarios() {
   const [editando, setEditando] = useState<Profile | null>(null);
   const [nomeEditado, setNomeEditado] = useState("");
   const [loginEditado, setLoginEditado] = useState("");
+
+  const equipeFaltante = EQUIPE_PENDENTE.filter(
+    (nomeEquipe) => !perfis.some((perfil) => chaveNome(perfil.nome) === chaveNome(nomeEquipe)),
+  );
 
   const carregar = useCallback(async () => {
     if (!isAdmin) {
@@ -129,11 +142,11 @@ function Usuarios() {
   }
 
   async function criarEquipePendente() {
-    if (criandoLote) return;
+    if (criandoLote || equipeFaltante.length === 0) return;
     setCriandoLote(true);
     setResultadoLote([]);
     try {
-      const resultado = await criarUsuariosEmLote({ data: { nomes: [...EQUIPE_PENDENTE] } });
+      const resultado = await criarUsuariosEmLote({ data: { nomes: [...equipeFaltante] } });
       const linhas = [
         ...resultado.criados.map((item) => `${item.nome}: ${item.login} / ${item.senhaInicial}`),
         ...resultado.existentes.map((item) => `${item}: já estava cadastrado`),
@@ -282,25 +295,30 @@ function Usuarios() {
               </CardContent>
             </Card>
 
-            <Card className="rounded-2xl border-primary/20 bg-primary/[0.025]">
-              <CardContent className="space-y-3 p-4">
-                <div className="flex items-start gap-3">
-                  <UsersRound className="mt-0.5 size-5 shrink-0 text-primary" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold">Equipe pendente</p>
-                    <p className="text-xs text-slate-500">Cadastra os 9 nomes combinados, ignora quem já existir e usa senha inicial {SENHA_INICIAL}.</p>
+            {equipeFaltante.length > 0 && (
+              <Card className="rounded-2xl border-primary/20 bg-primary/[0.025]">
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-start gap-3">
+                    <UsersRound className="mt-0.5 size-5 shrink-0 text-primary" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold">Equipe pendente</p>
+                      <p className="text-xs text-slate-500">
+                        Faltam {equipeFaltante.length} de {EQUIPE_PENDENTE.length} usuário(s) da equipe combinada.
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">{equipeFaltante.join(", ")}</p>
+                    </div>
                   </div>
-                </div>
-                <Button className="w-full" disabled={criandoLote} onClick={() => void criarEquipePendente()}>
-                  <UsersRound className="size-4" /> {criandoLote ? "Cadastrando equipe..." : "Cadastrar os 9 usuários"}
-                </Button>
-                {resultadoLote.length > 0 && (
-                  <div className="rounded-xl border bg-white p-3 text-xs">
-                    {resultadoLote.map((linha) => <p key={linha} className="font-mono leading-5">{linha}</p>)}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  <Button className="w-full" disabled={criandoLote} onClick={() => void criarEquipePendente()}>
+                    <UsersRound className="size-4" /> {criandoLote ? "Cadastrando equipe..." : `Cadastrar ${equipeFaltante.length} pendente(s)`}
+                  </Button>
+                  {resultadoLote.length > 0 && (
+                    <div className="rounded-xl border bg-white p-3 text-xs">
+                      {resultadoLote.map((linha) => <p key={linha} className="font-mono leading-5">{linha}</p>)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {credencialCriada && (
               <Card className="rounded-2xl border-emerald-200 bg-emerald-50/50">
