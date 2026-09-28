@@ -66,13 +66,7 @@ type PendenciaRapida = {
   turno: "T1" | "T2" | "T3";
 };
 
-function Navegacao({
-  onNavigate,
-  onSetorTurno,
-}: {
-  onNavigate?: () => void;
-  onSetorTurno: () => void;
-}) {
+function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSetorTurno: () => void }) {
   const { isAdmin, isAutorizado, roles, profile, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -105,6 +99,7 @@ function Navegacao({
           <p className="text-xs text-sidebar-foreground/55">Sistema interno</p>
         </div>
       </div>
+
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
         <Link
           to="/painel"
@@ -118,15 +113,6 @@ function Navegacao({
           <Gauge className="size-4.5 shrink-0" />
           Painel
         </Link>
-
-        <button
-          type="button"
-          onClick={abrirSetorTurno}
-          className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
-        >
-          <Settings2 className="size-4.5 shrink-0" />
-          Setor e turno
-        </button>
 
         {itens.map((item) => {
           const ativo = pathname.startsWith(item.to);
@@ -146,7 +132,17 @@ function Navegacao({
             </Link>
           );
         })}
+
+        <button
+          type="button"
+          onClick={abrirSetorTurno}
+          className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+        >
+          <Settings2 className="size-4.5 shrink-0" />
+          Setor e turno
+        </button>
       </nav>
+
       <div className="space-y-2 border-t border-sidebar-border p-3 text-sm">
         <div>
           <p className="truncate font-semibold">{profile?.nome || "Usuário"}</p>
