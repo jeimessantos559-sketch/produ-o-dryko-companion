@@ -28,6 +28,15 @@ type Linha = {
   area: number;
 };
 
+type ProdutoHora = {
+  produto: string;
+  apontamentos: number;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+};
+
 type Hora = {
   hora: string;
   apontamentos: number;
@@ -35,6 +44,11 @@ type Hora = {
   rolos: number;
   metragem: number;
   area: number;
+  produtos: ProdutoHora[];
+};
+
+type HoraInterna = Omit<Hora, "produtos"> & {
+  produtos: Map<string, ProdutoHora>;
 };
 
 function Contagem() {
@@ -97,14 +111,16 @@ function Contagem() {
   }, [registros]);
 
   const porHora = useMemo(() => {
-    const mapa = new Map<string, Hora>();
+    const mapa = new Map<string, HoraInterna>();
+
     for (const item of registros) {
       const hora = new Intl.DateTimeFormat("pt-BR", {
         timeZone: "America/Sao_Paulo",
         hour: "2-digit",
-        hour12: false,
+        hourCycle: "h23",
       }).format(new Date(item.created_at));
       const chave = `${hora}:00`;
+
       const atual = mapa.get(chave) ?? {
         hora: chave,
         apontamentos: 0,
@@ -112,15 +128,38 @@ function Contagem() {
         rolos: 0,
         metragem: 0,
         area: 0,
+        produtos: new Map<string, ProdutoHora>(),
       };
+
       atual.apontamentos += 1;
       atual.plts += Number(item.quantidade_plts ?? 0);
       atual.rolos += Number(item.total_rolos ?? 0);
       atual.metragem += Number(item.metragem ?? 0);
       atual.area += Number(item.area_m2 ?? 0);
+
+      const produto = atual.produtos.get(item.produto_nome) ?? {
+        produto: item.produto_nome,
+        apontamentos: 0,
+        plts: 0,
+        rolos: 0,
+        metragem: 0,
+        area: 0,
+      };
+      produto.apontamentos += 1;
+      produto.plts += Number(item.quantidade_plts ?? 0);
+      produto.rolos += Number(item.total_rolos ?? 0);
+      produto.metragem += Number(item.metragem ?? 0);
+      produto.area += Number(item.area_m2 ?? 0);
+      atual.produtos.set(item.produto_nome, produto);
       mapa.set(chave, atual);
     }
-    return [...mapa.values()].sort((a, b) => a.hora.localeCompare(b.hora));
+
+    // O Map preserva a ordem de inserção. Como a consulta vem ordenada por created_at,
+    // a sequência continua correta mesmo quando o turno atravessa a meia-noite.
+    return [...mapa.values()].map((item) => ({
+      ...item,
+      produtos: [...item.produtos.values()].sort((a, b) => a.produto.localeCompare(b.produto)),
+    }));
   }, [registros]);
 
   const fitas = profile?.setor_atual === "fitas";
@@ -132,22 +171,50 @@ function Contagem() {
       <div className="mx-auto max-w-4xl space-y-3">
         <div>
           <h2 className="text-xl font-extrabold">Produção do turno</h2>
-          <p className="text-xs text-muted-foreground">Totais por produto e por hora no turno {profile?.turno_atual ?? "—"}.</p>
+          <p className="text-xs text-muted-foreground">Produção separada por horário e produto no turno {profile?.turno_atual ?? "—"}.</p>
         </div>
 
         {erro && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800">Não foi possível carregar a contagem.</div>}
 
         {(corte || mantas) && (
           <Card className="rounded-2xl border-slate-200 shadow-sm">
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Clock3 className="size-5 text-primary" /> PLTs por hora</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base"><Clock3 className="size-5 text-primary" /> Produção por hora</CardTitle>
+              <p className="text-xs text-slate-500">Produtos produzidos em cada horário, com o total pronto para copiar para a planilha.</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
               {porHora.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum apontamento registrado.</p>
               ) : porHora.map((item) => (
-                <div key={item.hora} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                  <div><p className="font-bold">{item.hora}</p><p className="text-xs text-slate-500">{item.apontamentos} apontamento(s)</p></div>
-                  <div className="text-right"><p className="text-xl font-extrabold text-primary">{item.plts} PLTs</p><p className="text-xs text-slate-500">{mantas ? `${fmt(item.metragem)} m` : `${item.rolos} rolos`}</p></div>
-                </div>
+                <article key={item.hora} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between bg-slate-50 px-3 py-2.5">
+                    <div>
+                      <p className="text-lg font-black text-slate-950">{item.hora}</p>
+                      <p className="text-[11px] text-slate-500">{item.apontamentos} apontamento(s)</p>
+                    </div>
+                    <span className="rounded-xl bg-primary/10 px-3 py-1.5 text-sm font-black text-primary">{item.plts} PLTs</span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 px-3">
+                    {item.produtos.map((produto) => (
+                      <div key={produto.produto} className="flex items-center justify-between gap-3 py-2.5">
+                        <span className="min-w-0 truncate font-semibold text-slate-900">{produto.produto}</span>
+                        <span className="shrink-0 font-bold text-slate-700">{produto.plts} PLTs</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-slate-50/70 p-3 text-center">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Total da hora</p>
+                      <p className="text-lg font-black text-slate-950">{item.plts} PLTs</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Metragem total</p>
+                      <p className="text-lg font-black text-primary">{fmt(item.metragem)} {mantas ? "m" : "m²"}</p>
+                    </div>
+                  </div>
+                </article>
               ))}
             </CardContent>
           </Card>
@@ -155,10 +222,23 @@ function Contagem() {
 
         {fitas && (
           <Card className="rounded-2xl border-slate-200 shadow-sm">
-            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Clock3 className="size-5 text-primary" /> Metragem por hora</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Clock3 className="size-5 text-primary" /> Produção por hora</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
               {porHora.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum apontamento registrado.</p> : porHora.map((item) => (
-                <div key={item.hora} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"><span className="font-bold">{item.hora}</span><span className="text-xl font-extrabold text-primary">{fmt(item.area)} m²</span></div>
+                <article key={item.hora} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between bg-slate-50 px-3 py-2.5">
+                    <span className="text-lg font-black">{item.hora}</span>
+                    <span className="font-black text-primary">{fmt(item.area)} m²</span>
+                  </div>
+                  <div className="divide-y divide-slate-100 px-3">
+                    {item.produtos.map((produto) => (
+                      <div key={produto.produto} className="flex items-center justify-between gap-3 py-2.5">
+                        <span className="font-semibold text-slate-900">{produto.produto}</span>
+                        <span className="font-bold text-slate-700">{fmt(produto.area)} m²</span>
+                      </div>
+                    ))}
+                  </div>
+                </article>
               ))}
             </CardContent>
           </Card>
