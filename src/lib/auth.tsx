@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -35,19 +35,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const ultimaCarga = useRef<{ userId: string; at: number } | null>(null);
+  const emAndamento = useRef<Promise<void> | null>(null);
 
-  async function loadUserData(userId: string | undefined) {
+  async function loadUserData(userId: string | undefined, forcar = false) {
     if (!userId) {
       setProfile(null);
       setRoles([]);
+      ultimaCarga.current = null;
       return;
     }
-    const [{ data: perfil }, { data: papeis }] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
-      supabase.from("user_roles").select("role").eq("user_id", userId),
-    ]);
-    setProfile((perfil as Profile | null) ?? null);
-    setRoles((papeis ?? []).map((p) => p.role));
+
+    if (!forcar && ultimaCarga.current?.userId === userId && Date.now() - ultimaCarga.current.at < 12_000) return;
+    if (!forcar && emAndamento.current) return emAndamento.current;
+
+    const tarefa = (async () => {
+      const [{ data: perfil }, { data: papeis }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId),
+      ]);
+      setProfile((perfil as Profile | null) ?? null);
+      setRoles((papeis ?? []).map((p) => p.role));
+      ultimaCarga.current = { userId, at: Date.now() };
+    })();
+
+    emAndamento.current = tarefa;
+    try {
+      await tarefa;
+    } finally {
+      emAndamento.current = null;
+    }
   }
 
   useEffect(() => {
@@ -71,24 +88,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const isAdmin = roles.includes("administrador");
   const value: AuthValue = {
     session,
     user: session?.user ?? null,
     profile,
     roles,
     loading,
-    isAdmin: roles.includes("administrador"),
-    isAutorizado:
-      roles.includes("autorizado_protheus") ||
-      roles.includes("administrador") ||
-      Boolean(profile?.pode_confirmar_protheus),
-    canManageProducts: roles.includes("administrador") || Boolean(profile?.pode_gerenciar_produtos),
+    isAdmin,
+    // A partir daqui a caixa "Pode lançar no Protheus" é a fonte de verdade.
+    isAutorizado: isAdmin || Boolean(profile?.pode_confirmar_protheus),
+    canManageProducts: isAdmin || Boolean(profile?.pode_gerenciar_produtos),
     mustChangePassword: Boolean(profile?.deve_alterar_senha),
-    refresh: () => loadUserData(session?.user.id),
+    refresh: () => loadUserData(session?.user.id, true),
     signOut: async () => {
       await supabase.auth.signOut();
       setProfile(null);
       setRoles([]);
+      ultimaCarga.current = null;
     },
   };
 
