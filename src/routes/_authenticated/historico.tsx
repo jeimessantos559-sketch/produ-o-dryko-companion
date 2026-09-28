@@ -16,7 +16,11 @@ import { dataSaoPaulo, type GrupoCorte } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/historico")({ component: Historico });
 
-type Apontamento = Database["public"]["Tables"]["apontamentos"]["Row"];
+type ApontamentoBase = Database["public"]["Tables"]["apontamentos"]["Row"];
+type Apontamento = ApontamentoBase & {
+  apontado_por_nome?: string | null;
+  lancado_por_nome?: string | null;
+};
 type Auditoria = Database["public"]["Tables"]["apontamento_auditoria"]["Row"];
 type Edicao = {
   op: string;
@@ -73,7 +77,7 @@ function Historico() {
       supabase.from("profiles").select("id, nome"),
     ]);
     if (error) toast.error("Não foi possível carregar o histórico.");
-    setItens(registros ?? []);
+    setItens((registros ?? []) as Apontamento[]);
     setAuditorias(trilha ?? []);
     setNomes(Object.fromEntries((perfis ?? []).map((item) => [item.id, item.nome || "Sem nome"])));
     setCarregando(false);
@@ -188,87 +192,38 @@ function Historico() {
         <div>
           <h1 className="text-2xl font-bold">Histórico e correções</h1>
           <p className="text-sm text-muted-foreground">
-            Toda correção exige justificativa e guarda os dados anteriores, novos, usuário e
-            horário.
+            Toda correção exige justificativa e guarda os dados anteriores, novos, usuário e horário.
           </p>
         </div>
 
         <Card>
           <CardContent className="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-4">
             <Campo label="Setor">
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3"
-                value={setor}
-                onChange={(e) => setSetor(e.target.value as SetorCodigo)}
-                disabled={!isAdmin}
-              >
-                {SETORES.map((item) => (
-                  <option key={item} value={item}>
-                    {nomeSetor(item)}
-                  </option>
-                ))}
+              <select className="h-10 w-full rounded-md border bg-background px-3" value={setor} onChange={(e) => setSetor(e.target.value as SetorCodigo)} disabled={!isAdmin}>
+                {SETORES.map((item) => <option key={item} value={item}>{nomeSetor(item)}</option>)}
               </select>
             </Campo>
-            <Campo label="De">
-              <Input
-                type="date"
-                value={dataInicio}
-                onChange={(e) => setDataInicio(e.target.value)}
-              />
-            </Campo>
-            <Campo label="Até">
-              <Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
-            </Campo>
+            <Campo label="De"><Input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} /></Campo>
+            <Campo label="Até"><Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} /></Campo>
             <Campo label="Turno">
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3"
-                value={turno}
-                onChange={(e) => setTurno(e.target.value)}
-              >
-                <option value="">Todos</option>
-                <option value="T1">T1</option>
-                <option value="T2">T2</option>
-                <option value="T3">T3</option>
+              <select className="h-10 w-full rounded-md border bg-background px-3" value={turno} onChange={(e) => setTurno(e.target.value)}>
+                <option value="">Todos</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option>
               </select>
             </Campo>
             <Campo label="Situação">
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="">Todas</option>
-                <option value="pendente">Pendente</option>
-                <option value="lancado">Lançado</option>
+              <select className="h-10 w-full rounded-md border bg-background px-3" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">Todas</option><option value="pendente">Pendente</option><option value="lancado">Lançado</option>
               </select>
             </Campo>
-            <Campo label="OP">
-              <Input value={op} onChange={(e) => setOp(e.target.value)} placeholder="Buscar OP" />
-            </Campo>
+            <Campo label="OP"><Input value={op} onChange={(e) => setOp(e.target.value)} placeholder="Buscar OP" /></Campo>
             <Campo label="Produto">
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3"
-                value={produto}
-                onChange={(e) => setProduto(e.target.value)}
-              >
-                <option value="">Todos</option>
-                {produtos.map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
+              <select className="h-10 w-full rounded-md border bg-background px-3" value={produto} onChange={(e) => setProduto(e.target.value)}>
+                <option value="">Todos</option>{produtos.map((item) => <option key={item}>{item}</option>)}
               </select>
             </Campo>
             <Campo label="Facilitador">
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3"
-                value={facilitador}
-                onChange={(e) => setFacilitador(e.target.value)}
-              >
-                <option value="">Todos</option>
-                {facilitadores.map((id) => (
-                  <option key={id} value={id}>
-                    {nomes[id] ?? "Usuário"}
-                  </option>
-                ))}
+              <select className="h-10 w-full rounded-md border bg-background px-3" value={facilitador} onChange={(e) => setFacilitador(e.target.value)}>
+                <option value="">Todos</option>{facilitadores.map((id) => <option key={id} value={id}>{nomes[id] ?? "Usuário"}</option>)}
               </select>
             </Campo>
           </CardContent>
@@ -277,43 +232,37 @@ function Historico() {
         {carregando ? (
           <p className="text-sm text-muted-foreground">Carregando histórico...</p>
         ) : visiveis.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6 text-sm text-muted-foreground">
-              Nenhum apontamento encontrado no período.
-            </CardContent>
-          </Card>
+          <Card><CardContent className="pt-6 text-sm text-muted-foreground">Nenhum apontamento encontrado no período.</CardContent></Card>
         ) : (
           visiveis.map((item) => {
             const trilha = auditorias.filter((auditoria) => auditoria.apontamento_id === item.id);
             const podeCorrigir = item.status === "pendente" || isAdmin;
+            const nomeApontador = item.apontado_por_nome || nomes[item.usuario_id] || "Usuário";
+            const nomeLancador = item.lancado_por_nome || (item.lancado_por ? nomes[item.lancado_por] : null) || "Usuário";
+
             return (
               <Card key={item.id}>
                 <CardHeader className="pb-2">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <CardTitle className="text-base">
-                        {item.op ? `OP ${item.op} · ` : ""}
-                        {item.produto_nome}
+                        {item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}
                       </CardTitle>
-                      <p className="text-xs text-muted-foreground">
-                        {nomes[item.usuario_id] ?? "Usuário"} · {item.turno} ·{" "}
-                        {formatar(item.created_at)}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">Apontado por:</span> {nomeApontador} · {item.turno} · {formatar(item.created_at)}
                       </p>
+                      {item.status === "lancado" && item.lancado_por && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">Lançado no Protheus por:</span> {nomeLancador}{item.lancado_em ? ` · ${formatar(item.lancado_em)}` : ""}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          item.status === "lancado"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-amber-100 text-amber-900"
-                        }`}
-                      >
+                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === "lancado" ? "bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-200" : "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"}`}>
                         {item.status === "lancado" ? "Lançado" : "Pendente"}
                       </span>
                       {podeCorrigir && editando !== item.id && (
-                        <Button size="sm" variant="outline" onClick={() => abrirEdicao(item)}>
-                          <Edit3 /> Corrigir
-                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => abrirEdicao(item)}><Edit3 /> Corrigir</Button>
                       )}
                     </div>
                   </div>
@@ -321,43 +270,21 @@ function Historico() {
                 <CardContent className="space-y-3">
                   <p className="text-sm">{resumo(item)}</p>
                   {item.status === "lancado" && !isAdmin && (
-                    <p className="text-xs text-muted-foreground">
-                      Somente o administrador pode corrigir um apontamento já lançado.
-                    </p>
+                    <p className="text-xs text-muted-foreground">Somente o administrador pode corrigir um apontamento já lançado.</p>
                   )}
 
                   {editando === item.id && edicao && (
                     <div className="space-y-3 rounded-lg border bg-muted/40 p-4">
                       <div className="flex items-center justify-between">
                         <h3 className="font-semibold">Corrigir apontamento</h3>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={fecharEdicao}
-                          aria-label="Fechar"
-                        >
-                          <X />
-                        </Button>
+                        <Button size="icon" variant="ghost" onClick={fecharEdicao} aria-label="Fechar"><X /></Button>
                       </div>
-                      <FormularioEdicao
-                        setor={item.setor}
-                        edicao={edicao}
-                        setEdicao={setEdicao}
-                        atualizarGrupo={atualizarGrupo}
-                      />
+                      <FormularioEdicao setor={item.setor} edicao={edicao} setEdicao={setEdicao} atualizarGrupo={atualizarGrupo} />
                       <div className="space-y-1">
                         <Label>Justificativa da correção *</Label>
-                        <Textarea
-                          value={justificativa}
-                          onChange={(e) => setJustificativa(e.target.value)}
-                          placeholder="Explique o que foi corrigido e por quê"
-                        />
+                        <Textarea value={justificativa} onChange={(e) => setJustificativa(e.target.value)} placeholder="Explique o que foi corrigido e por quê" />
                       </div>
-                      <Button
-                        className="w-full"
-                        disabled={justificativa.trim().length < 3 || salvando}
-                        onClick={() => salvarCorrecao(item)}
-                      >
+                      <Button className="w-full" disabled={justificativa.trim().length < 3 || salvando} onClick={() => salvarCorrecao(item)}>
                         {salvando ? "Salvando..." : "Salvar correção"}
                       </Button>
                     </div>
@@ -372,25 +299,15 @@ function Historico() {
                         {trilha.map((auditoria) => (
                           <div key={auditoria.id} className="rounded-md bg-muted p-3 text-xs">
                             <p className="font-semibold">
-                              {auditoria.acao === "correcao" ? "Correção" : "Confirmação Protheus"}{" "}
-                              · {nomes[auditoria.usuario_id] ?? "Usuário"} ·{" "}
-                              {formatar(auditoria.created_at)}
+                              {auditoria.acao === "correcao" ? "Correção" : "Confirmação Protheus"} · {nomes[auditoria.usuario_id] ?? "Usuário"} · {formatar(auditoria.created_at)}
                             </p>
-                            {auditoria.justificativa && (
-                              <p className="mt-1">{auditoria.justificativa}</p>
-                            )}
+                            {auditoria.justificativa && <p className="mt-1">{auditoria.justificativa}</p>}
                             <details className="mt-2">
-                              <summary className="cursor-pointer text-muted-foreground">
-                                Ver dados antes e depois
-                              </summary>
+                              <summary className="cursor-pointer text-muted-foreground">Ver dados antes e depois</summary>
                               <p className="mt-2 font-semibold">Antes</p>
-                              <pre className="max-h-48 overflow-auto whitespace-pre-wrap">
-                                {JSON.stringify(auditoria.dados_anteriores, null, 2)}
-                              </pre>
+                              <pre className="max-h-48 overflow-auto whitespace-pre-wrap">{JSON.stringify(auditoria.dados_anteriores, null, 2)}</pre>
                               <p className="mt-2 font-semibold">Depois</p>
-                              <pre className="max-h-48 overflow-auto whitespace-pre-wrap">
-                                {JSON.stringify(auditoria.dados_novos, null, 2)}
-                              </pre>
+                              <pre className="max-h-48 overflow-auto whitespace-pre-wrap">{JSON.stringify(auditoria.dados_novos, null, 2)}</pre>
                             </details>
                           </div>
                         ))}
@@ -418,130 +335,41 @@ function FormularioEdicao({
   setEdicao: React.Dispatch<React.SetStateAction<Edicao | null>>;
   atualizarGrupo: (indice: number, alteracao: Partial<GrupoCorte>) => void;
 }) {
-  const alterar = (alteracao: Partial<Edicao>) =>
-    setEdicao((atual) => (atual ? { ...atual, ...alteracao } : atual));
+  const alterar = (alteracao: Partial<Edicao>) => setEdicao((atual) => (atual ? { ...atual, ...alteracao } : atual));
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <Campo label="OP">
-        <Input value={edicao.op} onChange={(e) => alterar({ op: e.target.value })} />
-      </Campo>
+      <Campo label="OP"><Input value={edicao.op} onChange={(e) => alterar({ op: e.target.value })} /></Campo>
       {setor === "corte" && (
         <div className="space-y-3 sm:col-span-2">
           {edicao.grupos.map((grupo, indice) => (
             <div key={indice} className="grid gap-2 rounded-md border p-3 sm:grid-cols-3">
-              <Campo label="PLTs">
-                <Input
-                  type="number"
-                  min={1}
-                  value={grupo.quantidadePlts}
-                  onChange={(e) =>
-                    atualizarGrupo(indice, { quantidadePlts: Number(e.target.value) })
-                  }
-                />
-              </Campo>
-              <Campo label="Rolos/PLT">
-                <Input
-                  type="number"
-                  min={1}
-                  value={grupo.rolosPorPlt}
-                  onChange={(e) => atualizarGrupo(indice, { rolosPorPlt: Number(e.target.value) })}
-                />
-              </Campo>
-              <Campo label="PLT picado">
-                <Input
-                  type="number"
-                  min={1}
-                  value={grupo.pltPicadoRolos ?? ""}
-                  onChange={(e) =>
-                    atualizarGrupo(indice, {
-                      pltPicadoRolos: e.target.value ? Number(e.target.value) : null,
-                    })
-                  }
-                />
-              </Campo>
+              <Campo label="PLTs"><Input type="number" min={1} value={grupo.quantidadePlts} onChange={(e) => atualizarGrupo(indice, { quantidadePlts: Number(e.target.value) })} /></Campo>
+              <Campo label="Rolos/PLT"><Input type="number" min={1} value={grupo.rolosPorPlt} onChange={(e) => atualizarGrupo(indice, { rolosPorPlt: Number(e.target.value) })} /></Campo>
+              <Campo label="PLT picado"><Input type="number" min={1} value={grupo.pltPicadoRolos ?? ""} onChange={(e) => atualizarGrupo(indice, { pltPicadoRolos: e.target.value ? Number(e.target.value) : null })} /></Campo>
               {edicao.grupos.length > 1 && (
-                <Button
-                  variant="ghost"
-                  className="sm:col-span-3 justify-self-start"
-                  onClick={() => alterar({ grupos: edicao.grupos.filter((_, i) => i !== indice) })}
-                >
+                <Button variant="ghost" className="sm:col-span-3 justify-self-start" onClick={() => alterar({ grupos: edicao.grupos.filter((_, i) => i !== indice) })}>
                   <Trash2 /> Remover grupo
                 </Button>
               )}
             </div>
           ))}
-          <Button
-            variant="outline"
-            onClick={() =>
-              alterar({
-                grupos: [
-                  ...edicao.grupos,
-                  {
-                    quantidadePlts: 1,
-                    rolosPorPlt: edicao.grupos[0]?.rolosPorPlt ?? 1,
-                    pltPicadoRolos: null,
-                  },
-                ],
-              })
-            }
-          >
+          <Button variant="outline" onClick={() => alterar({ grupos: [...edicao.grupos, { quantidadePlts: 1, rolosPorPlt: edicao.grupos[0]?.rolosPorPlt ?? 1, pltPicadoRolos: null }] })}>
             <Plus /> Adicionar grupo
           </Button>
         </div>
       )}
       {setor === "fitas" && (
         <>
-          <Campo label="Tempo">
-            <Input
-              type="number"
-              min={0.01}
-              step="0.01"
-              value={edicao.tempo}
-              onChange={(e) => alterar({ tempo: Number(e.target.value) })}
-            />
-          </Campo>
-          <Campo label="Velocidade">
-            <Input
-              type="number"
-              min={0.01}
-              step="0.01"
-              value={edicao.velocidade}
-              onChange={(e) => alterar({ velocidade: Number(e.target.value) })}
-            />
-          </Campo>
-          <Campo label="Largura (m)">
-            <Input
-              type="number"
-              min={0.01}
-              step="0.01"
-              value={edicao.largura}
-              onChange={(e) => alterar({ largura: Number(e.target.value) })}
-            />
-          </Campo>
+          <Campo label="Tempo"><Input type="number" min={0.01} step="0.01" value={edicao.tempo} onChange={(e) => alterar({ tempo: Number(e.target.value) })} /></Campo>
+          <Campo label="Velocidade"><Input type="number" min={0.01} step="0.01" value={edicao.velocidade} onChange={(e) => alterar({ velocidade: Number(e.target.value) })} /></Campo>
+          <Campo label="Largura (m)"><Input type="number" min={0.01} step="0.01" value={edicao.largura} onChange={(e) => alterar({ largura: Number(e.target.value) })} /></Campo>
         </>
       )}
       {setor === "mantas" && (
         <>
-          <Campo label="Lote">
-            <Input value={edicao.lote} onChange={(e) => alterar({ lote: e.target.value })} />
-          </Campo>
-          <Campo label="PLTs">
-            <Input
-              type="number"
-              min={1}
-              value={edicao.quantidadePlts}
-              onChange={(e) => alterar({ quantidadePlts: Number(e.target.value) })}
-            />
-          </Campo>
-          <Campo label="Metragem">
-            <Input
-              type="number"
-              min={10}
-              step={10}
-              value={edicao.metragem}
-              onChange={(e) => alterar({ metragem: Number(e.target.value) })}
-            />
-          </Campo>
+          <Campo label="Lote"><Input value={edicao.lote} onChange={(e) => alterar({ lote: e.target.value })} /></Campo>
+          <Campo label="PLTs"><Input type="number" min={1} value={edicao.quantidadePlts} onChange={(e) => alterar({ quantidadePlts: Number(e.target.value) })} /></Campo>
+          <Campo label="Metragem"><Input type="number" min={10} step={10} value={edicao.metragem} onChange={(e) => alterar({ metragem: Number(e.target.value) })} /></Campo>
         </>
       )}
     </div>
@@ -549,12 +377,7 @@ function FormularioEdicao({
 }
 
 function Campo({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <Label>{label}</Label>
-      {children}
-    </div>
-  );
+  return <div className="space-y-1"><Label>{label}</Label>{children}</div>;
 }
 
 function resumo(item: Apontamento) {
