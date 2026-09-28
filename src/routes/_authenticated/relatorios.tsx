@@ -69,7 +69,8 @@ function Relatorios() {
         .select("*")
         .eq("setor", profile.setor_atual)
         .order("data_local", { ascending: false })
-        .order("turno", { ascending: false }),
+        .order("turno", { ascending: false })
+        .limit(40),
       (supabase as any)
         .from("grupos_email_relatorio")
         .select("id, nome, emails, automatico, ativo")
@@ -85,12 +86,14 @@ function Relatorios() {
     setGrupos(gruposSalvos);
 
     const automatico = gruposSalvos.find((grupo) => grupo.automatico);
-    if (!destinatarios) {
-      if (automatico?.emails?.length) setDestinatarios(automatico.emails.join("; "));
-      else if (lista[0]?.destinatarios?.length) setDestinatarios(lista[0].destinatarios.join("; "));
-    }
+    setDestinatarios((atual) => {
+      if (atual) return atual;
+      if (automatico?.emails?.length) return automatico.emails.join("; ");
+      if (lista[0]?.destinatarios?.length) return lista[0].destinatarios.join("; ");
+      return atual;
+    });
     setCarregando(false);
-  }, [destinatarios, profile?.setor_atual]);
+  }, [profile?.setor_atual]);
 
   useEffect(() => {
     void carregar();
