@@ -27,7 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { dataSaoPaulo } from "@/lib/producao";
+import { dataOperacional } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/painel")({ component: Painel });
 
@@ -109,11 +109,11 @@ function Painel() {
     }
 
     setErro(false);
-    const hoje = dataSaoPaulo();
+    const dataAtual = dataOperacional(profile.turno_atual);
     const rpc = await (supabase.rpc as any)("painel_turno", {
       p_setor: profile.setor_atual,
       p_turno: profile.turno_atual,
-      p_data: hoje,
+      p_data: dataAtual,
     });
 
     if (!rpc.error) {
@@ -127,7 +127,7 @@ function Painel() {
         .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at")
         .eq("setor", profile.setor_atual)
         .eq("turno", profile.turno_atual)
-        .eq("data_local", hoje)
+        .eq("data_local", dataAtual)
         .order("created_at", { ascending: false })
         .limit(30),
       supabase
@@ -185,21 +185,20 @@ function Painel() {
     void carregarPainel();
   }, [carregarPainel]);
 
-  const hoje = dataSaoPaulo();
+  const dataAtual = dataOperacional(profile?.turno_atual);
   const setor = profile?.setor_atual ?? "";
   const setorFitas = setor === "fitas";
   const setorMantas = setor === "mantas";
-  const setorCorte = setor === "corte";
   const setorNome = setor ? nomeSetor(setor) : "Setor";
   const turnoNome = nomeTurno(profile?.turno_atual);
 
   const pendenciasAnteriores = useMemo(
-    () => pendencias.filter((item) => item.data_local !== hoje || item.turno !== profile?.turno_atual),
-    [hoje, pendencias, profile?.turno_atual],
+    () => pendencias.filter((item) => item.data_local !== dataAtual || item.turno !== profile?.turno_atual),
+    [dataAtual, pendencias, profile?.turno_atual],
   );
   const pendenciasAtuais = useMemo(
-    () => pendencias.filter((item) => item.data_local === hoje && item.turno === profile?.turno_atual),
-    [hoje, pendencias, profile?.turno_atual],
+    () => pendencias.filter((item) => item.data_local === dataAtual && item.turno === profile?.turno_atual),
+    [dataAtual, pendencias, profile?.turno_atual],
   );
 
   const gruposProtheus = useMemo(
@@ -246,7 +245,7 @@ function Painel() {
     <>
       <AppShell
         title="Painel do turno"
-        eyebrow={`HOJE · ${setorNome.toUpperCase()} · ${turnoNome.toUpperCase()}`}
+        eyebrow={`${formatarData(dataAtual)} · ${setorNome.toUpperCase()} · ${turnoNome.toUpperCase()}`}
         notificationCount={pendenciasAnteriores.length}
         onNotifications={() => setNotificacoesAbertas(true)}
         onRepeat={() => abrirApontamento("repetir")}
@@ -342,14 +341,19 @@ function Painel() {
   );
 }
 
+function normalizarChave(valor: string | null | undefined) {
+  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
+}
+
 function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChave: boolean) {
   const mapa = new Map<string, GrupoProtheus>();
   for (const item of itens) {
     const sufixoTurno = incluirTurnoNaChave ? `:${item.data_local}:${item.turno}` : "";
+    const produto = normalizarChave(item.produto_nome);
     let chave = `item:${item.id}`;
-    if (setor === "mantas" && item.lote) chave = `manta:${item.produto_nome}:${item.lote}${sufixoTurno}`;
-    if (setor === "corte" && item.op) chave = `corte:${item.produto_nome}:${item.op}${sufixoTurno}`;
-    if (setor === "fitas" && item.op) chave = `fitas:${item.produto_nome}:${item.op}${sufixoTurno}`;
+    if (setor === "mantas" && item.lote) chave = `manta:${produto}:${normalizarChave(item.lote)}${sufixoTurno}`;
+    if (setor === "corte" && item.op) chave = `corte:${produto}:${normalizarChave(item.op)}${sufixoTurno}`;
+    if (setor === "fitas" && item.op) chave = `fitas:${produto}:${normalizarChave(item.op)}${sufixoTurno}`;
 
     const atual = mapa.get(chave);
     if (!atual) {
