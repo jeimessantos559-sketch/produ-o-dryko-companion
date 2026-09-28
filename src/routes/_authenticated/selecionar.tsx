@@ -1,16 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { DrykoLogo } from "@/components/dryko/logo";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, type SetorCodigo, type TurnoCodigo } from "@/lib/auth";
 
-export const Route = createFileRoute("/_authenticated/selecionar")({
-  component: Selecionar,
-});
+export const Route = createFileRoute("/_authenticated/selecionar")({ component: Selecionar });
 
 type Setor = { codigo: SetorCodigo; nome: string; ordem: number; regras_definidas: boolean };
 
@@ -57,82 +55,57 @@ function Selecionar() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-4 py-8">
-      <div className="mb-6 flex flex-col items-center">
-        <DrykoLogo />
-        <h1 className="mt-3 text-center text-xl font-bold">Escolha o setor e o turno</h1>
-        <p className="mt-1 text-center text-sm text-muted-foreground">
-          Fica salvo no seu perfil e pode ser trocado quando precisar.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Setor</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {carregando ? (
-            <p className="text-sm text-muted-foreground">Carregando setores...</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {setores.map((s) => (
-                <button
-                  key={s.codigo}
-                  type="button"
-                  onClick={() => setSetor(s.codigo)}
-                  className={`min-h-16 rounded-xl border-2 p-3 text-left text-base font-semibold transition-colors ${
-                    setor === s.codigo
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-card hover:bg-accent"
-                  }`}
-                >
-                  {s.nome}
-                  {!s.regras_definidas && (
-                    <span className="block text-xs font-normal text-muted-foreground">
-                      regras aguardando definição
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle className="text-base">Turno</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-3 gap-3">
-            {(["T1", "T2", "T3"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTurno(t)}
-                className={`min-h-16 rounded-xl border-2 text-lg font-bold transition-colors ${
-                  turno === t
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-card hover:bg-accent"
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Horários dos turnos: aguardando definição.
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-6">
+      <div className="w-full max-w-md">
+        <div className="mb-4 flex flex-col items-center">
+          <DrykoLogo size="sm" />
+          <h1 className="mt-3 text-xl font-extrabold">Setor e turno</h1>
+          <p className="mt-1 text-center text-xs text-slate-500">
+            {profile?.onboarding_concluido
+              ? "Altere somente quando precisar trocar sua área ou turno."
+              : "Escolha uma vez. Depois o sistema entra direto no seu painel."}
           </p>
-        </CardContent>
-      </Card>
+        </div>
 
-      <Button
-        className="mt-6 h-14 w-full text-base"
-        disabled={!setor || !turno || salvando}
-        onClick={salvar}
-      >
-        {salvando ? "Salvando..." : "Confirmar e continuar"}
-      </Button>
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="space-y-1.5">
+            <label htmlFor="setor-select" className="text-xs font-bold uppercase tracking-wide text-slate-500">Setor</label>
+            <select
+              id="setor-select"
+              className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
+              value={setor ?? ""}
+              onChange={(e) => setSetor(e.target.value as SetorCodigo)}
+              disabled={carregando}
+            >
+              <option value="">{carregando ? "Carregando..." : "Selecione o setor"}</option>
+              {setores.map((item) => <option key={item.codigo} value={item.codigo}>{item.nome}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Turno</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(["T1", "T2", "T3"] as const).map((item, indice) => {
+                const ativo = turno === item;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setTurno(item)}
+                    className={`flex h-12 items-center justify-center gap-1 rounded-xl border text-sm font-bold transition ${ativo ? "border-primary bg-primary text-white" : "border-slate-200 bg-slate-50 text-slate-700"}`}
+                  >
+                    {ativo && <Check className="size-4" />}{indice + 1}º turno
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Button className="h-12 w-full rounded-xl text-base font-bold" disabled={!setor || !turno || salvando} onClick={salvar}>
+            {salvando ? "Salvando..." : profile?.onboarding_concluido ? "Salvar alteração" : "Continuar"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
