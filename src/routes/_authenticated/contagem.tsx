@@ -6,7 +6,7 @@ import { AppShell } from "@/components/dryko/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { dataSaoPaulo } from "@/lib/producao";
+import { dataOperacional } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/contagem")({ component: Contagem });
 
@@ -52,12 +52,13 @@ function Contagem() {
       };
     }
 
+    const dataAtual = dataOperacional(profile.turno_atual);
     void supabase
       .from("apontamentos")
       .select("produto_nome, quantidade_plts, total_rolos, metragem, area_m2, created_at")
       .eq("setor", profile.setor_atual)
       .eq("turno", profile.turno_atual)
-      .eq("data_local", dataSaoPaulo())
+      .eq("data_local", dataAtual)
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
         if (!ativo) return;
