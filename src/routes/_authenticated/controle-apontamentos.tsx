@@ -13,9 +13,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataSaoPaulo } from "@/lib/producao";
 
-export const Route = createFileRoute("/_authenticated/controle-apontamentos")({
-  component: ControleApontamentos,
-});
+export const Route = createFileRoute("/_authenticated/controle-apontamentos")({ component: ControleApontamentos });
 
 type Apontamento = Database["public"]["Tables"]["apontamentos"]["Row"];
 const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas"];
@@ -57,7 +55,13 @@ function ControleApontamentos() {
     }
     setCarregando(true);
     const [{ data: registros, error }, { data: perfis }] = await Promise.all([
-      supabase.from("apontamentos").select("*").eq("setor", setor).eq("data_local", data).order("created_at", { ascending: false }).limit(200),
+      supabase
+        .from("apontamentos")
+        .select("*")
+        .eq("setor", setor)
+        .eq("data_local", data)
+        .order("created_at", { ascending: false })
+        .limit(250),
       supabase.from("profiles").select("id, nome").eq("ativo", true),
     ]);
     if (error) {
@@ -75,20 +79,23 @@ function ControleApontamentos() {
 
   const produtos = useMemo(() => [...new Set(itens.map((item) => item.produto_nome))].sort(), [itens]);
   const facilitadores = useMemo(() => [...new Set(itens.map((item) => item.usuario_id))], [itens]);
+
   const visiveis = useMemo(
     () => itens.filter((item) =>
       (!turno || item.turno === turno) &&
       (!status || item.status === status) &&
-      (!op.trim() || item.op?.toLowerCase().includes(op.trim().toLowerCase())) &&
+      (!op.trim() || item.op?.toLowerCase().includes(op.trim().toLowerCase()) || item.lote?.toLowerCase().includes(op.trim().toLowerCase())) &&
       (!produto || item.produto_nome === produto) &&
-      (!facilitador || item.usuario_id === facilitador)),
+      (!facilitador || item.usuario_id === facilitador),
+    ),
     [facilitador, itens, op, produto, status, turno],
   );
-  const grupos = useMemo(() => agruparParaLancamento(visiveis), [visiveis]);
-  const pendentesVisiveis = useMemo(() => grupos.flatMap((grupo) => grupo.item.status === "pendente" ? grupo.ids : []), [grupos]);
 
-  async function confirmar(idsEntrada?: string[]) {
-    const ids = [...new Set(idsEntrada ?? selecionados)];
+  const grupos = useMemo(() => agruparParaLancamento(visiveis, setor), [visiveis, setor]);
+  const pendentesVisiveis = useMemo(() => grupos.flatMap((grupo) => (grupo.item.status === "pendente" ? grupo.ids : [])), [grupos]);
+
+  async function confirmar(idsForcados?: string[]) {
+    const ids = [...new Set(idsForcados ?? selecionados)];
     if (ids.length === 0 || confirmando) return;
     setConfirmando(true);
     const { data: total, error } = await supabase.rpc("confirmar_apontamentos_protheus", { p_ids: ids });
@@ -97,7 +104,7 @@ function ControleApontamentos() {
       toast.error(error.message || "Não foi possível confirmar os apontamentos no Protheus.");
       return;
     }
-    toast.success(`${total ?? ids.length} apontamento(s) lançado(s) no Protheus.`);
+    toast.success(`${total ?? ids.length} apontamento(s) marcado(s) como lançado(s).`);
     await carregar();
   }
 
@@ -105,14 +112,15 @@ function ControleApontamentos() {
     if (grupo.item.status === "lancado") return;
     setSelecionados((atuais) => {
       const todos = grupo.ids.every((id) => atuais.includes(id));
-      return todos ? atuais.filter((id) => !grupo.ids.includes(id)) : [...new Set([...atuais, ...grupo.ids])];
+      if (todos) return atuais.filter((id) => !grupo.ids.includes(id));
+      return [...new Set([...atuais, ...grupo.ids])];
     });
   }
 
   return (
     <AppShell title="Controle Protheus" eyebrow={isAdmin ? "ADMINISTRAÇÃO · APONTAMENTOS" : "LANÇAMENTOS"}>
       <div className="mx-auto max-w-5xl space-y-3">
-        <div><h2 className="text-xl font-extrabold sm:text-2xl">Lançamentos no Protheus</h2><p className="text-xs text-muted-foreground sm:text-sm">Apontamentos de Mantas com a mesma OP, produto e lote são somados e lançados juntos.</p></div>
+        <div><h2 className="text-xl font-extrabold sm:text-2xl">Lançamentos no Protheus</h2><p className="text-xs text-muted-foreground sm:text-sm">Mantas agrupadas por lote; Corte e Fitas agrupados por OP e produto.</p></div>
 
         {!isAutorizado ? (
           <Card><CardContent className="p-4 text-sm text-muted-foreground">Você não tem permissão para lançar apontamentos no Protheus.</CardContent></Card>
@@ -125,7 +133,7 @@ function ControleApontamentos() {
                 <Campo label="Data"><Input className="h-10" type="date" value={data} onChange={(e) => setData(e.target.value)} /></Campo>
                 <Campo label="Turno"><select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={turno} onChange={(e) => setTurno(e.target.value)}><option value="">Todos</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option></select></Campo>
                 <Campo label="Situação"><select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Todos</option><option value="pendente">Pendente</option><option value="lancado">Lançado</option></select></Campo>
-                <Campo label="OP"><Input className="h-10" value={op} onChange={(e) => setOp(e.target.value)} placeholder="Buscar OP" /></Campo>
+                <Campo label={setor === "mantas" ? "Lote" : "OP"}><Input className="h-10" value={op} onChange={(e) => setOp(e.target.value)} placeholder={setor === "mantas" ? "Buscar lote" : "Buscar OP"} /></Campo>
                 <Campo label="Produto"><select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={produto} onChange={(e) => setProduto(e.target.value)}><option value="">Todos</option>{produtos.map((item) => <option key={item}>{item}</option>)}</select></Campo>
                 <Campo label="Facilitador"><select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={facilitador} onChange={(e) => setFacilitador(e.target.value)}><option value="">Todos</option>{facilitadores.map((id) => <option key={id} value={id}>{nomes[id] ?? "Usuário"}</option>)}</select></Campo>
               </div>
@@ -136,7 +144,9 @@ function ControleApontamentos() {
               <Button size="sm" disabled={selecionados.length === 0 || confirmando} onClick={() => void confirmar()}><CheckCircle2 className="size-4" /> {confirmando ? "Lançando..." : `Lançar (${selecionados.length})`}</Button>
             </div>
 
-            {carregando ? <p className="py-6 text-center text-sm text-muted-foreground">Carregando...</p> : grupos.length === 0 ? (
+            {carregando ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Carregando...</p>
+            ) : grupos.length === 0 ? (
               <Card><CardContent className="p-5 text-center text-sm text-muted-foreground">Nenhum apontamento encontrado.</CardContent></Card>
             ) : (
               <div className="space-y-2">
@@ -148,14 +158,14 @@ function ControleApontamentos() {
                       <div className="flex items-start gap-3">
                         <input className="mt-1 size-5 shrink-0" type="checkbox" disabled={grupo.item.status === "lancado"} checked={selecionado} onChange={() => alternarGrupo(grupo)} />
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2"><p className="font-bold text-slate-950">{grupo.item.op ? `OP ${grupo.item.op} · ` : ""}{grupo.item.produto_nome}</p>{agrupado && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">{grupo.quantidadeRegistros} registros juntos</span>}</div>
+                          <div className="flex flex-wrap items-center gap-2"><p className="font-bold text-slate-950">{tituloGrupo(grupo, setor)}</p>{agrupado && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">{grupo.quantidadeRegistros} registros agrupados</span>}</div>
                           <p className="mt-0.5 text-xs text-slate-500">{nomes[grupo.item.usuario_id] ?? "Usuário"} · {grupo.item.turno} · {formatarDataHora(grupo.item.created_at)}</p>
-                          <p className="mt-2 text-sm font-semibold text-slate-800">{resumoGrupo(grupo)}</p>
-                          {grupo.item.setor === "mantas" && grupo.item.lote && <p className="mt-1 text-xs font-semibold text-primary">Lote {grupo.item.lote}</p>}
-                          {grupo.item.status === "pendente" && <Button size="sm" className="mt-2 w-full sm:w-auto" disabled={confirmando} onClick={() => void confirmar(grupo.ids)}>{confirmando ? "Lançando..." : grupo.item.setor === "mantas" ? `Confirmar ${fmt(grupo.metragem)} m` : "Confirmar no Protheus"}</Button>}
+                          <p className={`mt-2 font-extrabold ${setor === "mantas" || setor === "fitas" ? "text-xl text-primary" : "text-base text-slate-900"}`}>{resumoPrincipal(grupo, setor)}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">{resumoApoio(grupo, setor)}</p>
                         </div>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${grupo.item.status === "lancado" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>{grupo.item.status === "lancado" ? "Lançado" : "Pendente"}</span>
                       </div>
+                      {grupo.item.status === "pendente" && <Button className="mt-3 w-full" size="sm" disabled={confirmando} onClick={() => void confirmar(grupo.ids)}>{confirmando ? "Lançando..." : setor === "mantas" && agrupado ? `Confirmar lote · ${fmt(grupo.metragem)} m` : "Confirmar no Protheus"}</Button>}
                     </article>
                   );
                 })}
@@ -168,31 +178,50 @@ function ControleApontamentos() {
   );
 }
 
-function agruparParaLancamento(itens: Apontamento[]) {
+function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo) {
   const mapa = new Map<string, GrupoLancamento>();
   for (const item of itens) {
-    const deveAgrupar = item.setor === "mantas" && item.status === "pendente" && Boolean(item.lote);
-    const chave = deveAgrupar ? `manta:${item.op ?? ""}:${item.produto_id}:${item.lote}` : `item:${item.id}`;
+    let chave = `item:${item.id}`;
+    if (item.status === "pendente") {
+      if (setor === "mantas" && item.lote) chave = `manta:${item.produto_id}:${item.lote}`;
+      else if (setor === "corte" && item.op) chave = `corte:${item.produto_id}:${item.op}`;
+      else if (setor === "fitas" && item.op) chave = `fitas:${item.produto_id}:${item.op}`;
+    }
     const atual = mapa.get(chave);
     if (!atual) {
       mapa.set(chave, { chave, ids: [item.id], item, quantidadeRegistros: 1, plts: Number(item.quantidade_plts ?? 0), rolos: Number(item.total_rolos ?? 0), metragem: Number(item.metragem ?? 0), area: Number(item.area_m2 ?? 0) });
-    } else {
-      atual.ids.push(item.id);
-      atual.quantidadeRegistros += 1;
-      atual.plts += Number(item.quantidade_plts ?? 0);
-      atual.rolos += Number(item.total_rolos ?? 0);
-      atual.metragem += Number(item.metragem ?? 0);
-      atual.area += Number(item.area_m2 ?? 0);
+      continue;
     }
+    atual.ids.push(item.id);
+    atual.quantidadeRegistros += 1;
+    atual.plts += Number(item.quantidade_plts ?? 0);
+    atual.rolos += Number(item.total_rolos ?? 0);
+    atual.metragem += Number(item.metragem ?? 0);
+    atual.area += Number(item.area_m2 ?? 0);
   }
   return [...mapa.values()];
 }
 
-function Campo({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-1"><Label className="text-xs">{label}</Label>{children}</div>; }
-function resumoGrupo(grupo: GrupoLancamento) {
-  if (grupo.item.setor === "fitas") return `${fmt(grupo.area)} m² para lançar no Protheus`;
-  if (grupo.item.setor === "mantas") return `${fmt(grupo.metragem)} m · ${grupo.plts} PLTs · ${grupo.rolos} rolos`;
-  return `${grupo.plts} PLTs fechados · ${grupo.rolos} rolos`;
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="space-y-1"><Label className="text-xs">{label}</Label>{children}</div>;
 }
+
+function tituloGrupo(grupo: GrupoLancamento, setor: SetorCodigo) {
+  if (setor === "mantas") return `Lote ${grupo.item.lote ?? "—"} · ${grupo.item.produto_nome}`;
+  return `${grupo.item.op ? `OP ${grupo.item.op} · ` : ""}${grupo.item.produto_nome}`;
+}
+
+function resumoPrincipal(grupo: GrupoLancamento, setor: SetorCodigo) {
+  if (setor === "fitas") return `${fmt(grupo.area)} m²`;
+  if (setor === "mantas") return `${fmt(grupo.metragem)} m`;
+  return `${grupo.plts} PLTs`;
+}
+
+function resumoApoio(grupo: GrupoLancamento, setor: SetorCodigo) {
+  if (setor === "fitas") return `${grupo.quantidadeRegistros} apontamento(s) agrupado(s)`;
+  if (setor === "mantas") return `${grupo.plts} PLTs · ${grupo.rolos} rolos · ${grupo.quantidadeRegistros} apontamento(s)`;
+  return `${grupo.rolos} unidades · ${grupo.quantidadeRegistros} apontamento(s)`;
+}
+
 function fmt(valor: number) { return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
 function formatarDataHora(valor: string) { return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date(valor)); }
