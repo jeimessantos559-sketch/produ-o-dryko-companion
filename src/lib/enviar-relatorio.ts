@@ -77,7 +77,7 @@ const cabecalho = (v: string) => (/^[\x00-\x7F]*$/.test(v) ? v : `=?UTF-8?B?${b6
 
 async function enviarViaGmail(opts: { to: string[]; subject: string; body: string; pdf: Uint8Array; fileName: string }) {
   const lovableKey = process.env["LOVABLE_API_KEY"];
-  const gmailKey = process.env["GOOGLE_MAIL_API_KEY"];
+  const gmailKey = process.env["GOOGLE_MAIL_API_KEY"] ?? process.env["GOOGLE_MAIL_API_KEY_1"];
   if (!lovableKey || !gmailKey) throw new Error("GMAIL_NAO_CONFIGURADO");
   const boundary = `dryko_${crypto.randomUUID()}`;
   const anexo = b64(opts.pdf).replace(/.{76}/g, "$&\r\n");
