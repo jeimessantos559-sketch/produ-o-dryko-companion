@@ -9,13 +9,11 @@ import {
   History,
   LogOut,
   Menu,
-  PackagePlus,
   Plus,
   Repeat,
   Settings2,
   ShieldCheck,
   TriangleAlert,
-  Users,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -33,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, NOMES_PAPEIS } from "@/lib/auth";
+import { NOMES_PAPEIS, useAuth } from "@/lib/auth";
 import { dataSaoPaulo } from "@/lib/producao";
 
 const ITENS = [
@@ -60,6 +58,7 @@ type AppShellProps = {
 type PendenciaRapida = {
   id: string;
   op: string | null;
+  lote?: string | null;
   produto_nome: string;
   quantidade_plts: number | null;
   total_rolos: number | null;
@@ -76,17 +75,10 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
 
   const itens = [
     ...ITENS,
-    ...(isAutorizado
-      ? [
-          {
-            to: "/controle-apontamentos",
-            label: "Controle de apontamentos",
-            icon: ShieldCheck,
-          } as const,
-        ]
+    ...(!isAdmin && isAutorizado
+      ? [{ to: "/controle-apontamentos", label: "Controle Protheus", icon: ShieldCheck } as const]
       : []),
-    ...(isAdmin ? [{ to: "/produtos", label: "Produtos", icon: PackagePlus } as const] : []),
-    ...(isAdmin ? [{ to: "/usuarios", label: "Usuários", icon: Users } as const] : []),
+    ...(isAdmin ? [{ to: "/administracao", label: "Administração", icon: ShieldCheck } as const] : []),
   ];
 
   async function sair() {
@@ -97,16 +89,14 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="border-b border-sidebar-border px-4 py-5">
+      <div className="border-b border-sidebar-border px-4 py-4">
         <DrykoLogo size="sm" />
-        <div className="mt-3">
-          <p data-heading className="font-bold text-white">
-            Aponta Produção
-          </p>
-          <p className="mt-0.5 text-xs text-sidebar-foreground/55">Sistema interno</p>
+        <div className="mt-2">
+          <p data-heading className="font-bold text-white">Aponta Produção</p>
+          <p className="text-xs text-sidebar-foreground/55">Sistema interno</p>
         </div>
       </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
         {itens.map((item) => {
           const ativo = pathname.startsWith(item.to);
           return (
@@ -114,42 +104,23 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
               key={item.to}
               to={item.to}
               onClick={onNavigate}
-              className={`flex min-h-12 items-center gap-3 rounded-xl px-3 text-base font-medium transition-colors ${ativo ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}
+              className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${ativo ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}
             >
-              <item.icon className="size-5 shrink-0" />
+              <item.icon className="size-4.5 shrink-0" />
               {item.label}
             </Link>
           );
         })}
       </nav>
-      <div className="space-y-3 border-t border-sidebar-border p-4 text-sm">
-        <div>
-          <p className="font-semibold">{profile?.nome || "Usuário"}</p>
-          <p className="text-sidebar-foreground/70">
-            {roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          onClick={sair}
-        >
-          <LogOut className="size-4" /> Sair
-        </Button>
+      <div className="space-y-2 border-t border-sidebar-border p-3 text-sm">
+        <div><p className="truncate font-semibold">{profile?.nome || "Usuário"}</p><p className="truncate text-xs text-sidebar-foreground/65">{roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}</p></div>
+        <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={sair}><LogOut className="size-4" /> Sair</Button>
       </div>
     </div>
   );
 }
 
-export function AppShell({
-  children,
-  title,
-  eyebrow,
-  notificationCount = 0,
-  onNotifications,
-  onRepeat,
-  onApontar,
-}: AppShellProps) {
+export function AppShell({ children, title, eyebrow, notificationCount = 0, onNotifications, onRepeat, onApontar }: AppShellProps) {
   const [aberto, setAberto] = useState(false);
   const [modalRapido, setModalRapido] = useState<"novo" | "repetir" | null>(null);
   const [notificacoesInternas, setNotificacoesInternas] = useState(false);
@@ -157,9 +128,7 @@ export function AppShell({
   const [pendenciasInternas, setPendenciasInternas] = useState<PendenciaRapida[]>([]);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
   const { profile, isAutorizado } = useAuth();
-  const contexto = profile?.setor_atual
-    ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}`
-    : "Escolher setor e turno";
+  const contexto = profile?.setor_atual ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}` : "Escolher setor e turno";
   const abrirNovo = onApontar ?? (() => setModalRapido("novo"));
   const abrirRepetir = onRepeat ?? (() => setModalRapido("repetir"));
 
@@ -173,15 +142,8 @@ export function AppShell({
     const painelTurno = supabase.rpc as unknown as (
       nome: string,
       parametros: { p_setor: string; p_turno: string; p_data: string },
-    ) => PromiseLike<{
-      data: { pendencias?: PendenciaRapida[] } | null;
-      error: { message: string } | null;
-    }>;
-    const { data, error } = await painelTurno("painel_turno", {
-      p_setor: profile.setor_atual,
-      p_turno: profile.turno_atual,
-      p_data: hoje,
-    });
+    ) => PromiseLike<{ data: { pendencias?: PendenciaRapida[] } | null; error: { message: string } | null }>;
+    const { data, error } = await painelTurno("painel_turno", { p_setor: profile.setor_atual, p_turno: profile.turno_atual, p_data: hoje });
     setCarregandoNotificacoes(false);
     if (error) {
       toast.error("Não foi possível carregar as pendências.");
@@ -189,9 +151,7 @@ export function AppShell({
       return;
     }
     const todas = (data?.pendencias ?? []) as PendenciaRapida[];
-    setPendenciasInternas(
-      todas.filter((item) => item.data_local !== hoje || item.turno !== profile.turno_atual),
-    );
+    setPendenciasInternas(todas.filter((item) => item.data_local !== hoje || item.turno !== profile.turno_atual));
   }
 
   function abrirNotificacoes() {
@@ -209,182 +169,68 @@ export function AppShell({
     const { error } = await supabase.rpc("confirmar_apontamentos_protheus", { p_ids: [id] });
     setConfirmandoId(null);
     if (error) {
-      toast.error("Não foi possível confirmar este apontamento.");
+      toast.error(error.message || "Não foi possível confirmar este apontamento.");
       return;
     }
-    toast.success("Apontamento confirmado no Protheus.");
+    toast.success("Apontamento lançado no Protheus.");
     await carregarNotificacoesInternas();
   }
 
   return (
     <>
       <div className="flex min-h-screen bg-background">
-        <aside className="hidden w-[248px] shrink-0 md:block">
-          <div className="fixed h-screen w-[248px]">
-            <Navegacao />
-          </div>
-        </aside>
+        <aside className="hidden w-[232px] shrink-0 md:block"><div className="fixed h-screen w-[232px]"><Navegacao /></div></aside>
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-background/95 backdrop-blur">
-            <div className="mx-auto flex w-full max-w-[1480px] items-center gap-2 px-3 py-3 sm:gap-3 sm:px-6">
+            <div className="mx-auto flex w-full max-w-[1480px] items-center gap-1.5 px-2.5 py-2 sm:gap-2 sm:px-5">
               <Sheet open={aberto} onOpenChange={setAberto}>
                 <SheetTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-primary shadow-none md:hidden"
-                    aria-label="Abrir menu"
-                  >
-                    <Menu className="size-6" />
-                  </Button>
+                  <Button variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-xl border-primary/70 bg-transparent text-primary shadow-none md:hidden" aria-label="Abrir menu"><Menu className="size-5" /></Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[min(86vw,288px)] p-0">
-                  <SheetTitle className="sr-only">Menu</SheetTitle>
-                  <Navegacao onNavigate={() => setAberto(false)} />
-                </SheetContent>
+                <SheetContent side="left" className="w-[min(84vw,276px)] p-0"><SheetTitle className="sr-only">Menu</SheetTitle><Navegacao onNavigate={() => setAberto(false)} /></SheetContent>
               </Sheet>
 
-              <Link to="/selecionar" className="min-w-0 flex-1 py-1" title="Alterar setor e turno">
-                <p className="truncate text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 sm:text-xs">
-                  {eyebrow ?? contexto}
-                </p>
-                <h1 className="truncate text-xl font-extrabold leading-tight tracking-tight text-slate-950 min-[390px]:text-2xl sm:text-3xl">
-                  {title ?? contexto}
-                </h1>
+              <Link to="/selecionar" className="min-w-0 flex-1" title="Alterar setor e turno">
+                <p className="truncate text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-[11px]">{eyebrow ?? contexto}</p>
+                <h1 className="truncate text-lg font-extrabold leading-tight tracking-tight text-slate-950 sm:text-2xl">{title ?? contexto}</h1>
               </Link>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none"
-                onClick={abrirNotificacoes}
-                aria-label="Ver pendências de turnos anteriores"
-              >
-                <Bell className="size-6" />
-                {notificationCount > 0 && (
-                  <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">
-                    {notificationCount > 99 ? "99+" : notificationCount}
-                  </span>
-                )}
-              </Button>
+              <Button type="button" variant="outline" size="icon" className="relative h-10 w-10 shrink-0 rounded-xl border-primary/60 bg-transparent text-slate-700 shadow-none" onClick={abrirNotificacoes} aria-label="Ver pendências"><Bell className="size-5" />{notificationCount > 0 && <span className="absolute -right-1 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}</Button>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none"
-                onClick={abrirRepetir}
-                aria-label="Repetir último apontamento"
-                title="Repetir último apontamento"
-              >
-                <Copy className="size-5" />
-              </Button>
+              <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-xl border-primary/30 bg-transparent text-primary shadow-none" onClick={abrirRepetir} aria-label="Repetir último apontamento"><Copy className="size-4.5" /></Button>
 
-              <Button
-                type="button"
-                className="h-12 shrink-0 rounded-2xl px-3 text-base font-semibold shadow-sm min-[390px]:px-4 sm:px-5"
-                onClick={abrirNovo}
-              >
-                <Plus className="size-6" />
-                <span className="hidden min-[360px]:inline">Apontar</span>
-              </Button>
+              <Button type="button" className="h-10 shrink-0 rounded-xl px-2.5 text-sm font-semibold shadow-sm min-[390px]:px-3.5" onClick={abrirNovo}><Plus className="size-5" /><span className="hidden min-[390px]:inline">Apontar</span></Button>
             </div>
           </header>
-          <main className="mx-auto w-full max-w-[1480px] flex-1 px-3 pb-16 pt-4 sm:px-6 sm:pt-6">
-            {children}
-          </main>
+          <main className="mx-auto w-full max-w-[1480px] flex-1 px-2.5 pb-12 pt-3 sm:px-5 sm:pt-4">{children}</main>
         </div>
       </div>
 
-      {!onApontar && !onRepeat && (
-        <ApontamentoRapido
-          open={modalRapido !== null}
-          onOpenChange={(open) => {
-            if (!open) setModalRapido(null);
-          }}
-          repeatLatest={modalRapido === "repetir"}
-        />
-      )}
+      {!onApontar && !onRepeat && <ApontamentoRapido open={modalRapido !== null} onOpenChange={(open) => { if (!open) setModalRapido(null); }} repeatLatest={modalRapido === "repetir"} />}
 
       {!onNotifications && (
         <Dialog open={notificacoesInternas} onOpenChange={setNotificacoesInternas}>
-          <DialogContent className="max-h-[88vh] overflow-y-auto rounded-3xl sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Pendências de turnos anteriores</DialogTitle>
-              <DialogDescription>
-                Apontamentos que ainda precisam ser conferidos e lançados no Protheus.
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-2xl p-4 sm:max-w-xl">
+            <DialogHeader><DialogTitle>Pendências de turnos anteriores</DialogTitle><DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription></DialogHeader>
             {carregandoNotificacoes ? (
-              <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">
-                Carregando pendências...
-              </div>
+              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Carregando pendências...</div>
             ) : pendenciasInternas.length === 0 ? (
-              <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">
-                Nenhuma pendência de turnos anteriores.
-              </div>
+              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Nenhuma pendência de turnos anteriores.</div>
             ) : (
               <>
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                  <p className="text-lg font-bold text-red-800">
-                    {pendenciasInternas.length} apontamento(s) pendente(s)
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    {pendenciasInternas.reduce(
-                      (total, item) => total + (item.quantidade_plts ?? 0),
-                      0,
-                    )}{" "}
-                    PLTs aguardando lançamento
-                  </p>
-                </div>
-                <div className="space-y-3">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3"><p className="font-bold text-red-800">{pendenciasInternas.length} apontamento(s) pendente(s)</p><p className="text-xs text-slate-500">{pendenciasInternas.reduce((total, item) => total + Number(item.quantidade_plts ?? 0), 0)} PLTs fechados aguardando lançamento</p></div>
+                <div className="space-y-2">
                   {pendenciasInternas.map((item) => (
-                    <article
-                      key={item.id}
-                      className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-950">
-                            {item.op ? `OP ${item.op} · ` : ""}
-                            {item.produto_nome}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {formatarData(item.data_local)} · {nomeTurno(item.turno)}
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                          Pendente
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm text-slate-600">{resumoPendencia(item)}</p>
-                      {isAutorizado && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="mt-3 w-full rounded-xl border-primary text-primary"
-                          disabled={confirmandoId !== null}
-                          onClick={() => void confirmarPendencia(item.id)}
-                        >
-                          {confirmandoId === item.id ? "Confirmando..." : "Conferir e confirmar"}
-                        </Button>
-                      )}
+                    <article key={item.id} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                      <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-bold text-slate-950">{item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}</p><p className="text-xs text-slate-500">{formatarData(item.data_local)} · {nomeTurno(item.turno)}</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Pendente</span></div>
+                      <p className="mt-2 text-sm text-slate-600">{resumoPendencia(item)}</p>
+                      {isAutorizado && <Button type="button" variant="outline" size="sm" className="mt-2 w-full border-primary text-primary" disabled={confirmandoId !== null} onClick={() => void confirmarPendencia(item.id)}>{confirmandoId === item.id ? "Lançando..." : "Conferir e lançar"}</Button>}
                     </article>
                   ))}
                 </div>
               </>
             )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setNotificacoesInternas(false)}>
-                Fechar
-              </Button>
-              <Button asChild>
-                <Link to="/passagem-turno" onClick={() => setNotificacoesInternas(false)}>
-                  Ver passagem de turno
-                </Link>
-              </Button>
-            </DialogFooter>
+            <DialogFooter className="grid grid-cols-2 gap-2 sm:flex"><Button variant="outline" onClick={() => setNotificacoesInternas(false)}>Fechar</Button><Button asChild><Link to="/controle-apontamentos" onClick={() => setNotificacoesInternas(false)}>Controle Protheus</Link></Button></DialogFooter>
           </DialogContent>
         </Dialog>
       )}
@@ -393,33 +239,15 @@ export function AppShell({
 }
 
 function resumoPendencia(item: PendenciaRapida) {
-  if (Number(item.area_m2 ?? 0) > 0)
-    return `${Number(item.area_m2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
-  if (Number(item.metragem ?? 0) > 0 && !item.total_rolos)
-    return `${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m`;
-  const metros =
-    item.metragem == null
-      ? ""
-      : ` · ${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
-  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos${metros}`;
+  if (Number(item.area_m2 ?? 0) > 0) return `${Number(item.area_m2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
+  if (Number(item.metragem ?? 0) > 0) return `${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos${item.lote ? ` · Lote ${item.lote}` : ""}`;
+  return `${item.quantidade_plts ?? 0} PLTs fechados · ${item.total_rolos ?? 0} rolos`;
 }
 
-function formatarData(valor: string) {
-  const [ano, mes, dia] = valor.split("-");
-  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
-}
+function formatarData(valor: string) { const [ano, mes, dia] = valor.split("-"); return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor; }
 
 export function nomeSetor(codigo: string) {
-  const mapa: Record<string, string> = {
-    corte: "Corte",
-    fitas: "Fitas",
-    mantas: "Mantas",
-    asfox: "Asfox",
-    misturadores: "Misturadores",
-    liquidos: "Líquidos",
-    pos: "Pós",
-    avulsos: "Avulsos",
-  };
+  const mapa: Record<string, string> = { corte: "Corte", fitas: "Fitas", mantas: "Mantas", asfox: "Asfox", misturadores: "Misturadores", liquidos: "Líquidos", pos: "Pós", avulsos: "Avulsos" };
   return mapa[codigo] ?? codigo;
 }
 
