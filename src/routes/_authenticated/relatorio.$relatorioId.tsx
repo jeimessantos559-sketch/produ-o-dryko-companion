@@ -16,7 +16,28 @@ export const Route = createFileRoute("/_authenticated/relatorio/$relatorioId")({
 });
 
 type Relatorio = Database["public"]["Tables"]["relatorios"]["Row"];
-type Objeto = Record<string, Json | undefined>;
+type Objeto = Record<string, Json | undefined> & {
+  totais?: Json;
+  apontamentos?: Json;
+  metas?: Json;
+  responsavel?: Json;
+  geradoEm?: Json;
+  produto_nome?: Json;
+  quantidade_plts?: Json;
+  total_rolos?: Json;
+  metragem?: Json;
+  area_m2?: Json;
+  area?: Json;
+  plts?: Json;
+  pendentes?: Json;
+  lancados?: Json;
+  status?: Json;
+  id?: Json;
+  op?: Json;
+  lote?: Json;
+  quantidade_meta?: Json;
+  unidade?: Json;
+};
 
 function objeto(valor: Json | undefined): Objeto {
   return valor && typeof valor === "object" && !Array.isArray(valor) ? (valor as Objeto) : {};
@@ -125,6 +146,7 @@ function RelatorioDetalhado() {
     );
   }
 
+  const relatorioAtual = relatorio;
   const nomeArquivo = `relatorio-${relatorio.setor}-${relatorio.data_local}-${relatorio.turno}.pdf`;
   const fitas = relatorio.setor === "fitas";
   const mantas = relatorio.setor === "mantas";
@@ -133,7 +155,7 @@ function RelatorioDetalhado() {
 
   async function compartilhar() {
     try {
-      const usouCompartilhamento = await compartilharPdf(relatorio.resumo, nomeArquivo);
+      const usouCompartilhamento = await compartilharPdf(relatorioAtual.resumo, nomeArquivo);
       if (!usouCompartilhamento) toast.info("O PDF foi baixado porque o compartilhamento de arquivos não está disponível neste aparelho.");
     } catch {
       toast.error("Não foi possível compartilhar o relatório.");
@@ -148,7 +170,7 @@ function RelatorioDetalhado() {
     }
     setEnviando(true);
     try {
-      await enviarRelatorio({ data: { relatorioId: relatorio.id, destinatarios: lista } });
+      await enviarRelatorio({ data: { relatorioId: relatorioAtual.id, destinatarios: lista } });
       toast.success("Relatório enviado por e-mail.");
       await carregar();
     } catch (erro) {

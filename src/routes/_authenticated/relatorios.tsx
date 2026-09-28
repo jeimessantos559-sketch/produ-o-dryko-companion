@@ -17,7 +17,14 @@ import { baixarPdf, compartilharPdf, imprimirPdf } from "@/lib/relatorio-pdf";
 export const Route = createFileRoute("/_authenticated/relatorios")({ component: Relatorios });
 
 type Relatorio = Database["public"]["Tables"]["relatorios"]["Row"];
-type Objeto = Record<string, Json | undefined>;
+type Objeto = Record<string, Json | undefined> & {
+  totais?: Json;
+  area?: Json;
+  metragem?: Json;
+  apontamentos?: Json;
+  plts?: Json;
+  pendentes?: Json;
+};
 
 function objeto(valor: Json | undefined): Objeto {
   return valor && typeof valor === "object" && !Array.isArray(valor) ? (valor as Objeto) : {};

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AlterarSenhaRouteImport } from './routes/alterar-senha'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedApontarRouteImport } from './routes/_authenticated/apontar'
 import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
@@ -24,6 +25,7 @@ import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authentic
 import { Route as AuthenticatedReportarProblemaRouteImport } from './routes/_authenticated/reportar-problema'
 import { Route as AuthenticatedSelecionarRouteImport } from './routes/_authenticated/selecionar'
 import { Route as AuthenticatedUsuariosRouteImport } from './routes/_authenticated/usuarios'
+import { Route as AuthenticatedRelatorioRelatorioIdRouteImport } from './routes/_authenticated/relatorio.$relatorioId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -32,6 +34,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlterarSenhaRoute = AlterarSenhaRouteImport.update({
+  id: '/alterar-senha',
+  path: '/alterar-senha',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -102,9 +109,16 @@ const AuthenticatedUsuariosRoute = AuthenticatedUsuariosRouteImport.update({
   path: '/usuarios',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedRelatorioRelatorioIdRoute =
+  AuthenticatedRelatorioRelatorioIdRouteImport.update({
+    id: '/relatorio/$relatorioId',
+    path: '/relatorio/$relatorioId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
@@ -118,9 +132,11 @@ export interface FileRoutesByFullPath {
   '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/relatorio/$relatorioId': typeof AuthenticatedRelatorioRelatorioIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
@@ -134,11 +150,13 @@ export interface FileRoutesByTo {
   '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
   '/usuarios': typeof AuthenticatedUsuariosRoute
+  '/relatorio/$relatorioId': typeof AuthenticatedRelatorioRelatorioIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
   '/_authenticated/apontar': typeof AuthenticatedApontarRoute
   '/_authenticated/contagem': typeof AuthenticatedContagemRoute
@@ -152,11 +170,13 @@ export interface FileRoutesById {
   '/_authenticated/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/_authenticated/selecionar': typeof AuthenticatedSelecionarRoute
   '/_authenticated/usuarios': typeof AuthenticatedUsuariosRoute
+  '/_authenticated/relatorio/$relatorioId': typeof AuthenticatedRelatorioRelatorioIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/alterar-senha'
     | '/auth'
     | '/apontar'
     | '/contagem'
@@ -170,9 +190,11 @@ export interface FileRouteTypes {
     | '/reportar-problema'
     | '/selecionar'
     | '/usuarios'
+    | '/relatorio/$relatorioId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/alterar-senha'
     | '/auth'
     | '/apontar'
     | '/contagem'
@@ -186,10 +208,12 @@ export interface FileRouteTypes {
     | '/reportar-problema'
     | '/selecionar'
     | '/usuarios'
+    | '/relatorio/$relatorioId'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/alterar-senha'
     | '/auth'
     | '/_authenticated/apontar'
     | '/_authenticated/contagem'
@@ -203,11 +227,13 @@ export interface FileRouteTypes {
     | '/_authenticated/reportar-problema'
     | '/_authenticated/selecionar'
     | '/_authenticated/usuarios'
+    | '/_authenticated/relatorio/$relatorioId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AlterarSenhaRoute: typeof AlterarSenhaRoute
   AuthRoute: typeof AuthRoute
 }
 
@@ -225,6 +251,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alterar-senha': {
+      id: '/alterar-senha'
+      path: '/alterar-senha'
+      fullPath: '/alterar-senha'
+      preLoaderRoute: typeof AlterarSenhaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -318,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsuariosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/relatorio/$relatorioId': {
+      id: '/_authenticated/relatorio/$relatorioId'
+      path: '/relatorio/$relatorioId'
+      fullPath: '/relatorio/$relatorioId'
+      preLoaderRoute: typeof AuthenticatedRelatorioRelatorioIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -334,6 +374,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReportarProblemaRoute: typeof AuthenticatedReportarProblemaRoute
   AuthenticatedSelecionarRoute: typeof AuthenticatedSelecionarRoute
   AuthenticatedUsuariosRoute: typeof AuthenticatedUsuariosRoute
+  AuthenticatedRelatorioRelatorioIdRoute: typeof AuthenticatedRelatorioRelatorioIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -350,6 +391,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReportarProblemaRoute: AuthenticatedReportarProblemaRoute,
   AuthenticatedSelecionarRoute: AuthenticatedSelecionarRoute,
   AuthenticatedUsuariosRoute: AuthenticatedUsuariosRoute,
+  AuthenticatedRelatorioRelatorioIdRoute:
+    AuthenticatedRelatorioRelatorioIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -358,6 +401,7 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AlterarSenhaRoute: AlterarSenhaRoute,
   AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport

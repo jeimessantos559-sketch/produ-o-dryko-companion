@@ -196,7 +196,7 @@ function montarPrimeiraPagina(resumo: Json) {
   comandos.push(comandoTexto(`Gerado em: ${formatarDataHora(texto(raiz.geradoEm))}`, 320, 711, 8.5, false, "0.42 0.44 0.49"));
   comandos.push(comandoLinha(38, 695, 557, 695, "0.15 0.15 0.17"));
 
-  const cards = [
+  const cards: Array<readonly [string, string]> = [
     ["APONTAMENTOS", texto(totais.apontamentos)],
     ["PLTs FECHADOS", fitas ? "-" : texto(totais.plts)],
     ["PENDENTES", texto(totais.pendentes)],

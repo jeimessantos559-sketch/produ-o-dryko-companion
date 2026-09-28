@@ -398,7 +398,10 @@ export type Database = {
         Row: {
           ativo: boolean
           created_at: string
+          deve_alterar_senha: boolean
           id: string
+          login: string | null
+          login_key: string | null
           matricula: string | null
           nome: string
           onboarding_concluido: boolean
@@ -411,7 +414,10 @@ export type Database = {
         Insert: {
           ativo?: boolean
           created_at?: string
+          deve_alterar_senha?: boolean
           id: string
+          login?: string | null
+          login_key?: string | null
           matricula?: string | null
           nome?: string
           onboarding_concluido?: boolean
@@ -424,7 +430,10 @@ export type Database = {
         Update: {
           ativo?: boolean
           created_at?: string
+          deve_alterar_senha?: boolean
           id?: string
+          login?: string | null
+          login_key?: string | null
           matricula?: string | null
           nome?: string
           onboarding_concluido?: boolean

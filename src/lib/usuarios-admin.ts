@@ -1,7 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
 import { aliasDoNome, emailInternoDoLogin, normalizarLogin } from "@/lib/login-operacional";
 
 const criarEntrada = z.object({
@@ -19,7 +21,12 @@ const editarEntrada = z.discriminatedUnion("action", [
   z.object({ action: z.literal("delete"), userId: z.string().uuid() }),
 ]);
 
-async function exigirAdmin(context: any) {
+type ContextoAutenticado = {
+  supabase: SupabaseClient<Database>;
+  userId: string;
+};
+
+async function exigirAdmin(context: ContextoAutenticado) {
   const { data: admin } = await context.supabase.rpc("eh_admin_ativo", {
     _user_id: context.userId,
   });
@@ -30,8 +37,8 @@ function gerarSenhaTecnica() {
   return `Tmp-${crypto.randomUUID()}-Aa9!`;
 }
 
-async function gerarLoginUnico(supabaseAdmin: any, nome: string) {
-  const base = normalizarLogin(aliasDoNome(nome)) || `usuario.${crypto.randomUUID().slice(0, 6)}`;
+async function gerarLoginUnico(supabaseAdmin: SupabaseClient<Database>, nome: string) {
+  const base = normalizarLogin(aliasDoNome(nome) ?? "") || `usuario.${crypto.randomUUID().slice(0, 6)}`;
   let tentativa = base;
   let sufixo = 2;
   while (true) {
@@ -68,7 +75,7 @@ export const criarUsuario = createServerFn({ method: "POST" })
 
     if (error || !criado.user) throw new Error(error?.message || "Não foi possível criar o usuário.");
 
-    const { error: erroPerfil } = await (supabaseAdmin.from("profiles") as any)
+    const { error: erroPerfil } = await supabaseAdmin.from("profiles")
       .update({ nome: data.nome, login, login_key: loginKey, deve_alterar_senha: true, ativo: true })
       .eq("id", criado.user.id);
 
@@ -97,7 +104,7 @@ export const gerenciarUsuarioAdmin = createServerFn({ method: "POST" })
       });
       if (erroSenha) throw new Error("Não foi possível redefinir a senha do usuário.");
 
-      const { error } = await (supabaseAdmin.from("profiles") as any)
+      const { error } = await supabaseAdmin.from("profiles")
         .update({ deve_alterar_senha: true })
         .eq("id", data.userId);
       if (error) throw new Error("Não foi possível redefinir o primeiro acesso.");
@@ -114,7 +121,7 @@ export const gerenciarUsuarioAdmin = createServerFn({ method: "POST" })
 
     const loginKey = normalizarLogin(data.login);
     if (!loginKey) throw new Error("Informe um login válido.");
-    const { data: duplicado } = await (supabaseAdmin.from("profiles") as any)
+    const { data: duplicado } = await supabaseAdmin.from("profiles")
       .select("id")
       .eq("login_key", loginKey)
       .neq("id", data.userId)
@@ -127,7 +134,7 @@ export const gerenciarUsuarioAdmin = createServerFn({ method: "POST" })
     });
     if (erroAuth) throw new Error("Não foi possível atualizar o acesso do usuário.");
 
-    const { error } = await (supabaseAdmin.from("profiles") as any)
+    const { error } = await supabaseAdmin.from("profiles")
       .update({ nome: data.nome.trim(), login: data.login.trim(), login_key: loginKey })
       .eq("id", data.userId);
     if (error) throw new Error("Não foi possível atualizar o usuário.");
