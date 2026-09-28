@@ -18,22 +18,31 @@ export const CORTE_CATALOGO = [
 ] as const;
 
 export type GrupoCorte = {
+  /** Quantidade de pallets FECHADOS. Zero representa apenas um PLT picado. */
   quantidadePlts: number;
   rolosPorPlt: number;
   pltPicadoRolos: number | null;
+  /** Novos apontamentos contam o picado como adicional, sem somar um pallet fechado. */
+  picadoAdicional?: boolean;
 };
 
 export function totalPlts(grupos: GrupoCorte[]) {
-  return grupos.reduce((total, grupo) => total + grupo.quantidadePlts, 0);
+  return grupos.reduce((total, grupo) => total + Math.max(0, grupo.quantidadePlts), 0);
 }
 
 export function totalRolos(grupos: GrupoCorte[]) {
   return grupos.reduce((total, grupo) => {
+    const picado = grupo.pltPicadoRolos ?? 0;
+    if (grupo.picadoAdicional) {
+      return total + Math.max(0, grupo.quantidadePlts) * grupo.rolosPorPlt + picado;
+    }
+
+    // Compatibilidade com registros antigos, em que o PLT picado fazia parte da quantidade informada.
     const pltsFechados = Math.max(
       0,
       grupo.quantidadePlts - (grupo.pltPicadoRolos === null ? 0 : 1),
     );
-    return total + pltsFechados * grupo.rolosPorPlt + (grupo.pltPicadoRolos ?? 0);
+    return total + pltsFechados * grupo.rolosPorPlt + picado;
   }, 0);
 }
 
