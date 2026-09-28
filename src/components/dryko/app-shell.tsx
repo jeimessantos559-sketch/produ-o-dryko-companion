@@ -18,12 +18,23 @@ import {
   Users,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { DrykoLogo } from "@/components/dryko/logo";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth, NOMES_PAPEIS } from "@/lib/auth";
+import { dataSaoPaulo } from "@/lib/producao";
 
 const ITENS = [
   { to: "/painel", label: "Painel do turno", icon: Gauge },
@@ -44,6 +55,18 @@ type AppShellProps = {
   onNotifications?: () => void;
   onRepeat?: () => void;
   onApontar?: () => void;
+};
+
+type PendenciaRapida = {
+  id: string;
+  op: string | null;
+  produto_nome: string;
+  quantidade_plts: number | null;
+  total_rolos: number | null;
+  metragem: number | null;
+  area_m2: number | null;
+  data_local: string;
+  turno: "T1" | "T2" | "T3";
 };
 
 function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
@@ -106,11 +129,58 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell({ children, title, eyebrow, notificationCount = 0, onNotifications, onRepeat, onApontar }: AppShellProps) {
   const [aberto, setAberto] = useState(false);
   const [modalRapido, setModalRapido] = useState<"novo" | "repetir" | null>(null);
+  const [notificacoesInternas, setNotificacoesInternas] = useState(false);
+  const [carregandoNotificacoes, setCarregandoNotificacoes] = useState(false);
+  const [pendenciasInternas, setPendenciasInternas] = useState<PendenciaRapida[]>([]);
+  const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
   const { profile, isAutorizado } = useAuth();
   const contexto = profile?.setor_atual ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}` : "Escolher setor e turno";
-  const destinoNotificacoes = isAutorizado ? "/controle-apontamentos" : "/passagem-turno";
   const abrirNovo = onApontar ?? (() => setModalRapido("novo"));
   const abrirRepetir = onRepeat ?? (() => setModalRapido("repetir"));
+
+  async function carregarNotificacoesInternas() {
+    if (!profile?.setor_atual || !profile.turno_atual) {
+      setPendenciasInternas([]);
+      return;
+    }
+    setCarregandoNotificacoes(true);
+    const hoje = dataSaoPaulo();
+    const { data, error } = await (supabase.rpc as any)("painel_turno", {
+      p_setor: profile.setor_atual,
+      p_turno: profile.turno_atual,
+      p_data: hoje,
+    });
+    setCarregandoNotificacoes(false);
+    if (error) {
+      toast.error("Não foi possível carregar as pendências.");
+      setPendenciasInternas([]);
+      return;
+    }
+    const todas = ((data?.pendencias ?? []) as PendenciaRapida[]);
+    setPendenciasInternas(todas.filter((item) => item.data_local !== hoje || item.turno !== profile.turno_atual));
+  }
+
+  function abrirNotificacoes() {
+    if (onNotifications) {
+      onNotifications();
+      return;
+    }
+    setNotificacoesInternas(true);
+    void carregarNotificacoesInternas();
+  }
+
+  async function confirmarPendencia(id: string) {
+    if (!isAutorizado || confirmandoId) return;
+    setConfirmandoId(id);
+    const { error } = await supabase.rpc("confirmar_apontamentos_protheus", { p_ids: [id] });
+    setConfirmandoId(null);
+    if (error) {
+      toast.error("Não foi possível confirmar este apontamento.");
+      return;
+    }
+    toast.success("Apontamento confirmado no Protheus.");
+    await carregarNotificacoesInternas();
+  }
 
   return (
     <>
@@ -131,16 +201,10 @@ export function AppShell({ children, title, eyebrow, notificationCount = 0, onNo
                 <h1 className="truncate text-xl font-extrabold leading-tight tracking-tight text-slate-950 min-[390px]:text-2xl sm:text-3xl">{title ?? contexto}</h1>
               </Link>
 
-              {onNotifications ? (
-                <Button type="button" variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none" onClick={onNotifications} aria-label="Ver pendências de turnos anteriores">
-                  <Bell className="size-6" />
-                  {notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}
-                </Button>
-              ) : (
-                <Button asChild variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none">
-                  <Link to={destinoNotificacoes} aria-label="Ver pendências"><Bell className="size-6" />{notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}</Link>
-                </Button>
-              )}
+              <Button type="button" variant="outline" size="icon" className="relative h-12 w-12 shrink-0 rounded-2xl border-primary/70 bg-transparent text-slate-700 shadow-none" onClick={abrirNotificacoes} aria-label="Ver pendências de turnos anteriores">
+                <Bell className="size-6" />
+                {notificationCount > 0 && <span className="absolute -right-1 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 text-xs font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}
+              </Button>
 
               <Button type="button" variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-2xl border-primary/35 bg-transparent text-primary shadow-none" onClick={abrirRepetir} aria-label="Repetir último apontamento" title="Repetir último apontamento"><Copy className="size-5" /></Button>
 
@@ -158,8 +222,66 @@ export function AppShell({ children, title, eyebrow, notificationCount = 0, onNo
           repeatLatest={modalRapido === "repetir"}
         />
       )}
+
+      {!onNotifications && (
+        <Dialog open={notificacoesInternas} onOpenChange={setNotificacoesInternas}>
+          <DialogContent className="max-h-[88vh] overflow-y-auto rounded-3xl sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Pendências de turnos anteriores</DialogTitle>
+              <DialogDescription>Apontamentos que ainda precisam ser conferidos e lançados no Protheus.</DialogDescription>
+            </DialogHeader>
+            {carregandoNotificacoes ? (
+              <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Carregando pendências...</div>
+            ) : pendenciasInternas.length === 0 ? (
+              <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">Nenhuma pendência de turnos anteriores.</div>
+            ) : (
+              <>
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                  <p className="text-lg font-bold text-red-800">{pendenciasInternas.length} apontamento(s) pendente(s)</p>
+                  <p className="text-sm text-slate-500">{pendenciasInternas.reduce((total, item) => total + (item.quantidade_plts ?? 0), 0)} PLTs aguardando lançamento</p>
+                </div>
+                <div className="space-y-3">
+                  {pendenciasInternas.map((item) => (
+                    <article key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-950">{item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}</p>
+                          <p className="mt-1 text-sm text-slate-500">{formatarData(item.data_local)} · {nomeTurno(item.turno)}</p>
+                        </div>
+                        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Pendente</span>
+                      </div>
+                      <p className="mt-3 text-sm text-slate-600">{resumoPendencia(item)}</p>
+                      {isAutorizado && (
+                        <Button type="button" variant="outline" className="mt-3 w-full rounded-xl border-primary text-primary" disabled={confirmandoId !== null} onClick={() => void confirmarPendencia(item.id)}>
+                          {confirmandoId === item.id ? "Confirmando..." : "Conferir e confirmar"}
+                        </Button>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNotificacoesInternas(false)}>Fechar</Button>
+              <Button asChild><Link to="/passagem-turno" onClick={() => setNotificacoesInternas(false)}>Ver passagem de turno</Link></Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
+}
+
+function resumoPendencia(item: PendenciaRapida) {
+  if (Number(item.area_m2 ?? 0) > 0) return `${Number(item.area_m2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
+  if (Number(item.metragem ?? 0) > 0 && !item.total_rolos) return `${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m`;
+  const metros = item.metragem == null ? "" : ` · ${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
+  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos${metros}`;
+}
+
+function formatarData(valor: string) {
+  const [ano, mes, dia] = valor.split("-");
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
 }
 
 export function nomeSetor(codigo: string) {
