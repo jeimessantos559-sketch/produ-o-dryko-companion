@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import { enviarRelatorio } from "@/lib/enviar-relatorio";
-import { dataSaoPaulo } from "@/lib/producao";
+import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
@@ -26,7 +26,7 @@ type Fechamento = Database["public"]["Tables"]["fechamentos_turno"]["Row"];
 
 function PassagemTurno() {
   const { profile, user, isAdmin } = useAuth();
-  const [data, setData] = useState(dataSaoPaulo());
+  const [data, setData] = useState(() => dataOperacional(profile?.turno_atual));
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [metas, setMetas] = useState<Meta[]>([]);
   const [fechamento, setFechamento] = useState<Fechamento | null>(null);
@@ -36,6 +36,10 @@ function PassagemTurno() {
   const [processando, setProcessando] = useState(false);
   const [gerando, setGerando] = useState(false);
   const [justificativa, setJustificativa] = useState("");
+
+  useEffect(() => {
+    if (profile?.turno_atual) setData(dataOperacional(profile.turno_atual));
+  }, [profile?.turno_atual]);
 
   const carregar = useCallback(async () => {
     if (!profile?.setor_atual || !profile.turno_atual) {
@@ -141,7 +145,10 @@ function PassagemTurno() {
       .maybeSingle();
 
     const emails = Array.isArray(grupo?.emails) ? grupo.emails.filter(Boolean) : [];
-    if (emails.length === 0) return;
+    if (emails.length === 0) {
+      toast.info("Turno fechado. Nenhum grupo automático de e-mail está configurado.");
+      return;
+    }
 
     try {
       await enviarRelatorio({ data: { relatorioId, destinatarios: emails } });
@@ -167,22 +174,16 @@ function PassagemTurno() {
       p_data: data,
       p_resumo: montarResumo(),
     });
-    setProcessando(false);
     if (error) {
+      setProcessando(false);
       toast.error(error.message || "Não foi possível fechar o turno.");
       return;
     }
 
-    toast.success("Turno fechado e relatório gerado.");
     await carregar();
-    if (relatorioId) {
-      await enviarAutomaticamente(relatorioId);
-      try {
-        await baixarRelatorioPorId(relatorioId);
-      } catch (erro) {
-        toast.warning(erro instanceof Error ? erro.message : "Abra o relatório pela tela de Relatórios.");
-      }
-    }
+    if (relatorioId) await enviarAutomaticamente(relatorioId);
+    setProcessando(false);
+    toast.success("Turno fechado e relatório gerado. O PDF fica disponível no histórico.");
   }
 
   async function gerarRelatorio() {
@@ -229,7 +230,7 @@ function PassagemTurno() {
         <div>
           <h2 className="text-2xl font-bold">Passagem e fechamento de turno</h2>
           <p className="text-sm text-muted-foreground">
-            Revise produção, metas e pendências antes de encerrar. Ao fechar, o PDF é gerado e, se houver um grupo automático salvo, enviado por e-mail.
+            Revise produção, metas e pendências antes de encerrar. Ao fechar, o relatório é gerado e enviado ao grupo automático salvo. O PDF não é baixado automaticamente.
           </p>
         </div>
 
@@ -246,7 +247,7 @@ function PassagemTurno() {
               <p className="font-semibold">{profile?.turno_atual ?? "—"}</p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="data-fechamento">Data</Label>
+              <Label htmlFor="data-fechamento">Data da produção</Label>
               <Input
                 id="data-fechamento"
                 type="date"
@@ -317,13 +318,13 @@ function PassagemTurno() {
                 disabled={!profile?.setor_atual || !profile.turno_atual || processando || apontamentos.length === 0}
                 onClick={fechar}
               >
-                <LockKeyhole /> {processando ? "Encerrando e gerando..." : "Encerrar e gerar relatório"}
+                <LockKeyhole /> {processando ? "Encerrando e enviando..." : "Encerrar e enviar relatório"}
               </Button>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Button className="h-12" disabled={gerando} onClick={gerarRelatorio}>
                   {gerando ? <FileText className="animate-pulse" /> : <Download />}
-                  {gerando ? "Gerando..." : "Gerar relatório PDF"}
+                  {gerando ? "Gerando..." : "Baixar relatório PDF"}
                 </Button>
                 <Button asChild variant="outline" className="h-12">
                   <Link to="/relatorios">Histórico de relatórios</Link>
