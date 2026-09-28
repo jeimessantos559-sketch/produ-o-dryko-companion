@@ -24,7 +24,18 @@ type ResumoRegistro = {
   quantidade_plts?: Json;
   total_rolos?: Json;
   status?: Json;
+  sequencia_inicio?: Json;
+  sequencia_fim?: Json;
   [key: string]: Json | undefined;
+};
+
+type ProdutoResumo = {
+  nome: string;
+  apontamentos: number;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
 };
 
 function registro(valor: Json | undefined): ResumoRegistro {
@@ -34,9 +45,14 @@ function registro(valor: Json | undefined): ResumoRegistro {
 }
 
 function texto(valor: Json | undefined) {
-  if (valor === null || valor === undefined) return "-";
+  if (valor === null || valor === undefined || valor === "") return "-";
   if (typeof valor === "object") return JSON.stringify(valor);
   return String(valor);
+}
+
+function numero(valor: Json | undefined) {
+  const n = Number(valor ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function semAcentos(valor: string) {
@@ -47,86 +63,280 @@ function semAcentos(valor: string) {
 }
 
 function escaparPdf(valor: string) {
-  return semAcentos(valor).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  return semAcentos(valor)
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function limitar(valor: string, maximo: number) {
+  const limpo = semAcentos(valor);
+  return limpo.length <= maximo ? limpo : `${limpo.slice(0, Math.max(0, maximo - 3))}...`;
+}
+
+function formatarNumero(valor: number, casas = 2) {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: casas });
+}
+
+function formatarData(valor: string) {
+  if (!valor) return "-";
+  const somenteData = valor.slice(0, 10);
+  const [ano, mes, dia] = somenteData.split("-");
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
+}
+
+function formatarDataHora(valor: string) {
+  if (!valor) return "-";
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return formatarData(valor);
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(data);
+}
+
+function turnoLegivel(valor: string) {
+  if (valor === "T1") return "1o turno";
+  if (valor === "T2") return "2o turno";
+  if (valor === "T3") return "3o turno";
+  return valor || "-";
 }
 
 function unidadeMetragem(setor: string) {
   return setor.includes("manta") ? "m" : "m2";
 }
 
+function resumirProdutos(apontamentos: Json[]) {
+  const mapa = new Map<string, ProdutoResumo>();
+  for (const item of apontamentos) {
+    const apontamento = registro(item);
+    const nome = texto(apontamento.produto_nome);
+    const atual = mapa.get(nome) ?? {
+      nome,
+      apontamentos: 0,
+      plts: 0,
+      rolos: 0,
+      metragem: 0,
+      area: 0,
+    };
+    atual.apontamentos += 1;
+    atual.plts += numero(apontamento.quantidade_plts);
+    atual.rolos += numero(apontamento.total_rolos);
+    atual.metragem += numero(apontamento.metragem);
+    atual.area += numero(apontamento.area_m2);
+    mapa.set(nome, atual);
+  }
+  return [...mapa.values()].sort((a, b) => b.plts - a.plts || b.area - a.area || a.nome.localeCompare(b.nome));
+}
+
 export function linhasDoRelatorio(resumo: Json) {
   const raiz = registro(resumo);
   const totais = registro(raiz.totais);
   const apontamentos = Array.isArray(raiz.apontamentos) ? raiz.apontamentos : [];
+  const setor = texto(raiz.setor).toLowerCase();
+  const fitas = setor.includes("fita");
+  return [
+    `DRYKO - Relatorio de Producao`,
+    `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`,
+    `Responsavel: ${texto(raiz.responsavel)}`,
+    `Apontamentos: ${texto(totais.apontamentos)} | Pendentes: ${texto(totais.pendentes)} | Lancados: ${texto(totais.lancados)}`,
+    fitas
+      ? `Producao: ${texto(totais.area)} m2`
+      : `PLTs: ${texto(totais.plts)} | Rolos: ${texto(totais.rolos)} | Producao: ${texto(totais.metragem)} ${unidadeMetragem(setor)}`,
+    `Registros detalhados: ${apontamentos.length}`,
+  ];
+}
+
+function comandoTexto(textoValor: string, x: number, y: number, tamanho = 9, negrito = false, cor = "0.12 0.12 0.14") {
+  return `${cor} rg BT /${negrito ? "F2" : "F1"} ${tamanho} Tf ${x} ${y} Td (${escaparPdf(textoValor)}) Tj ET`;
+}
+
+function comandoRetangulo(x: number, y: number, largura: number, altura: number, preenchimento: string, borda?: string) {
+  const partes = [`${preenchimento} rg ${x} ${y} ${largura} ${altura} re f`];
+  if (borda) partes.push(`${borda} RG 0.7 w ${x} ${y} ${largura} ${altura} re S`);
+  return partes.join("\n");
+}
+
+function comandoLinha(x1: number, y1: number, x2: number, y2: number, cor = "0.84 0.85 0.88") {
+  return `${cor} RG 0.6 w ${x1} ${y1} m ${x2} ${y2} l S`;
+}
+
+function cabecalhoPagina(comandos: string[], titulo: string, subtitulo: string) {
+  comandos.push(comandoRetangulo(34, 760, 527, 52, "0.78 0.04 0.06"));
+  comandos.push(comandoTexto("DRYKO", 52, 785, 22, true, "1 1 1"));
+  comandos.push(comandoTexto("APONTA PRODUCAO", 52, 770, 9, true, "1 0.91 0.91"));
+  comandos.push(comandoTexto(titulo, 300, 787, 16, true, "1 1 1"));
+  comandos.push(comandoTexto(subtitulo, 300, 771, 8.5, false, "1 0.93 0.93"));
+}
+
+function rodapePagina(comandos: string[], pagina: number, totalPaginas: number) {
+  comandos.push(comandoLinha(36, 42, 559, 42));
+  comandos.push(comandoTexto("DRYKO Impermeabilizantes | Aponta Producao", 36, 26, 7.5, false, "0.45 0.47 0.52"));
+  comandos.push(comandoTexto(`Pagina ${pagina} de ${totalPaginas}`, 500, 26, 7.5, true, "0.45 0.47 0.52"));
+}
+
+function montarPrimeiraPagina(resumo: Json) {
+  const raiz = registro(resumo);
+  const totais = registro(raiz.totais);
+  const apontamentos = Array.isArray(raiz.apontamentos) ? raiz.apontamentos : [];
   const metas = Array.isArray(raiz.metas) ? raiz.metas : [];
+  const produtos = resumirProdutos(apontamentos);
+  const setor = texto(raiz.setor);
+  const setorChave = setor.toLowerCase();
+  const fitas = setorChave.includes("fita");
+  const mantas = setorChave.includes("manta");
+  const comandos: string[] = [];
+
+  cabecalhoPagina(comandos, "RELATORIO DE PRODUCAO", "Fechamento operacional de turno");
+
+  comandos.push(comandoTexto(formatarData(texto(raiz.data)), 38, 728, 18, true));
+  comandos.push(comandoTexto(`${setor} | ${turnoLegivel(texto(raiz.turno))}`, 38, 711, 10, true, "0.78 0.04 0.06"));
+  comandos.push(comandoTexto(`Responsavel: ${limitar(texto(raiz.responsavel), 48)}`, 320, 728, 9.5, true));
+  comandos.push(comandoTexto(`Gerado em: ${formatarDataHora(texto(raiz.geradoEm))}`, 320, 711, 8.5, false, "0.42 0.44 0.49"));
+  comandos.push(comandoLinha(38, 695, 557, 695, "0.15 0.15 0.17"));
+
+  const cards = [
+    ["APONTAMENTOS", texto(totais.apontamentos)],
+    ["PLTs FECHADOS", fitas ? "-" : texto(totais.plts)],
+    ["PENDENTES", texto(totais.pendentes)],
+    ["LANCADOS", texto(totais.lancados)],
+  ];
+  const cardXs = [38, 168, 298, 428];
+  cards.forEach(([rotulo, valor], i) => {
+    const x = cardXs[i] ?? 38;
+    comandos.push(comandoRetangulo(x, 624, 117, 55, i === 2 && numero(totais.pendentes) > 0 ? "1 0.96 0.94" : "0.97 0.98 0.99", "0.86 0.87 0.89"));
+    comandos.push(comandoTexto(rotulo, x + 10, 659, 7.2, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto(valor, x + 10, 637, 18, true, i === 2 && numero(totais.pendentes) > 0 ? "0.67 0.14 0.05" : "0.12 0.12 0.14"));
+  });
+
+  comandos.push(comandoRetangulo(38, 555, 247, 53, "0.98 0.96 0.96", "0.91 0.80 0.81"));
+  comandos.push(comandoTexto(fitas ? "PRODUCAO TOTAL" : mantas ? "METRAGEM PRODUZIDA" : "AREA PRODUZIDA", 50, 588, 7.5, true, "0.55 0.24 0.25"));
+  const producao = fitas
+    ? `${formatarNumero(numero(totais.area))} m2`
+    : `${formatarNumero(numero(totais.metragem))} ${mantas ? "m" : "m2"}`;
+  comandos.push(comandoTexto(producao, 50, 566, 18, true, "0.78 0.04 0.06"));
+
+  comandos.push(comandoRetangulo(300, 555, 245, 53, "0.97 0.98 0.99", "0.86 0.87 0.89"));
+  comandos.push(comandoTexto("ROLOS PRODUZIDOS", 312, 588, 7.5, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto(formatarNumero(numero(totais.rolos), 0), 312, 566, 18, true));
+
+  let y = 520;
+  comandos.push(comandoTexto("RESUMO POR PRODUTO", 38, y, 11, true));
+  y -= 12;
+  comandos.push(comandoLinha(38, y, 557, y));
+  y -= 18;
+  comandos.push(comandoTexto("Produto", 44, y, 7.5, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto("Apont.", 275, y, 7.5, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto("PLTs", 332, y, 7.5, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto("Rolos", 382, y, 7.5, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto(fitas ? "Area" : "Producao", 455, y, 7.5, true, "0.42 0.44 0.49"));
+  y -= 8;
+
+  const produtosPagina = produtos.slice(0, 8);
+  produtosPagina.forEach((produto, indice) => {
+    const fundo = indice % 2 === 0 ? "0.985 0.985 0.99" : "1 1 1";
+    comandos.push(comandoRetangulo(38, y - 17, 519, 22, fundo));
+    comandos.push(comandoTexto(limitar(produto.nome, 34), 44, y - 7, 8.5, true));
+    comandos.push(comandoTexto(String(produto.apontamentos), 286, y - 7, 8.5));
+    comandos.push(comandoTexto(String(produto.plts), 338, y - 7, 8.5));
+    comandos.push(comandoTexto(formatarNumero(produto.rolos, 0), 389, y - 7, 8.5));
+    const producaoProduto = fitas
+      ? `${formatarNumero(produto.area)} m2`
+      : `${formatarNumero(produto.metragem)} ${mantas ? "m" : "m2"}`;
+    comandos.push(comandoTexto(limitar(producaoProduto, 16), 455, y - 7, 8.5, true));
+    y -= 23;
+  });
+  if (produtos.length > produtosPagina.length) {
+    comandos.push(comandoTexto(`+ ${produtos.length - produtosPagina.length} produto(s) no detalhamento`, 44, y - 3, 8, false, "0.45 0.47 0.52"));
+    y -= 18;
+  }
+
+  if (metas.length > 0 && y > 150) {
+    comandos.push(comandoTexto("METAS ATIVAS", 38, y, 10, true));
+    y -= 12;
+    comandos.push(comandoLinha(38, y, 557, y));
+    y -= 17;
+    metas.slice(0, 4).forEach((item) => {
+      const meta = registro(item);
+      comandos.push(comandoTexto(`OP ${texto(meta.op)} | ${limitar(texto(meta.produto_nome), 28)}`, 44, y, 8.3, true));
+      comandos.push(comandoTexto(`Meta: ${texto(meta.quantidade_meta)} ${texto(meta.unidade)}`, 380, y, 8.3));
+      y -= 18;
+    });
+    if (metas.length > 4) comandos.push(comandoTexto(`+ ${metas.length - 4} meta(s) ativa(s)`, 44, y, 8, false, "0.45 0.47 0.52"));
+  }
+
+  return comandos;
+}
+
+function montarPaginasDetalhamento(resumo: Json) {
+  const raiz = registro(resumo);
+  const apontamentos = Array.isArray(raiz.apontamentos) ? raiz.apontamentos : [];
   const setor = texto(raiz.setor).toLowerCase();
   const fitas = setor.includes("fita");
   const mantas = setor.includes("manta");
+  const porPagina = 27;
+  const paginas: string[][] = [];
 
-  const producaoResumo = fitas
-    ? `Producao: ${texto(totais.area)} m2`
-    : `PLTs: ${texto(totais.plts)} | Rolos: ${texto(totais.rolos)} | ${mantas ? "Metragem" : "Metragem produzida"}: ${texto(totais.metragem)} ${unidadeMetragem(setor)}`;
+  for (let inicio = 0; inicio < apontamentos.length; inicio += porPagina) {
+    const comandos: string[] = [];
+    const lote = apontamentos.slice(inicio, inicio + porPagina);
+    cabecalhoPagina(comandos, "DETALHAMENTO DO TURNO", `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`);
+    comandos.push(comandoTexto("Seq.", 38, 730, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto("OP / Lote", 78, 730, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto("Produto", 168, 730, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto("PLTs", 350, 730, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto("Rolos", 390, 730, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto(fitas ? "Area" : "Producao", 442, 730, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto("Status", 510, 730, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(comandoLinha(38, 718, 557, 718));
 
-  const linhas = [
-    `Setor: ${texto(raiz.setor)} | Turno: ${texto(raiz.turno)} | Data: ${texto(raiz.data)}`,
-    `Responsavel: ${texto(raiz.responsavel)} | Gerado em: ${texto(raiz.geradoEm)}`,
-    "",
-    "RESUMO",
-    `Apontamentos: ${texto(totais.apontamentos)} | Pendentes: ${texto(totais.pendentes)} | Lancados: ${texto(totais.lancados)}`,
-    producaoResumo,
-    "",
-  ];
-
-  if (metas.length > 0) {
-    linhas.push("METAS ATIVAS");
-    for (const item of metas.slice(0, 8)) {
-      const meta = registro(item);
-      linhas.push(
-        `${texto(meta.op)} | ${texto(meta.produto_nome)} | Meta: ${texto(meta.quantidade_meta)} ${texto(meta.unidade)}`,
-      );
-    }
-    linhas.push("");
+    let y = 699;
+    lote.forEach((item, indice) => {
+      const apontamento = registro(item);
+      const fundo = indice % 2 === 0 ? "0.985 0.985 0.99" : "1 1 1";
+      comandos.push(comandoRetangulo(36, y - 10, 523, 21, fundo));
+      const seqIni = texto(apontamento.sequencia_inicio);
+      const seqFim = texto(apontamento.sequencia_fim);
+      const seq = seqIni !== "-" && seqFim !== "-" ? (seqIni === seqFim ? seqIni : `${seqIni}-${seqFim}`) : String(inicio + indice + 1);
+      comandos.push(comandoTexto(limitar(seq, 7), 40, y, 7.8));
+      comandos.push(comandoTexto(limitar(texto(apontamento.op ?? apontamento.lote), 14), 78, y, 7.8, true));
+      comandos.push(comandoTexto(limitar(texto(apontamento.produto_nome), 27), 168, y, 7.8));
+      comandos.push(comandoTexto(String(numero(apontamento.quantidade_plts) || "-"), 354, y, 7.8));
+      comandos.push(comandoTexto(formatarNumero(numero(apontamento.total_rolos), 0), 393, y, 7.8));
+      const producao = fitas
+        ? `${formatarNumero(numero(apontamento.area_m2))} m2`
+        : `${formatarNumero(numero(apontamento.metragem))} ${mantas ? "m" : "m2"}`;
+      comandos.push(comandoTexto(limitar(producao, 12), 442, y, 7.8));
+      const status = texto(apontamento.status).toLowerCase() === "lancado" ? "Lancado" : "Pendente";
+      comandos.push(comandoTexto(status, 510, y, 7.2, true, status === "Pendente" ? "0.67 0.14 0.05" : "0.07 0.45 0.23"));
+      y -= 23;
+    });
+    paginas.push(comandos);
   }
 
-  linhas.push("APONTAMENTOS");
-  for (const item of apontamentos.slice(0, 30)) {
-    const apontamento = registro(item);
-    const identificador = apontamento.op ?? apontamento.lote ?? "-";
-    const quantidade =
-      apontamento.area_m2 !== null && apontamento.area_m2 !== undefined
-        ? `${texto(apontamento.area_m2)} m2`
-        : `${texto(apontamento.quantidade_plts)} PLTs | ${texto(apontamento.total_rolos)} rolos | ${texto(apontamento.metragem)} ${unidadeMetragem(setor)}`;
-    linhas.push(
-      `${texto(identificador)} | ${texto(apontamento.produto_nome)} | ${quantidade} | ${texto(apontamento.status)}`,
-    );
-  }
-  if (apontamentos.length > 30) linhas.push(`... e mais ${apontamentos.length - 30} registro(s).`);
-  return linhas;
+  if (paginas.length === 0) paginas.push([]);
+  return paginas;
 }
 
-export function gerarPdfRelatorio(resumo: Json) {
-  const linhas = linhasDoRelatorio(resumo).slice(0, 48);
-  const comandos = [
-    "BT /F2 17 Tf 40 805 Td (DRYKO - RELATORIO DE PRODUCAO) Tj ET",
-    "BT /F1 9 Tf 40 786 Td (Aponta Producao) Tj ET",
-  ];
-  let y = 760;
-  for (const linha of linhas) {
-    const fonte =
-      linha === "RESUMO" || linha === "METAS ATIVAS" || linha === "APONTAMENTOS" ? "F2" : "F1";
-    comandos.push(`BT /${fonte} 8.5 Tf 40 ${y} Td (${escaparPdf(linha).slice(0, 115)}) Tj ET`);
-    y -= 14;
-  }
-  comandos.push("0.75 0 0 rg 40 822 515 3 re f");
-  const stream = comandos.join("\n");
-  const objetos = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
-  ];
+function montarPdf(paginas: string[][]) {
+  const totalPaginas = paginas.length;
+  paginas.forEach((comandos, indice) => rodapePagina(comandos, indice + 1, totalPaginas));
+
+  const objetos: string[] = [];
+  const idsPaginas = paginas.map((_, indice) => 5 + indice * 2);
+  objetos.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objetos.push(`<< /Type /Pages /Kids [${idsPaginas.map((id) => `${id} 0 R`).join(" ")}] /Count ${paginas.length} >>`);
+  objetos.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  objetos.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+
+  paginas.forEach((comandos, indice) => {
+    const paginaId = 5 + indice * 2;
+    const conteudoId = paginaId + 1;
+    const stream = comandos.join("\n");
+    objetos.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${conteudoId} 0 R >>`);
+    objetos.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  });
 
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
@@ -141,6 +351,12 @@ export function gerarPdfRelatorio(resumo: Json) {
   }
   pdf += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return new TextEncoder().encode(pdf);
+}
+
+export function gerarPdfRelatorio(resumo: Json) {
+  const primeira = montarPrimeiraPagina(resumo);
+  const detalhamento = montarPaginasDetalhamento(resumo);
+  return montarPdf([primeira, ...detalhamento]);
 }
 
 export function arquivoPdf(resumo: Json, nome: string) {
