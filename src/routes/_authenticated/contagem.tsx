@@ -109,7 +109,7 @@ function Contagem() {
   const [programacao, setProgramacao] = useState<ProgramacaoItem[]>([]);
   const [produtos, setProdutos] = useState<ProdutoCatalogo[]>([]);
   const [metaDigitada, setMetaDigitada] = useState("");
-  const [horasDigitadas, setHorasDigitadas] = useState(1);
+  const [horasDigitadas, setHorasDigitadas] = useState("");
   const [produtoId, setProdutoId] = useState("");
   const [referencia, setReferencia] = useState("");
   const [quantidadePrevista, setQuantidadePrevista] = useState("");
@@ -136,6 +136,8 @@ function Contagem() {
       setOcorrencias([]);
       setProgramacao([]);
       setProdutos([]);
+      setMetaDigitada("");
+      setHorasDigitadas("");
       return;
     }
 
@@ -195,16 +197,16 @@ function Contagem() {
           setErroMeta(true);
           setMetaTurno(null);
           setMetaDigitada("");
-          setHorasDigitadas(horasDisponiveis.length || 1);
+          setHorasDigitadas("");
         } else {
           const meta = (resultadoMeta.data as MetaTurno | null) ?? null;
           setMetaTurno(meta);
           setMetaDigitada(meta ? formatarCampoNumero(Number(meta.quantidade_meta)) : "");
-          setHorasDigitadas(meta?.horas_produtivas ?? horasDisponiveis.length ?? 1);
+          setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
         }
       },
     );
-  }, [dataAtual, horasDisponiveis, programacaoSuportada, setor, turno]);
+  }, [dataAtual, programacaoSuportada, setor, turno]);
 
   const porHora = useMemo(() => {
     const mapa = new Map<string, HoraInterna>();
@@ -231,12 +233,12 @@ function Contagem() {
   }, [registros, turno]);
 
   const metaTotal = Number(metaTurno?.quantidade_meta ?? 0);
-  const quantidadeHoras = Math.min(Number(metaTurno?.horas_produtivas ?? 0), horasDisponiveis.length);
-  const metaPorHora = quantidadeHoras > 0 ? metaTotal / quantidadeHoras : 0;
+  const duracaoProdutiva = Number(metaTurno?.horas_produtivas ?? 0);
+  const metaPorHora = duracaoProdutiva > 0 ? metaTotal / duracaoProdutiva : 0;
 
   const horasComMeta = useMemo<HoraPlanejada[]>(() => {
     const mapa = new Map(porHora.map((item) => [item.hora, item]));
-    const horasPlanejadas = metaTurno ? horasDisponiveis.slice(0, quantidadeHoras) : [];
+    const horasPlanejadas = metaTurno ? horasDisponiveis : [];
     const horasAjustadas = ajustesHora.map((item) => chaveHora(item.hora));
     const horasOcorrencias = ocorrencias.map((item) => horaCheiaLocal(item.created_at));
     const chaves = [...new Set([...horasPlanejadas, ...porHora.map((item) => item.hora), ...horasAjustadas, ...horasOcorrencias])].sort(
@@ -275,7 +277,7 @@ function Contagem() {
         ocorrencias: mensagens,
       };
     });
-  }, [ajustesHora, metaPorHora, metaTurno, horasDisponiveis, quantidadeHoras, ocorrencias, porHora, setor, turno]);
+  }, [ajustesHora, metaPorHora, metaTurno, horasDisponiveis, ocorrencias, porHora, setor, turno]);
 
   const realizadoTurno = useMemo(
     () => porHora.reduce((total, item) => total + valorDaHora(item, setor), 0),
@@ -286,11 +288,8 @@ function Contagem() {
 
   const metaInformada = numeroDoCampo(metaDigitada);
   const metaSimulada = Number.isFinite(metaInformada) ? metaInformada : 0;
-  const horasSimuladas = Math.min(
-    Math.max(1, Number(horasDigitadas) || 1),
-    Math.max(1, horasDisponiveis.length),
-  );
-  const metaHoraSimulada = metaSimulada > 0 ? metaSimulada / horasSimuladas : 0;
+  const horasSimuladas = duracaoDoCampo(horasDigitadas);
+  const metaHoraSimulada = metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
 
   const resumoProgramacao = useMemo(() => {
     return programacao.map((item) => {
@@ -308,12 +307,13 @@ function Contagem() {
       toast.error("Informe uma meta maior que zero.");
       return;
     }
-    if (!Number.isInteger(horasDigitadas) || horasDigitadas < 1 || horasDigitadas > horasDisponiveis.length) {
-      toast.error(`Informe entre 1 e ${horasDisponiveis.length} horas produtivas.`);
+    if (!Number.isFinite(horasSimuladas) || horasSimuladas <= 0 || horasSimuladas > 24) {
+      toast.error("Informe um tempo produtivo válido, por exemplo 9:28.");
       return;
     }
 
     setSalvandoMeta(true);
+    const duracaoParaSalvar = Number(horasSimuladas.toFixed(2));
     const { data, error } = await supabase
       .from("metas_turno")
       .upsert(
@@ -323,7 +323,7 @@ function Contagem() {
           data_local: dataAtual,
           quantidade_meta: metaSimulada,
           unidade,
-          horas_produtivas: horasDigitadas,
+          horas_produtivas: duracaoParaSalvar,
           criado_por: user.id,
           updated_at: new Date().toISOString(),
         },
@@ -338,7 +338,9 @@ function Contagem() {
       return;
     }
 
-    setMetaTurno(data as MetaTurno);
+    const metaSalva = data as MetaTurno;
+    setMetaTurno(metaSalva);
+    setHorasDigitadas(formatarDuracaoHoras(Number(metaSalva.horas_produtivas)));
     toast.success("Meta do turno salva.");
   }
 
@@ -479,7 +481,7 @@ function Contagem() {
   }
 
   return (
-    <AppShell title="Contagem" eyebrow="PRODUÇÃO · CONTROLE DO TURNO">
+    <AppShell title="Programação" eyebrow="PRODUÇÃO · CONTROLE DO TURNO">
       <div className="mx-auto max-w-4xl space-y-4">
         <div className="flex items-end justify-between gap-3">
           <div>
@@ -557,21 +559,33 @@ function Contagem() {
               <CardContent className="space-y-3">
                 {canFinalizeGoals ? (
                   <>
-                    <div className="grid grid-cols-[minmax(0,1fr)_104px] gap-2">
+                    <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-2">
                       <div className="space-y-1.5">
                         <Label>Meta total ({unidade})</Label>
                         <Input value={metaDigitada} onChange={(e) => setMetaDigitada(e.target.value)} placeholder="0" />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Horas</Label>
-                        <Input type="number" min={1} max={horasDisponiveis.length} value={horasDigitadas} onChange={(e) => setHorasDigitadas(Number(e.target.value))} />
+                        <Label>Tempo produtivo</Label>
+                        <Input
+                          inputMode="decimal"
+                          value={horasDigitadas}
+                          onChange={(e) => setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))}
+                          placeholder="Ex.: 9:28"
+                        />
                       </div>
                     </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Digite o tempo que quiser, como 9:28, 8:45 ou 7,5 horas.
+                    </p>
                     <div className="rounded-xl bg-muted p-3 text-center">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Previsto por hora</p>
                       <p className="mt-1 text-xl font-black text-primary">{fmt(metaHoraSimulada)} {unidade}</p>
                     </div>
-                    <Button className="w-full" disabled={salvandoMeta || metaSimulada <= 0} onClick={() => void salvarMeta()}>
+                    <Button
+                      className="w-full"
+                      disabled={salvandoMeta || metaSimulada <= 0 || horasSimuladas <= 0}
+                      onClick={() => void salvarMeta()}
+                    >
                       <Save className="size-4" /> {salvandoMeta ? "Salvando..." : "Salvar meta"}
                     </Button>
                   </>
@@ -871,6 +885,34 @@ function horaMinutoLocal(valor: string) {
     minute: "2-digit",
     hourCycle: "h23",
   }).format(new Date(valor));
+}
+
+function duracaoDoCampo(valor: string) {
+  const limpo = valor.trim().toLowerCase().replace(/\s/g, "").replace("h", ":");
+  if (!limpo) return 0;
+  if (limpo.includes(":")) {
+    const [horasTexto, minutosTexto = "0"] = limpo.split(":", 2);
+    const horas = Number(horasTexto);
+    const minutos = Number(minutosTexto);
+    if (!Number.isFinite(horas) || !Number.isFinite(minutos) || horas < 0 || minutos < 0 || minutos >= 60) return Number.NaN;
+    return horas + minutos / 60;
+  }
+  return numeroDoCampo(limpo);
+}
+
+function formatarDuracaoHoras(valor: number) {
+  if (!Number.isFinite(valor) || valor <= 0) return "";
+  let horas = Math.floor(valor);
+  let minutos = Math.round((valor - horas) * 60);
+  if (minutos === 60) {
+    horas += 1;
+    minutos = 0;
+  }
+  return `${horas}:${String(minutos).padStart(2, "0")}`;
+}
+
+function normalizarDuracaoDigitada(valor: string) {
+  return valor.replace(/[^0-9:,.hH]/g, "").slice(0, 8);
 }
 
 function numeroDoCampo(valor: string) {
