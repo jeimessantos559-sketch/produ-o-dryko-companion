@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { DrykoLogo } from "@/components/dryko/logo";
+import { ThemeToggle } from "@/components/dryko/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -115,14 +116,34 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
         })}
       </nav>
       <div className="space-y-2 border-t border-sidebar-border p-3 text-sm">
-        <div><p className="truncate font-semibold">{profile?.nome || "Usuário"}</p><p className="truncate text-xs text-sidebar-foreground/65">{roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}</p></div>
-        <Button variant="ghost" size="sm" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={sair}><LogOut className="size-4" /> Sair</Button>
+        <div>
+          <p className="truncate font-semibold">{profile?.nome || "Usuário"}</p>
+          <p className="truncate text-xs text-sidebar-foreground/65">
+            {roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          onClick={sair}
+        >
+          <LogOut className="size-4" /> Sair
+        </Button>
       </div>
     </div>
   );
 }
 
-export function AppShell({ children, title, eyebrow, notificationCount = 0, onNotifications, onRepeat, onApontar }: AppShellProps) {
+export function AppShell({
+  children,
+  title,
+  eyebrow,
+  notificationCount = 0,
+  onNotifications,
+  onRepeat,
+  onApontar,
+}: AppShellProps) {
   const [aberto, setAberto] = useState(false);
   const [modalRapido, setModalRapido] = useState<"novo" | "repetir" | null>(null);
   const [notificacoesInternas, setNotificacoesInternas] = useState(false);
@@ -130,7 +151,9 @@ export function AppShell({ children, title, eyebrow, notificationCount = 0, onNo
   const [pendenciasInternas, setPendenciasInternas] = useState<PendenciaRapida[]>([]);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
   const { profile, isAutorizado } = useAuth();
-  const contexto = profile?.setor_atual ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}` : "Escolher setor e turno";
+  const contexto = profile?.setor_atual
+    ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}`
+    : "Escolher setor e turno";
   const abrirNovo = onApontar ?? (() => setModalRapido("novo"));
   const abrirRepetir = onRepeat ?? (() => setModalRapido("repetir"));
 
@@ -144,8 +167,15 @@ export function AppShell({ children, title, eyebrow, notificationCount = 0, onNo
     const painelTurno = supabase.rpc as unknown as (
       nome: string,
       parametros: { p_setor: string; p_turno: string; p_data: string },
-    ) => PromiseLike<{ data: { pendencias?: PendenciaRapida[] } | null; error: { message: string } | null }>;
-    const { data, error } = await painelTurno("painel_turno", { p_setor: profile.setor_atual, p_turno: profile.turno_atual, p_data: hoje });
+    ) => PromiseLike<{
+      data: { pendencias?: PendenciaRapida[] } | null;
+      error: { message: string } | null;
+    }>;
+    const { data, error } = await painelTurno("painel_turno", {
+      p_setor: profile.setor_atual,
+      p_turno: profile.turno_atual,
+      p_data: hoje,
+    });
     setCarregandoNotificacoes(false);
     if (error) {
       toast.error("Não foi possível carregar as pendências.");
@@ -153,7 +183,9 @@ export function AppShell({ children, title, eyebrow, notificationCount = 0, onNo
       return;
     }
     const todas = (data?.pendencias ?? []) as PendenciaRapida[];
-    setPendenciasInternas(todas.filter((item) => item.data_local !== hoje || item.turno !== profile.turno_atual));
+    setPendenciasInternas(
+      todas.filter((item) => item.data_local !== hoje || item.turno !== profile.turno_atual),
+    );
   }
 
   function abrirNotificacoes() {
@@ -181,58 +213,172 @@ export function AppShell({ children, title, eyebrow, notificationCount = 0, onNo
   return (
     <>
       <div className="flex min-h-screen bg-background">
-        <aside className="hidden w-[232px] shrink-0 md:block"><div className="fixed h-screen w-[232px]"><Navegacao /></div></aside>
+        <aside className="hidden w-[232px] shrink-0 md:block">
+          <div className="fixed h-screen w-[232px]">
+            <Navegacao />
+          </div>
+        </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-background/95 backdrop-blur">
+          <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
             <div className="mx-auto flex w-full max-w-[1480px] items-center gap-1.5 px-2.5 py-2 sm:gap-2 sm:px-5">
               <Sheet open={aberto} onOpenChange={setAberto}>
                 <SheetTrigger asChild>
-                  <Button variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-xl border-primary/70 bg-transparent text-primary shadow-none md:hidden" aria-label="Abrir menu"><Menu className="size-5" /></Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 rounded-xl border-primary/70 bg-transparent text-primary shadow-none md:hidden"
+                    aria-label="Abrir menu"
+                  >
+                    <Menu className="size-5" />
+                  </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[min(84vw,276px)] p-0"><SheetTitle className="sr-only">Menu</SheetTitle><Navegacao onNavigate={() => setAberto(false)} /></SheetContent>
+                <SheetContent side="left" className="w-[min(84vw,276px)] p-0">
+                  <SheetTitle className="sr-only">Menu</SheetTitle>
+                  <Navegacao onNavigate={() => setAberto(false)} />
+                </SheetContent>
               </Sheet>
 
               <Link to="/selecionar" className="min-w-0 flex-1" title="Alterar setor e turno">
-                <p className="truncate text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-[11px]">{eyebrow ?? contexto}</p>
-                <h1 className="truncate text-lg font-extrabold leading-tight tracking-tight text-slate-950 sm:text-2xl">{title ?? contexto}</h1>
+                <p className="truncate text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground sm:text-[11px]">
+                  {eyebrow ?? contexto}
+                </p>
+                <h1 className="truncate text-lg font-extrabold leading-tight tracking-tight text-foreground sm:text-2xl">
+                  {title ?? contexto}
+                </h1>
               </Link>
 
-              <Button type="button" variant="outline" size="icon" className="relative h-10 w-10 shrink-0 rounded-xl border-primary/60 bg-transparent text-slate-700 shadow-none" onClick={abrirNotificacoes} aria-label="Ver pendências"><Bell className="size-5" />{notificationCount > 0 && <span className="absolute -right-1 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">{notificationCount > 99 ? "99+" : notificationCount}</span>}</Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="relative h-10 w-10 shrink-0 rounded-xl border-primary/60 bg-transparent text-foreground shadow-none"
+                onClick={abrirNotificacoes}
+                aria-label="Ver pendências"
+              >
+                <Bell className="size-5" />
+                {notificationCount > 0 && (
+                  <span className="absolute -right-1 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    {notificationCount > 99 ? "99+" : notificationCount}
+                  </span>
+                )}
+              </Button>
 
-              <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-xl border-primary/30 bg-transparent text-primary shadow-none" onClick={abrirRepetir} aria-label="Repetir último apontamento"><Copy className="size-4.5" /></Button>
+              <ThemeToggle />
 
-              <Button type="button" className="h-10 shrink-0 rounded-xl px-2.5 text-sm font-semibold shadow-sm min-[390px]:px-3.5" onClick={abrirNovo}><Plus className="size-5" /><span className="hidden min-[390px]:inline">Apontar</span></Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0 rounded-xl border-primary/30 bg-transparent text-primary shadow-none"
+                onClick={abrirRepetir}
+                aria-label="Repetir último apontamento"
+              >
+                <Copy className="size-4.5" />
+              </Button>
+
+              <Button
+                type="button"
+                className="h-10 shrink-0 rounded-xl px-2.5 text-sm font-semibold shadow-sm min-[390px]:px-3.5"
+                onClick={abrirNovo}
+              >
+                <Plus className="size-5" />
+                <span className="hidden min-[390px]:inline">Apontar</span>
+              </Button>
             </div>
           </header>
-          <main className="mx-auto w-full max-w-[1480px] flex-1 px-2.5 pb-12 pt-3 sm:px-5 sm:pt-4">{children}</main>
+          <main className="mx-auto w-full max-w-[1480px] flex-1 px-2.5 pb-12 pt-3 sm:px-5 sm:pt-4">
+            {children}
+          </main>
         </div>
       </div>
 
-      {!onApontar && !onRepeat && <ApontamentoRapido open={modalRapido !== null} onOpenChange={(open) => { if (!open) setModalRapido(null); }} repeatLatest={modalRapido === "repetir"} />}
+      {!onApontar && !onRepeat && (
+        <ApontamentoRapido
+          open={modalRapido !== null}
+          onOpenChange={(open) => {
+            if (!open) setModalRapido(null);
+          }}
+          repeatLatest={modalRapido === "repetir"}
+        />
+      )}
 
       {!onNotifications && (
         <Dialog open={notificacoesInternas} onOpenChange={setNotificacoesInternas}>
           <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-2xl p-4 sm:max-w-xl">
-            <DialogHeader><DialogTitle>Pendências de turnos anteriores</DialogTitle><DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Pendências de turnos anteriores</DialogTitle>
+              <DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription>
+            </DialogHeader>
             {carregandoNotificacoes ? (
-              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Carregando pendências...</div>
+              <div className="rounded-xl bg-muted p-4 text-center text-sm text-muted-foreground">
+                Carregando pendências...
+              </div>
             ) : pendenciasInternas.length === 0 ? (
-              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Nenhuma pendência de turnos anteriores.</div>
+              <div className="rounded-xl bg-muted p-4 text-center text-sm text-muted-foreground">
+                Nenhuma pendência de turnos anteriores.
+              </div>
             ) : (
               <>
-                <div className="rounded-xl border border-red-200 bg-red-50 p-3"><p className="font-bold text-red-800">{pendenciasInternas.length} apontamento(s) pendente(s)</p><p className="text-xs text-slate-500">{pendenciasInternas.reduce((total, item) => total + Number(item.quantidade_plts ?? 0), 0)} PLTs fechados aguardando lançamento</p></div>
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/40">
+                  <p className="font-bold text-red-800 dark:text-red-200">
+                    {pendenciasInternas.length} apontamento(s) pendente(s)
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {pendenciasInternas.reduce(
+                      (total, item) => total + Number(item.quantidade_plts ?? 0),
+                      0,
+                    )}{" "}
+                    PLTs fechados aguardando lançamento
+                  </p>
+                </div>
                 <div className="space-y-2">
                   {pendenciasInternas.map((item) => (
-                    <article key={item.id} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
-                      <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-bold text-slate-950">{item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}</p><p className="text-xs text-slate-500">{formatarData(item.data_local)} · {nomeTurno(item.turno)}</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Pendente</span></div>
-                      <p className="mt-2 text-sm text-slate-600">{resumoPendencia(item)}</p>
-                      {isAutorizado && <Button type="button" variant="outline" size="sm" className="mt-2 w-full border-primary text-primary" disabled={confirmandoId !== null} onClick={() => void confirmarPendencia(item.id)}>{confirmandoId === item.id ? "Lançando..." : "Conferir e lançar"}</Button>}
+                    <article key={item.id} className="rounded-xl border border-border bg-muted/40 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-foreground">
+                            {item.op ? `OP ${item.op} · ` : ""}
+                            {item.produto_nome}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatarData(item.data_local)} · {nomeTurno(item.turno)}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                          Pendente
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">{resumoPendencia(item)}</p>
+                      {isAutorizado && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 w-full border-primary text-primary"
+                          disabled={confirmandoId !== null}
+                          onClick={() => void confirmarPendencia(item.id)}
+                        >
+                          {confirmandoId === item.id ? "Lançando..." : "Conferir e lançar"}
+                        </Button>
+                      )}
                     </article>
                   ))}
                 </div>
               </>
             )}
-            <DialogFooter className="grid grid-cols-2 gap-2 sm:flex"><Button variant="outline" onClick={() => setNotificacoesInternas(false)}>Fechar</Button><Button asChild><Link to="/controle-apontamentos" onClick={() => setNotificacoesInternas(false)}>Controle Protheus</Link></Button></DialogFooter>
+            <DialogFooter className="grid grid-cols-2 gap-2 sm:flex">
+              <Button variant="outline" onClick={() => setNotificacoesInternas(false)}>
+                Fechar
+              </Button>
+              <Button asChild>
+                <Link
+                  to="/controle-apontamentos"
+                  onClick={() => setNotificacoesInternas(false)}
+                >
+                  Controle Protheus
+                </Link>
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
@@ -241,15 +387,29 @@ export function AppShell({ children, title, eyebrow, notificationCount = 0, onNo
 }
 
 function resumoPendencia(item: PendenciaRapida) {
-  if (Number(item.area_m2 ?? 0) > 0) return `${Number(item.area_m2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
-  if (Number(item.metragem ?? 0) > 0) return `${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos${item.lote ? ` · Lote ${item.lote}` : ""}`;
+  if (Number(item.area_m2 ?? 0) > 0)
+    return `${Number(item.area_m2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
+  if (Number(item.metragem ?? 0) > 0)
+    return `${Number(item.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos${item.lote ? ` · Lote ${item.lote}` : ""}`;
   return `${item.quantidade_plts ?? 0} PLTs fechados · ${item.total_rolos ?? 0} rolos`;
 }
 
-function formatarData(valor: string) { const [ano, mes, dia] = valor.split("-"); return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor; }
+function formatarData(valor: string) {
+  const [ano, mes, dia] = valor.split("-");
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
+}
 
 export function nomeSetor(codigo: string) {
-  const mapa: Record<string, string> = { corte: "Corte", fitas: "Fitas", mantas: "Mantas", asfox: "Asfox", misturadores: "Misturadores", liquidos: "Líquidos", pos: "Pós", avulsos: "Avulsos" };
+  const mapa: Record<string, string> = {
+    corte: "Corte",
+    fitas: "Fitas",
+    mantas: "Mantas",
+    asfox: "Asfox",
+    misturadores: "Misturadores",
+    liquidos: "Líquidos",
+    pos: "Pós",
+    avulsos: "Avulsos",
+  };
   return mapa[codigo] ?? codigo;
 }
 
