@@ -17,7 +17,7 @@ type AuditoriaMeta = Database["public"]["Tables"]["meta_auditoria"]["Row"];
 type MetaPainel = Meta & { apontado: number };
 
 function Metas() {
-  const { profile, isAutorizado } = useAuth();
+  const { profile, canFinalizeGoals } = useAuth();
   const [metas, setMetas] = useState<MetaPainel[]>([]);
   const [auditorias, setAuditorias] = useState<AuditoriaMeta[]>([]);
   const [nomes, setNomes] = useState<Record<string, string>>({});
@@ -52,11 +52,14 @@ function Metas() {
   const visiveis = useMemo(() => metas.filter((meta) => mostrarFinalizadas || meta.status === "ativa"), [metas, mostrarFinalizadas]);
 
   async function alterarStatus(meta: MetaPainel) {
-    if (!isAutorizado) return;
+    if (!canFinalizeGoals) {
+      toast.error("Você não tem permissão para finalizar ou reabrir metas.");
+      return;
+    }
     const finalizando = meta.status === "ativa";
     const { error } = await supabase.rpc("alterar_status_meta", { p_meta_id: meta.id, p_status: finalizando ? "finalizada" : "ativa" });
     if (error) {
-      toast.error(error.code === "23505" ? "Já existe uma meta ativa para esta OP e produto." : "Não foi possível atualizar a meta.");
+      toast.error(error.code === "23505" ? "Já existe uma meta ativa para esta OP e produto." : error.message || "Não foi possível atualizar a meta.");
       return;
     }
     toast.success(finalizando ? "Meta finalizada." : "Meta reaberta.");
@@ -70,6 +73,12 @@ function Metas() {
           <div><h2 className="text-xl font-extrabold sm:text-2xl">Metas das OPs</h2><p className="text-xs text-muted-foreground sm:text-sm">Soma a produção dos turnos até finalizar a OP.</p></div>
           <Button size="sm" variant="outline" onClick={() => setMostrarFinalizadas((atual) => !atual)}>{mostrarFinalizadas ? "Ocultar finalizadas" : "Finalizadas"}</Button>
         </div>
+
+        {!canFinalizeGoals && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Você pode acompanhar as metas, mas somente usuários liberados pelo administrador podem finalizar ou reabrir.
+          </div>
+        )}
 
         {carregando ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Carregando metas...</p>
@@ -90,7 +99,7 @@ function Metas() {
                   <CardContent className="space-y-3 p-3.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0"><p className="truncate font-bold">OP {meta.op} · {meta.produto_nome}</p><p className="text-xs text-slate-500">{meta.status === "ativa" ? "Em produção" : "Finalizada"}</p></div>
-                      {isAutorizado && <Button size="sm" variant="outline" onClick={() => alterarStatus(meta)}>{meta.status === "ativa" ? <CheckCircle2 className="size-4" /> : <RotateCcw className="size-4" />}{meta.status === "ativa" ? "Finalizar" : "Reabrir"}</Button>}
+                      {canFinalizeGoals && <Button size="sm" variant="outline" onClick={() => alterarStatus(meta)}>{meta.status === "ativa" ? <CheckCircle2 className="size-4" /> : <RotateCcw className="size-4" />}{meta.status === "ativa" ? "Finalizar" : "Reabrir"}</Button>}
                     </div>
 
                     <div className="grid grid-cols-3 gap-1.5 text-center">
