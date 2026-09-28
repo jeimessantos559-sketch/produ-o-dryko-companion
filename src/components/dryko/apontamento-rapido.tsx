@@ -1,7 +1,8 @@
-import { Calculator, PackageCheck } from "lucide-react";
+import { Calculator, PackageCheck, Target } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,11 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
-import { areaFitas, metragemCorte } from "@/lib/producao";
+import { useAuth } from "@/lib/auth";
+import { areaFitas, metragemCorte, rolosManta } from "@/lib/producao";
 
 type Produto = {
   id: string;
@@ -29,9 +29,15 @@ type Produto = {
   metros_por_rolo: number | null;
 };
 
+type MetaAtiva = {
+  id: string;
+  quantidade_meta: number;
+  unidade: string;
+};
+
 type CacheItem = { expiresAt: number; produtos: Produto[] };
 const cacheProdutos = new Map<string, CacheItem>();
-const CACHE_MS = 5 * 60_000;
+const CACHE_MS = 15 * 60_000;
 
 async function obterProdutos(setor: string) {
   const cache = cacheProdutos.get(setor);
@@ -43,10 +49,7 @@ async function obterProdutos(setor: string) {
       .select("id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo")
       .eq("setor", setor as never)
       .eq("ativo", true),
-    supabase
-      .from("marcas_produto")
-      .select("nome, ordem")
-      .eq("setor", setor as never),
+    supabase.from("marcas_produto").select("nome, ordem").eq("setor", setor as never),
   ]);
 
   if (resultadoProdutos.error) throw resultadoProdutos.error;
@@ -88,6 +91,10 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   const [tempo, setTempo] = useState(60);
   const [velocidade, setVelocidade] = useState(25);
   const [largura, setLargura] = useState(0.93);
+  const [meta, setMeta] = useState<MetaAtiva | null>(null);
+  const [apontadoMeta, setApontadoMeta] = useState(0);
+  const [metaNova, setMetaNova] = useState(0);
+  const [carregandoMeta, setCarregandoMeta] = useState(false);
 
   const produto = produtos.find((item) => item.id === produtoId) ?? null;
 
@@ -102,6 +109,9 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     setTempo(60);
     setVelocidade(25);
     setLargura(0.93);
+    setMeta(null);
+    setApontadoMeta(0);
+    setMetaNova(0);
   }
 
   useEffect(() => {
@@ -146,10 +156,17 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
             quantidadePlts?: number;
             rolosPorPlt?: number;
             pltPicadoRolos?: number | null;
+            picadoAdicional?: boolean;
           };
-          setQuantidadePlts(Number(primeiro.quantidadePlts ?? data.quantidade_plts ?? 1));
+          const qtdOriginal = Number(primeiro.quantidadePlts ?? data.quantidade_plts ?? 1);
+          const picadoOriginal = primeiro.pltPicadoRolos == null ? null : Number(primeiro.pltPicadoRolos);
+          const qtdFechados =
+            picadoOriginal != null && primeiro.picadoAdicional !== true
+              ? Math.max(0, qtdOriginal - 1)
+              : Math.max(0, qtdOriginal);
+          setQuantidadePlts(qtdFechados);
           setRolosPorPlt(Number(primeiro.rolosPorPlt ?? data.rolos_por_plt ?? 1));
-          setPltPicado(primeiro.pltPicadoRolos == null ? "" : Number(primeiro.pltPicadoRolos));
+          setPltPicado(picadoOriginal ?? "");
         } else if (setor === "fitas") {
           setTempo(Number(data.tempo ?? 60));
           setVelocidade(Number(data.velocidade ?? 25));
@@ -173,13 +190,62 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     };
   }, [open, repeatLatest, setor, turno, user]);
 
+  useEffect(() => {
+    let ativo = true;
+    if (!open || setor !== "corte" || !op.trim() || !produtoId) {
+      setMeta(null);
+      setApontadoMeta(0);
+      setCarregandoMeta(false);
+      return () => {
+        ativo = false;
+      };
+    }
+
+    setCarregandoMeta(true);
+    void supabase
+      .from("metas_op")
+      .select("id, quantidade_meta, unidade")
+      .eq("setor", "corte")
+      .eq("op", op.trim())
+      .eq("produto_id", produtoId)
+      .eq("status", "ativa")
+      .maybeSingle()
+      .then(async ({ data }) => {
+        if (!ativo) return;
+        const metaEncontrada = (data as MetaAtiva | null) ?? null;
+        setMeta(metaEncontrada);
+        if (!metaEncontrada) {
+          setApontadoMeta(0);
+          setCarregandoMeta(false);
+          return;
+        }
+        const { data: registros } = await supabase
+          .from("apontamentos")
+          .select("quantidade_plts")
+          .eq("setor", "corte")
+          .eq("op", op.trim())
+          .eq("produto_id", produtoId);
+        if (!ativo) return;
+        setApontadoMeta(
+          (registros ?? []).reduce((total, item) => total + Number(item.quantidade_plts ?? 0), 0),
+        );
+        setCarregandoMeta(false);
+      });
+
+    return () => {
+      ativo = false;
+    };
+  }, [open, op, produtoId, setor]);
+
   function selecionarProduto(id: string) {
     setProdutoId(id);
+    setMetaNova(0);
     const escolhido = produtos.find((item) => item.id === id);
     if (!escolhido) return;
     if (setor === "corte") {
       setRolosPorPlt(escolhido.rolos_por_plt ?? 1);
       setPltPicado("");
+      setQuantidadePlts(1);
     }
     if (setor === "fitas") {
       setTempo(60);
@@ -200,10 +266,9 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   }
 
   const totalRolosCorte = useMemo(() => {
-    if (setor !== "corte" || !produto || rolosPorPlt <= 0 || quantidadePlts <= 0) return 0;
-    const picado = typeof pltPicado === "number" ? pltPicado : null;
-    if (picado == null) return quantidadePlts * rolosPorPlt;
-    return Math.max(0, quantidadePlts - 1) * rolosPorPlt + picado;
+    if (setor !== "corte" || !produto || rolosPorPlt <= 0 || quantidadePlts < 0) return 0;
+    const picado = typeof pltPicado === "number" ? pltPicado : 0;
+    return quantidadePlts * rolosPorPlt + picado;
   }, [setor, produto, rolosPorPlt, quantidadePlts, pltPicado]);
 
   const metragemCorteCalculada =
@@ -211,24 +276,64 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       ? metragemCorte(Number(produto.largura), totalRolosCorte)
       : null;
   const areaFitasCalculada = setor === "fitas" ? areaFitas(tempo, velocidade, largura) : 0;
+  const totalRolosManta =
+    setor === "mantas" && produto
+      ? rolosManta(metragemManta, Number(produto.metros_por_rolo ?? 10))
+      : 0;
+  const mantaRolosValidos = totalRolosManta > 0 && Number.isInteger(totalRolosManta);
 
   const valido = Boolean(
     user &&
-    turno &&
-    produto &&
-    ((setor === "corte" &&
-      op.trim() &&
-      Number.isInteger(quantidadePlts) &&
-      quantidadePlts >= 1 &&
-      quantidadePlts <= 20 &&
-      rolosPorPlt > 0 &&
-      (pltPicado === "" || (pltPicado > 0 && pltPicado < rolosPorPlt))) ||
-      (setor === "fitas" && op.trim() && tempo > 0 && velocidade > 0 && largura > 0) ||
-      (setor === "mantas" && lote.trim() && quantidadePlts > 0 && metragemManta > 0)),
+      turno &&
+      produto &&
+      ((setor === "corte" &&
+        op.trim() &&
+        Number.isInteger(quantidadePlts) &&
+        quantidadePlts >= 0 &&
+        quantidadePlts <= 20 &&
+        rolosPorPlt > 0 &&
+        totalRolosCorte > 0 &&
+        (pltPicado === "" || (pltPicado > 0 && pltPicado < rolosPorPlt)) &&
+        (quantidadePlts > 0 || pltPicado !== "")) ||
+        (setor === "fitas" && op.trim() && tempo > 0 && velocidade > 0 && largura > 0) ||
+        (setor === "mantas" &&
+          op.trim() &&
+          lote.trim() &&
+          Number.isInteger(quantidadePlts) &&
+          quantidadePlts > 0 &&
+          metragemManta > 0 &&
+          mantaRolosValidos)),
   );
+
+  function confirmarMetaCorte() {
+    if (setor !== "corte") return true;
+    const limite = meta ? Number(meta.quantidade_meta) : Number(metaNova || 0);
+    if (limite <= 0 || apontadoMeta + quantidadePlts <= limite) return true;
+    const excesso = apontadoMeta + quantidadePlts - limite;
+    return window.confirm(
+      `A meta é ${limite.toLocaleString("pt-BR")} PLTs. Este apontamento deixará a OP com ${(apontadoMeta + quantidadePlts).toLocaleString("pt-BR")} PLTs, ultrapassando a meta em ${excesso.toLocaleString("pt-BR")} PLT(s). Deseja continuar?`,
+    );
+  }
+
+  async function salvarMetaCorte() {
+    if (setor !== "corte" || !user || !produto || meta || metaNova <= 0) return;
+    const { error } = await supabase.from("metas_op").insert({
+      setor: "corte",
+      op: op.trim(),
+      produto_id: produto.id,
+      produto_nome: produto.nome,
+      unidade: "PLTs",
+      quantidade_meta: metaNova,
+      criado_por: user.id,
+    });
+    if (error && error.code !== "23505") {
+      toast.warning("O apontamento foi salvo, mas a meta da OP não pôde ser cadastrada.");
+    }
+  }
 
   async function salvar() {
     if (!valido || !user || !turno || !produto || salvando) return;
+    if (!confirmarMetaCorte()) return;
     setSalvando(true);
     try {
       if (setor === "corte") {
@@ -248,11 +353,17 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
               quantidadePlts,
               rolosPorPlt,
               pltPicadoRolos: pltPicado === "" ? null : pltPicado,
+              picadoAdicional: true,
             },
           ],
         });
         if (error) throw error;
-        toast.success("Apontamento de Corte salvo.");
+        await salvarMetaCorte();
+        toast.success(
+          quantidadePlts === 0
+            ? "PLT picado registrado sem contabilizar pallet fechado."
+            : "Apontamento de Corte salvo.",
+        );
       } else if (setor === "fitas") {
         const { error } = await supabase.from("apontamentos").insert({
           usuario_id: user.id,
@@ -273,11 +384,13 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           usuario_id: user.id,
           setor: "mantas",
           turno,
-          op: null,
+          op: op.trim(),
           lote: lote.trim(),
           produto_id: produto.id,
           produto_nome: produto.nome,
           quantidade_plts: quantidadePlts,
+          rolos_por_plt: produto.rolos_por_plt,
+          total_rolos: totalRolosManta,
           metragem: metragemManta,
         });
         if (error) throw error;
@@ -291,7 +404,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       toast.error(
         mensagem.toLowerCase().includes("turno") && mensagem.toLowerCase().includes("fechado")
           ? "Este turno está fechado. Peça a reabertura ao administrador."
-          : "Não foi possível salvar o apontamento. Revise os dados e tente novamente.",
+          : mensagem || "Não foi possível salvar o apontamento. Revise os dados e tente novamente.",
       );
     } finally {
       setSalvando(false);
@@ -300,73 +413,72 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>
+      <DialogContent className="max-h-[94dvh] overflow-y-auto rounded-2xl p-4 sm:max-w-xl sm:p-5">
+        <DialogHeader className="space-y-1 pr-7">
+          <DialogTitle className="text-xl">
             {repeatLatest ? "Repetir último apontamento" : "Novo apontamento"}
             {setor ? ` · ${nomeSetorRapido(setor)}` : ""}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">
             {repeatLatest
-              ? "Os dados do último registro foram copiados. Revise antes de confirmar."
-              : "Registre sem sair do painel. Os valores padrão podem ser alterados antes de salvar."}
+              ? "Revise os dados copiados antes de confirmar."
+              : "Registro rápido sem sair do painel."}
           </DialogDescription>
         </DialogHeader>
 
         {!setor || !["corte", "fitas", "mantas"].includes(setor) ? (
-          <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
             Este setor ainda não possui formulário rápido configurado.
           </div>
         ) : (
-          <div className="space-y-4">
-            {setor !== "mantas" && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="rapido-op">OP *</Label>
                 <Input
                   id="rapido-op"
                   inputMode="numeric"
-                  className="h-12 text-base"
+                  className="h-11 text-base"
                   value={op}
                   onChange={(event) => setOp(event.target.value.replace(/\D/g, ""))}
+                  placeholder="Ex.: 169813"
                 />
               </div>
-            )}
-
-            <div className="space-y-1">
-              <Label htmlFor="rapido-produto">Produto *</Label>
-              <ProdutoSelect
-                id="rapido-produto"
-                produtos={produtos}
-                value={produtoId}
-                onValueChange={selecionarProduto}
-                carregando={carregando}
-              />
+              <div className="space-y-1">
+                <Label htmlFor="rapido-produto">Produto *</Label>
+                <ProdutoSelect
+                  id="rapido-produto"
+                  produtos={produtos}
+                  value={produtoId}
+                  onValueChange={selecionarProduto}
+                  carregando={carregando}
+                />
+              </div>
             </div>
 
             {setor === "corte" && produto && (
               <>
-                <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                  <span>Padrão: <strong>{produto.rolos_por_plt} rolos/PLT</strong></span>
                   <span>
-                    Padrão: <strong>{produto.rolos_por_plt} rolos/PLT</strong>
-                  </span>
-                  <span>
-                    Largura:{" "}
-                    <strong>
-                      {produto.largura == null
-                        ? "não informada"
-                        : `${Number(produto.largura).toLocaleString("pt-BR")} cm`}
-                    </strong>
+                    Largura: <strong>{produto.largura == null ? "não informada" : `${Number(produto.largura).toLocaleString("pt-BR")} cm`}</strong>
                   </span>
                 </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="rapido-plts">Quantidade de PLTs</Label>
                     <select
                       id="rapido-plts"
-                      className="h-12 w-full rounded-xl border border-input bg-background px-3 text-base"
+                      className="h-11 w-full rounded-xl border border-input bg-background px-3 text-base"
                       value={quantidadePlts}
-                      onChange={(event) => setQuantidadePlts(Number(event.target.value))}
+                      onChange={(event) => {
+                        const valor = Number(event.target.value);
+                        setQuantidadePlts(valor);
+                        if (valor === 0 && pltPicado === "") setPltPicado(1);
+                      }}
                     >
+                      <option value={0}>− PLT picado</option>
                       {Array.from({ length: 20 }, (_, indice) => indice + 1).map((quantidade) => (
                         <option key={quantidade} value={quantidade}>
                           {quantidade} {quantidade === 1 ? "PLT" : "PLTs"}
@@ -380,34 +492,56 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
                       id="rapido-rolos"
                       type="number"
                       min={1}
-                      className="h-12 text-base"
+                      className="h-11 text-base"
                       value={rolosPorPlt}
                       onChange={(event) => setRolosPorPlt(Number(event.target.value))}
                     />
                   </div>
                 </div>
+
                 <div className="space-y-1">
-                  <Label htmlFor="rapido-picado">Último PLT picado — rolos (opcional)</Label>
+                  <Label htmlFor="rapido-picado">
+                    {quantidadePlts === 0 ? "Rolos do PLT picado *" : "PLT picado adicional (opcional)"}
+                  </Label>
                   <Input
                     id="rapido-picado"
                     type="number"
                     min={1}
                     max={Math.max(1, rolosPorPlt - 1)}
-                    className="h-12 text-base"
-                    placeholder="Deixe vazio para todos fechados"
+                    className="h-11 text-base"
+                    placeholder={quantidadePlts === 0 ? "Informe os rolos" : "Deixe vazio se não houver"}
                     value={pltPicado}
-                    onChange={(event) =>
-                      setPltPicado(event.target.value ? Number(event.target.value) : "")
-                    }
+                    onChange={(event) => setPltPicado(event.target.value ? Number(event.target.value) : "")}
                   />
+                  {quantidadePlts === 0 && (
+                    <p className="text-xs text-amber-700">O picado entra em rolos e metragem, mas contabiliza <strong>0 PLT fechado</strong>.</p>
+                  )}
                 </div>
-                <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-950 p-3 text-center text-white">
-                  <Resumo label="PLTs" valor={quantidadePlts} />
+
+                <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-950 p-2.5 text-center text-white">
+                  <Resumo label="PLTs fechados" valor={quantidadePlts} />
                   <Resumo label="Rolos" valor={totalRolosCorte.toLocaleString("pt-BR")} />
-                  <Resumo
-                    label="Metragem"
-                    valor={`${Number(metragemCorteCalculada ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`}
-                  />
+                  <Resumo label="Metragem" valor={`${Number(metragemCorteCalculada ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`} />
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="flex items-center gap-2">
+                    <Target className="size-4 text-primary" />
+                    <p className="text-sm font-semibold">Meta da OP</p>
+                  </div>
+                  {carregandoMeta ? (
+                    <p className="mt-1 text-xs text-slate-500">Consultando meta...</p>
+                  ) : meta ? (
+                    <div className="mt-1 flex items-center justify-between gap-3 text-sm">
+                      <span><strong>{apontadoMeta}</strong> / {Number(meta.quantidade_meta)} PLTs</span>
+                      <span className="text-xs text-slate-500">restam {Math.max(0, Number(meta.quantidade_meta) - apontadoMeta)}</span>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <Label htmlFor="rapido-meta" className="text-xs">Definir meta nesta primeira produção (opcional)</Label>
+                      <Input id="rapido-meta" type="number" min={1} max={9999} className="mt-1 h-10" value={metaNova || ""} onChange={(event) => setMetaNova(Number(event.target.value))} placeholder="Ex.: 5 PLTs" />
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -416,50 +550,24 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
               <>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <Label htmlFor="rapido-tempo">Tempo (min)</Label>
-                    <Input
-                      id="rapido-tempo"
-                      type="number"
-                      min={1}
-                      className="h-12 text-base"
-                      value={tempo}
-                      onChange={(event) => setTempo(Number(event.target.value))}
-                    />
+                    <Label htmlFor="rapido-tempo" className="text-xs">Tempo (min)</Label>
+                    <Input id="rapido-tempo" type="number" min={1} className="h-11 text-base" value={tempo} onChange={(event) => setTempo(Number(event.target.value))} />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="rapido-velocidade">Velocidade</Label>
-                    <Input
-                      id="rapido-velocidade"
-                      type="number"
-                      min={0.01}
-                      step="0.01"
-                      className="h-12 text-base"
-                      value={velocidade}
-                      onChange={(event) => setVelocidade(Number(event.target.value))}
-                    />
+                    <Label htmlFor="rapido-velocidade" className="text-xs">Velocidade</Label>
+                    <Input id="rapido-velocidade" type="number" min={0.01} step="0.01" className="h-11 text-base" value={velocidade} onChange={(event) => setVelocidade(Number(event.target.value))} />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="rapido-largura">Largura (m)</Label>
-                    <Input
-                      id="rapido-largura"
-                      type="number"
-                      min={0.01}
-                      step="0.01"
-                      className="h-12 text-base"
-                      value={largura}
-                      onChange={(event) => setLargura(Number(event.target.value))}
-                    />
+                    <Label htmlFor="rapido-largura" className="text-xs">Largura (m)</Label>
+                    <Input id="rapido-largura" type="number" min={0.01} step="0.01" className="h-11 text-base" value={largura} onChange={(event) => setLargura(Number(event.target.value))} />
                   </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl bg-slate-950 p-4 text-white">
-                  <Calculator className="size-6 text-primary" />
-                  <div>
-                    <p className="text-xs text-slate-300">
-                      {tempo} min × {velocidade} m/min × {largura} m
-                    </p>
-                    <p className="text-2xl font-extrabold">
-                      {areaFitasCalculada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
-                    </p>
+                <div className="flex items-center gap-3 rounded-xl border-2 border-primary/25 bg-primary/5 p-3">
+                  <Calculator className="size-6 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Metragem para lançar no Protheus</p>
+                    <p className="text-3xl font-extrabold leading-none text-slate-950">{areaFitasCalculada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²</p>
+                    <p className="mt-1 text-xs text-slate-500">{tempo} min × {velocidade} m/min × {largura} m</p>
                   </div>
                 </div>
               </>
@@ -469,46 +577,28 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
               <>
                 <div className="space-y-1">
                   <Label htmlFor="rapido-lote">Lote *</Label>
-                  <Input
-                    id="rapido-lote"
-                    className="h-12 text-base"
-                    value={lote}
-                    onChange={(event) => setLote(event.target.value)}
-                  />
+                  <Input id="rapido-lote" className="h-11 text-base" value={lote} onChange={(event) => setLote(event.target.value)} placeholder="Informe o lote" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="rapido-plts-manta">PLTs</Label>
-                    <Input
-                      id="rapido-plts-manta"
-                      type="number"
-                      min={1}
-                      className="h-12 text-base"
-                      value={quantidadePlts}
-                      onChange={(event) => alterarPltsManta(Number(event.target.value))}
-                    />
+                    <select id="rapido-plts-manta" className="h-11 w-full rounded-xl border border-input bg-background px-3 text-base" value={quantidadePlts} onChange={(event) => alterarPltsManta(Number(event.target.value))}>
+                      {Array.from({ length: 20 }, (_, indice) => indice + 1).map((quantidade) => (
+                        <option key={quantidade} value={quantidade}>{quantidade} {quantidade === 1 ? "PLT" : "PLTs"}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="rapido-metragem-manta">Metragem</Label>
-                    <Input
-                      id="rapido-metragem-manta"
-                      type="number"
-                      min={1}
-                      step={produto.metros_por_rolo ?? 10}
-                      className="h-12 text-base"
-                      value={metragemManta}
-                      onChange={(event) => setMetragemManta(Number(event.target.value))}
-                    />
+                    <Label htmlFor="rapido-metragem-manta">Metragem (m)</Label>
+                    <Input id="rapido-metragem-manta" type="number" min={1} step={produto.metros_por_rolo ?? 10} className="h-11 text-base" value={metragemManta || ""} onChange={(event) => setMetragemManta(Number(event.target.value))} />
                   </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-2xl bg-slate-100 p-4 text-slate-900">
-                  <PackageCheck className="size-6 text-primary" />
-                  <div>
-                    <p className="text-xs text-slate-500">Produção calculada</p>
-                    <p className="font-bold">
-                      {quantidadePlts} PLT(s) · {metragemManta.toLocaleString("pt-BR")} m ·{" "}
-                      {produto.metros_por_rolo ? metragemManta / produto.metros_por_rolo : 0} rolos
-                    </p>
+                <div className="flex items-center gap-3 rounded-xl border-2 border-primary/25 bg-primary/5 p-3">
+                  <PackageCheck className="size-6 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Metragem para lançar no Protheus</p>
+                    <p className="text-3xl font-extrabold leading-none text-slate-950">{metragemManta.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m</p>
+                    <p className="mt-1 text-xs text-slate-500">{quantidadePlts} PLT(s) · {totalRolosManta.toLocaleString("pt-BR")} rolos</p>
                   </div>
                 </div>
               </>
@@ -516,13 +606,9 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           </div>
         )}
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button type="button" disabled={!valido || salvando} onClick={salvar}>
-            {salvando ? "Salvando..." : "Registrar apontamento"}
-          </Button>
+        <DialogFooter className="mt-1 grid grid-cols-[auto_1fr] gap-2 sm:flex">
+          <Button type="button" variant="outline" className="h-11" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button type="button" className="h-11" disabled={!valido || salvando} onClick={salvar}>{salvando ? "Salvando..." : "Registrar apontamento"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -531,8 +617,8 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
 function Resumo({ label, valor }: { label: string; valor: string | number }) {
   return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+    <div className="min-w-0">
+      <p className="truncate text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
       <p className="truncate text-sm font-bold">{valor}</p>
     </div>
   );
