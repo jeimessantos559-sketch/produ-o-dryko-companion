@@ -293,6 +293,45 @@ export type Database = {
           },
         ]
       }
+      metas_turno: {
+        Row: {
+          created_at: string
+          criado_por: string
+          data_local: string
+          horas_produtivas: number
+          id: string
+          quantidade_meta: number
+          setor: Database["public"]["Enums"]["setor_codigo"]
+          turno: Database["public"]["Enums"]["turno_codigo"]
+          unidade: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          criado_por: string
+          data_local: string
+          horas_produtivas: number
+          id?: string
+          quantidade_meta: number
+          setor: Database["public"]["Enums"]["setor_codigo"]
+          turno: Database["public"]["Enums"]["turno_codigo"]
+          unidade: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          criado_por?: string
+          data_local?: string
+          horas_produtivas?: number
+          id?: string
+          quantidade_meta?: number
+          setor?: Database["public"]["Enums"]["setor_codigo"]
+          turno?: Database["public"]["Enums"]["turno_codigo"]
+          unidade?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       metas_op: {
         Row: {
           created_at: string

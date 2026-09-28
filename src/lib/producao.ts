@@ -34,6 +34,25 @@ export const HORARIOS_TURNO: Record<TurnoOperacional, string> = {
   T3: "01:00–06:00",
 };
 
+const HORAS_PRODUTIVAS_PADRAO: Record<TurnoOperacional, number[]> = {
+  T1: [6, 7, 8, 9, 10, 11, 12, 13, 14],
+  T2: [16, 17, 18, 19, 20, 21, 22, 23, 0, 1],
+  T3: [1, 2, 3, 4, 5],
+};
+
+/** Horas cheias usadas na distribuicao automatica da meta do turno. */
+export function horasProdutivasTurno(turno: TurnoOperacional | null | undefined) {
+  if (!turno) return [];
+  return HORAS_PRODUTIVAS_PADRAO[turno].map((hora) => `${String(hora).padStart(2, "0")}:00`);
+}
+
+/** Mantem a ordem operacional quando o turno atravessa a meia-noite. */
+export function ordemHoraTurno(hora: string, turno: TurnoOperacional | null | undefined) {
+  const inicio = turno === "T2" ? 15 : turno === "T3" ? 1 : 6;
+  const valor = Number(hora.slice(0, 2));
+  return Number.isFinite(valor) ? (valor - inicio + 24) % 24 : 99;
+}
+
 export function totalPlts(grupos: GrupoCorte[]) {
   return grupos.reduce((total, grupo) => total + Math.max(0, grupo.quantidadePlts), 0);
 }
