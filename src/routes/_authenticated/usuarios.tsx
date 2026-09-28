@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Clipboard, KeyRound, Pencil, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { Clipboard, KeyRound, Pencil, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +26,7 @@ type Configuracao = {
   ativo: boolean;
   podeGerenciarProdutos: boolean;
   podeConfirmarProtheus: boolean;
+  podeFinalizarMetas: boolean;
   papeis: AppRole[];
 };
 
@@ -61,12 +62,20 @@ function Usuarios() {
     for (const item of papeis ?? []) mapaPapeis[item.user_id] = [...(mapaPapeis[item.user_id] ?? []), item.role];
     const lista = (listaPerfis ?? []) as Profile[];
     setPerfis(lista);
-    setConfiguracoes(Object.fromEntries(lista.map((perfil) => [perfil.id, {
-      ativo: perfil.ativo,
-      podeGerenciarProdutos: perfil.pode_gerenciar_produtos,
-      podeConfirmarProtheus: perfil.pode_confirmar_protheus,
-      papeis: mapaPapeis[perfil.id] ?? [],
-    }])));
+    setConfiguracoes(
+      Object.fromEntries(
+        lista.map((perfil) => [
+          perfil.id,
+          {
+            ativo: perfil.ativo,
+            podeGerenciarProdutos: perfil.pode_gerenciar_produtos,
+            podeConfirmarProtheus: perfil.pode_confirmar_protheus,
+            podeFinalizarMetas: Boolean(perfil.pode_finalizar_metas),
+            papeis: mapaPapeis[perfil.id] ?? [],
+          },
+        ]),
+      ),
+    );
     setCarregando(false);
   }, [isAdmin]);
 
@@ -83,7 +92,11 @@ function Usuarios() {
   function alternarPapel(id: string, papel: AppRole) {
     const atual = configuracoes[id];
     if (!atual) return;
-    alterar(id, { papeis: atual.papeis.includes(papel) ? atual.papeis.filter((item) => item !== papel) : [...atual.papeis, papel] });
+    alterar(id, {
+      papeis: atual.papeis.includes(papel)
+        ? atual.papeis.filter((item) => item !== papel)
+        : [...atual.papeis, papel],
+    });
   }
 
   async function criar() {
@@ -115,7 +128,7 @@ function Usuarios() {
     const config = configuracoes[perfil.id];
     if (!config || salvandoId) return;
     setSalvandoId(perfil.id);
-    // O papel legado autorizado_protheus é removido: a caixa "Pode lançar no Protheus" passa a ser a fonte de verdade.
+
     const papeis = config.papeis.filter((papel) => papel !== "autorizado_protheus");
     const { error } = await supabase.rpc("gerenciar_usuario", {
       p_usuario_id: perfil.id,
@@ -124,6 +137,23 @@ function Usuarios() {
       p_pode_confirmar_protheus: config.podeConfirmarProtheus,
       p_papeis: papeis,
     });
+
+    if (!error) {
+      const metaRpc = supabase.rpc as unknown as (
+        nome: string,
+        args: { p_usuario_id: string; p_pode_finalizar_metas: boolean },
+      ) => PromiseLike<{ error: { message?: string } | null }>;
+      const resultadoMeta = await metaRpc("gerenciar_permissao_meta", {
+        p_usuario_id: perfil.id,
+        p_pode_finalizar_metas: config.podeFinalizarMetas,
+      });
+      if (resultadoMeta.error) {
+        setSalvandoId(null);
+        toast.error(resultadoMeta.error.message || "Não foi possível atualizar a permissão de metas.");
+        return;
+      }
+    }
+
     setSalvandoId(null);
     if (error) {
       toast.error(error.message || "Não foi possível atualizar o usuário.");
@@ -144,7 +174,9 @@ function Usuarios() {
     if (!editando || !nomeEditado.trim() || !loginEditado.trim() || salvandoId) return;
     setSalvandoId(editando.id);
     try {
-      await gerenciarUsuarioAdmin({ data: { action: "rename", userId: editando.id, nome: nomeEditado.trim(), login: loginEditado.trim() } });
+      await gerenciarUsuarioAdmin({
+        data: { action: "rename", userId: editando.id, nome: nomeEditado.trim(), login: loginEditado.trim() },
+      });
       toast.success("Nome e login atualizados.");
       setEditando(null);
       await carregar();
@@ -190,7 +222,10 @@ function Usuarios() {
   return (
     <AppShell title="Usuários" eyebrow="ADMINISTRAÇÃO · ACESSOS">
       <div className="mx-auto max-w-4xl space-y-3">
-        <div><h2 className="text-xl font-extrabold sm:text-2xl">Usuários e permissões</h2><p className="text-xs text-muted-foreground sm:text-sm">Nome, acesso e permissões operacionais.</p></div>
+        <div>
+          <h2 className="text-xl font-extrabold sm:text-2xl">Usuários e permissões</h2>
+          <p className="text-xs text-muted-foreground sm:text-sm">O administrador define separadamente quem lança no Protheus e quem pode finalizar metas.</p>
+        </div>
 
         {loading || carregando ? (
           <p className="text-sm text-muted-foreground">Carregando...</p>
@@ -201,13 +236,21 @@ function Usuarios() {
             <Card className="rounded-2xl">
               <CardContent className="space-y-2.5 p-4">
                 <Label htmlFor="nome-usuario" className="text-xs">Cadastrar usuário</Label>
-                <div className="grid grid-cols-[1fr_auto] gap-2"><Input id="nome-usuario" className="h-10" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome completo" /><Button className="h-10" disabled={!nome.trim() || criando} onClick={criar}><UserPlus className="size-4" /> {criando ? "Criando..." : "Criar"}</Button></div>
-                <p className="text-xs text-slate-500">Senha inicial padrão: <strong>{SENHA_INICIAL}</strong>. No primeiro acesso será solicitada uma senha pessoal.</p>
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <Input id="nome-usuario" className="h-10" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome completo" />
+                  <Button className="h-10" disabled={!nome.trim() || criando} onClick={criar}><UserPlus className="size-4" /> {criando ? "Criando..." : "Criar"}</Button>
+                </div>
+                <p className="text-xs text-slate-500">Senha inicial padrão: <strong>{SENHA_INICIAL}</strong>.</p>
               </CardContent>
             </Card>
 
             {credencialCriada && (
-              <Card className="rounded-2xl border-emerald-200 bg-emerald-50/50"><CardContent className="flex items-center justify-between gap-3 p-3"><div><p className="font-bold">Usuário criado</p><p className="font-mono text-xs">{credencialCriada.login} · {credencialCriada.senha}</p></div><Button size="sm" variant="outline" onClick={() => copiarCredencial(credencialCriada.login, credencialCriada.senha)}><Clipboard className="size-4" /> Copiar</Button></CardContent></Card>
+              <Card className="rounded-2xl border-emerald-200 bg-emerald-50/50">
+                <CardContent className="flex items-center justify-between gap-3 p-3">
+                  <div><p className="font-bold">Usuário criado</p><p className="font-mono text-xs">{credencialCriada.login} · {credencialCriada.senha}</p></div>
+                  <Button size="sm" variant="outline" onClick={() => copiarCredencial(credencialCriada.login, credencialCriada.senha)}><Clipboard className="size-4" /> Copiar</Button>
+                </CardContent>
+              </Card>
             )}
 
             <div className="space-y-2">
@@ -218,14 +261,25 @@ function Usuarios() {
                   <Card key={perfil.id} className="rounded-2xl">
                     <CardContent className="space-y-3 p-3.5">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0"><p className="truncate font-bold">{perfil.nome || "Sem nome"}</p><p className="truncate text-sm font-semibold text-primary">{perfil.login || "Sem login"}</p><p className="text-xs text-slate-500">{perfil.setor_atual ? nomeSetor(perfil.setor_atual) : "Primeiro acesso"} · {perfil.turno_atual ?? "Sem turno"}</p></div>
+                        <div className="min-w-0">
+                          <p className="truncate font-bold">{perfil.nome || "Sem nome"}</p>
+                          <p className="truncate text-sm font-semibold text-primary">{perfil.login || "Sem login"}</p>
+                          <p className="text-xs text-slate-500">{perfil.setor_atual ? nomeSetor(perfil.setor_atual) : "Primeiro acesso"} · {perfil.turno_atual ?? "Sem turno"}</p>
+                        </div>
                         <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium"><input type="checkbox" checked={config.ativo} onChange={(e) => alterar(perfil.id, { ativo: e.target.checked })} /> Ativo</label>
                       </div>
 
-                      <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${config.podeConfirmarProtheus ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"}`}>
-                        <div className="flex items-center gap-2"><ShieldCheck className={`size-5 ${config.podeConfirmarProtheus ? "text-primary" : "text-slate-400"}`} /><div><p className="text-sm font-bold">Pode lançar no Protheus</p><p className="text-[11px] text-slate-500">Libera confirmação e controle de apontamentos.</p></div></div>
-                        <input type="checkbox" className="size-5" checked={config.podeConfirmarProtheus} onChange={(e) => alterar(perfil.id, { podeConfirmarProtheus: e.target.checked })} />
-                      </label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${config.podeConfirmarProtheus ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"}`}>
+                          <div className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /><div><p className="text-sm font-bold">Lançar no Protheus</p><p className="text-[11px] text-slate-500">Confirma apontamentos.</p></div></div>
+                          <input type="checkbox" className="size-5" checked={config.podeConfirmarProtheus} onChange={(e) => alterar(perfil.id, { podeConfirmarProtheus: e.target.checked })} />
+                        </label>
+
+                        <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${config.podeFinalizarMetas ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"}`}>
+                          <div className="flex items-center gap-2"><Target className="size-5 text-primary" /><div><p className="text-sm font-bold">Finalizar metas</p><p className="text-[11px] text-slate-500">Somente quem o administrador liberar.</p></div></div>
+                          <input type="checkbox" className="size-5" checked={config.podeFinalizarMetas} onChange={(e) => alterar(perfil.id, { podeFinalizarMetas: e.target.checked })} />
+                        </label>
+                      </div>
 
                       <div className="grid gap-2 text-xs sm:grid-cols-2">
                         <div><p className="mb-1 font-semibold">Perfil</p><div className="flex flex-wrap gap-3">{PAPEIS_VISIVEIS.map((papel) => <label key={papel} className="flex items-center gap-1.5"><input type="checkbox" checked={config.papeis.includes(papel)} onChange={() => alternarPapel(perfil.id, papel)} /> {NOMES_PAPEIS[papel]}</label>)}</div></div>
@@ -239,7 +293,6 @@ function Usuarios() {
                         {perfil.login && perfil.deve_alterar_senha && <Button size="sm" variant="outline" onClick={() => copiarCredencial(perfil.login!)}><Clipboard className="size-4" /> Acesso</Button>}
                         {perfil.id !== user?.id && <Button size="sm" variant="destructive" onClick={() => void excluir(perfil)}><Trash2 className="size-4" /> Excluir</Button>}
                       </div>
-                      <p className={`flex items-center gap-1 text-[11px] ${perfil.deve_alterar_senha ? "text-amber-700" : "text-emerald-700"}`}><KeyRound className="size-3" /> {perfil.deve_alterar_senha ? `Senha inicial ${SENHA_INICIAL}` : "Senha pessoal definida"}</p>
                     </CardContent>
                   </Card>
                 );
@@ -250,7 +303,14 @@ function Usuarios() {
       </div>
 
       <Dialog open={Boolean(editando)} onOpenChange={(aberto) => { if (!aberto) setEditando(null); }}>
-        <DialogContent className="rounded-2xl sm:max-w-md"><DialogHeader><DialogTitle>Editar usuário</DialogTitle><DialogDescription>Altere o nome ou o login operacional.</DialogDescription></DialogHeader><div className="space-y-3"><div className="space-y-1"><Label>Nome</Label><Input value={nomeEditado} onChange={(e) => setNomeEditado(e.target.value)} /></div><div className="space-y-1"><Label>Login</Label><Input autoCapitalize="none" value={loginEditado} onChange={(e) => setLoginEditado(e.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button><Button disabled={!nomeEditado.trim() || !loginEditado.trim() || salvandoId !== null} onClick={() => void salvarEdicao()}>Salvar</Button></DialogFooter></DialogContent>
+        <DialogContent className="rounded-2xl sm:max-w-md">
+          <DialogHeader><DialogTitle>Editar usuário</DialogTitle><DialogDescription>Altere o nome ou o login operacional.</DialogDescription></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1"><Label>Nome</Label><Input value={nomeEditado} onChange={(e) => setNomeEditado(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Login</Label><Input autoCapitalize="none" value={loginEditado} onChange={(e) => setLoginEditado(e.target.value)} /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button><Button disabled={!nomeEditado.trim() || !loginEditado.trim() || salvandoId !== null} onClick={() => void salvarEdicao()}>Salvar</Button></DialogFooter>
+        </DialogContent>
       </Dialog>
     </AppShell>
   );
