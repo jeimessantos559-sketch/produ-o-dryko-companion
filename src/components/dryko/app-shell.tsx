@@ -1,9 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  BarChart3,
   Bell,
   CalendarDays,
-  ClipboardList,
   Copy,
   FileText,
   Gauge,
@@ -39,9 +37,7 @@ import { dataSaoPaulo } from "@/lib/producao";
 const ITENS = [
   { to: "/painel", label: "Painel", icon: Gauge },
   { to: "/selecionar", label: "Setor e turno", icon: Settings2 },
-  { to: "/metas", label: "Metas", icon: BarChart3 },
-  { to: "/contagem", label: "Contagem", icon: ClipboardList },
-  { to: "/programacao", label: "Programação", icon: CalendarDays },
+  { to: "/contagem", label: "Programação", icon: CalendarDays },
   { to: "/historico", label: "Histórico", icon: History },
   { to: "/passagem-turno", label: "Passagem", icon: Repeat },
   { to: "/relatorios", label: "Relatórios", icon: FileText },
