@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Clipboard, KeyRound, Pencil, ShieldCheck, Target, Trash2, UserPlus, UsersRound } from "lucide-react";
+import { Clipboard, KeyRound, Pencil, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { NOMES_PAPEIS, useAuth, type AppRole, type Profile } from "@/lib/auth";
-import { criarUsuario, criarUsuariosEmLote, gerenciarUsuarioAdmin } from "@/lib/usuarios-admin";
+import { criarUsuario, gerenciarUsuarioAdmin } from "@/lib/usuarios-admin";
 
 export const Route = createFileRoute("/_authenticated/usuarios")({ component: Usuarios });
 
@@ -32,26 +32,6 @@ type Configuracao = {
 
 const PAPEIS_VISIVEIS: AppRole[] = ["facilitador", "administrador"];
 const SENHA_INICIAL = "123456";
-const EQUIPE_PENDENTE = [
-  "Amauri Junior",
-  "Mike Almeida",
-  "Maiquely Santos",
-  "Paulo Charrua",
-  "Renato Silva",
-  "Francisco Pereira",
-  "Geovani Meireles",
-  "Rogerio",
-  "Roberto Melo",
-] as const;
-
-function chaveNome(valor: string | null | undefined) {
-  return (valor ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLocaleLowerCase("pt-BR")
-    .replace(/\s+/g, " ");
-}
 
 function Usuarios() {
   const { isAdmin, loading, refresh, user } = useAuth();
@@ -60,17 +40,11 @@ function Usuarios() {
   const [carregando, setCarregando] = useState(true);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
-  const [criandoLote, setCriandoLote] = useState(false);
   const [nome, setNome] = useState("");
   const [credencialCriada, setCredencialCriada] = useState<{ login: string; senha: string } | null>(null);
-  const [resultadoLote, setResultadoLote] = useState<string[]>([]);
   const [editando, setEditando] = useState<Profile | null>(null);
   const [nomeEditado, setNomeEditado] = useState("");
   const [loginEditado, setLoginEditado] = useState("");
-
-  const equipeFaltante = EQUIPE_PENDENTE.filter(
-    (nomeEquipe) => !perfis.some((perfil) => chaveNome(perfil.nome) === chaveNome(nomeEquipe)),
-  );
 
   const carregar = useCallback(async () => {
     if (!isAdmin) {
@@ -138,31 +112,6 @@ function Usuarios() {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o usuário.");
     } finally {
       setCriando(false);
-    }
-  }
-
-  async function criarEquipePendente() {
-    if (criandoLote || equipeFaltante.length === 0) return;
-    setCriandoLote(true);
-    setResultadoLote([]);
-    try {
-      const resultado = await criarUsuariosEmLote({ data: { nomes: [...equipeFaltante] } });
-      const linhas = [
-        ...resultado.criados.map((item) => `${item.nome}: ${item.login} / ${item.senhaInicial}`),
-        ...resultado.existentes.map((item) => `${item}: já estava cadastrado`),
-        ...resultado.falhas.map((item) => `${item.nome}: falhou — ${item.erro}`),
-      ];
-      setResultadoLote(linhas);
-      if (resultado.falhas.length > 0) {
-        toast.warning(`${resultado.criados.length} criado(s), ${resultado.existentes.length} existente(s) e ${resultado.falhas.length} falha(s).`);
-      } else {
-        toast.success(`${resultado.criados.length} usuário(s) criado(s). ${resultado.existentes.length} já existia(m).`);
-      }
-      await carregar();
-    } catch (erro) {
-      toast.error(erro instanceof Error ? erro.message : "Não foi possível cadastrar a equipe.");
-    } finally {
-      setCriandoLote(false);
     }
   }
 
@@ -294,31 +243,6 @@ function Usuarios() {
                 <p className="text-xs text-slate-500">Senha inicial padrão: <strong>{SENHA_INICIAL}</strong>.</p>
               </CardContent>
             </Card>
-
-            {equipeFaltante.length > 0 && (
-              <Card className="rounded-2xl border-primary/20 bg-primary/[0.025]">
-                <CardContent className="space-y-3 p-4">
-                  <div className="flex items-start gap-3">
-                    <UsersRound className="mt-0.5 size-5 shrink-0 text-primary" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold">Equipe pendente</p>
-                      <p className="text-xs text-slate-500">
-                        Faltam {equipeFaltante.length} de {EQUIPE_PENDENTE.length} usuário(s) da equipe combinada.
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">{equipeFaltante.join(", ")}</p>
-                    </div>
-                  </div>
-                  <Button className="w-full" disabled={criandoLote} onClick={() => void criarEquipePendente()}>
-                    <UsersRound className="size-4" /> {criandoLote ? "Cadastrando equipe..." : `Cadastrar ${equipeFaltante.length} pendente(s)`}
-                  </Button>
-                  {resultadoLote.length > 0 && (
-                    <div className="rounded-xl border bg-white p-3 text-xs">
-                      {resultadoLote.map((linha) => <p key={linha} className="font-mono leading-5">{linha}</p>)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
 
             {credencialCriada && (
               <Card className="rounded-2xl border-emerald-200 bg-emerald-50/50">
