@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
+import { PwaInstallPrompt } from "@/components/dryko/pwa-install-prompt";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth";
 import appCss from "../styles.css?url";
@@ -79,13 +80,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Aponta Produção — DRYKO" },
       {
         name: "description",
         content: "Apontamento de produção DRYKO por setor e turno.",
       },
       { name: "author", content: "DRYKO" },
+      { name: "theme-color", content: "#ed1c24" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Aponta DRYKO" },
       { property: "og:title", content: "Aponta Produção — DRYKO" },
       {
         property: "og:description",
@@ -104,7 +110,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: themeCss,
       },
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "apple-touch-icon", href: "/dryko-logo.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -135,6 +143,27 @@ function RootComponent() {
     const tema = temaSalvo === "dark" ? "dark" : "light";
     document.documentElement.classList.toggle("dark", tema === "dark");
     document.documentElement.style.colorScheme = tema;
+
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
+
+    const antesDeInstalar = (evento: Event) => {
+      evento.preventDefault();
+      (window as any).__drykoInstallPrompt = evento;
+      window.dispatchEvent(new Event("dryko-pwa-ready"));
+    };
+
+    const instalado = () => {
+      (window as any).__drykoInstallPrompt = null;
+    };
+
+    window.addEventListener("beforeinstallprompt", antesDeInstalar);
+    window.addEventListener("appinstalled", instalado);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", antesDeInstalar);
+      window.removeEventListener("appinstalled", instalado);
+    };
   }, []);
 
   return (
@@ -142,6 +171,7 @@ function RootComponent() {
       <AuthProvider>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
+        <PwaInstallPrompt />
         <Toaster position="top-center" richColors />
       </AuthProvider>
     </QueryClientProvider>
