@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth";
 import appCss from "../styles.css?url";
+import themeCss from "../theme-dark.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -99,6 +100,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      {
+        rel: "stylesheet",
+        href: themeCss,
+      },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
@@ -124,6 +129,13 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    const temaSalvo = window.localStorage.getItem("dryko-theme");
+    const tema = temaSalvo === "dark" ? "dark" : "light";
+    document.documentElement.classList.toggle("dark", tema === "dark");
+    document.documentElement.style.colorScheme = tema;
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
