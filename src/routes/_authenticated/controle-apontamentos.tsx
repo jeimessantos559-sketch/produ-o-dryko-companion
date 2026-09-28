@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,6 +19,17 @@ export const Route = createFileRoute("/_authenticated/controle-apontamentos")({
 
 type Apontamento = Database["public"]["Tables"]["apontamentos"]["Row"];
 const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas"];
+
+type GrupoLancamento = {
+  chave: string;
+  ids: string[];
+  item: Apontamento;
+  quantidadeRegistros: number;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+};
 
 function ControleApontamentos() {
   const { profile, isAutorizado, isAdmin } = useAuth();
@@ -51,8 +62,9 @@ function ControleApontamentos() {
         .select("*")
         .eq("setor", setor)
         .eq("data_local", data)
-        .order("created_at", { ascending: false }),
-      supabase.from("profiles").select("id, nome"),
+        .order("created_at", { ascending: false })
+        .limit(250),
+      supabase.from("profiles").select("id, nome").eq("ativo", true),
     ]);
     if (error) {
       toast.error("Não foi possível carregar os apontamentos.");
@@ -69,11 +81,9 @@ function ControleApontamentos() {
     void carregar();
   }, [carregar]);
 
-  const produtos = useMemo(
-    () => [...new Set(itens.map((item) => item.produto_nome))].sort(),
-    [itens],
-  );
+  const produtos = useMemo(() => [...new Set(itens.map((item) => item.produto_nome))].sort(), [itens]);
   const facilitadores = useMemo(() => [...new Set(itens.map((item) => item.usuario_id))], [itens]);
+
   const visiveis = useMemo(
     () =>
       itens.filter(
@@ -86,200 +96,135 @@ function ControleApontamentos() {
       ),
     [facilitador, itens, op, produto, status, turno],
   );
-  const pendentesVisiveis = visiveis.filter((item) => item.status === "pendente");
+
+  const grupos = useMemo(() => agruparParaLancamento(visiveis), [visiveis]);
+  const pendentesVisiveis = useMemo(
+    () => grupos.flatMap((grupo) => (grupo.item.status === "pendente" ? grupo.ids : [])),
+    [grupos],
+  );
 
   async function confirmar() {
-    if (selecionados.length === 0 || confirmando) return;
+    const ids = [...new Set(selecionados)];
+    if (ids.length === 0 || confirmando) return;
     setConfirmando(true);
     const { data: total, error } = await supabase.rpc("confirmar_apontamentos_protheus", {
-      p_ids: selecionados,
+      p_ids: ids,
     });
     setConfirmando(false);
     if (error) {
-      toast.error("Não foi possível confirmar os apontamentos no controle Protheus.");
+      toast.error(error.message || "Não foi possível confirmar os apontamentos no Protheus.");
       return;
     }
-    toast.success(`${total ?? selecionados.length} apontamento(s) marcado(s) como lançado(s).`);
+    toast.success(`${total ?? ids.length} apontamento(s) marcado(s) como lançado(s) no Protheus.`);
     await carregar();
   }
 
-  function alternar(id: string) {
-    setSelecionados((atuais) =>
-      atuais.includes(id) ? atuais.filter((item) => item !== id) : [...atuais, id],
-    );
+  function alternarGrupo(grupo: GrupoLancamento) {
+    if (grupo.item.status === "lancado") return;
+    setSelecionados((atuais) => {
+      const todos = grupo.ids.every((id) => atuais.includes(id));
+      if (todos) return atuais.filter((id) => !grupo.ids.includes(id));
+      return [...new Set([...atuais, ...grupo.ids])];
+    });
   }
 
   return (
-    <AppShell>
-      <div className="mx-auto max-w-6xl space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold">Controle de apontamentos</h1>
-          <p className="text-sm text-muted-foreground">
-            Confirmação manual de lançamento no Protheus, com responsável e horário auditados.
-          </p>
+    <AppShell title="Controle Protheus" eyebrow={isAdmin ? "ADMINISTRAÇÃO · APONTAMENTOS" : "LANÇAMENTOS"}>
+      <div className="mx-auto max-w-5xl space-y-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-extrabold sm:text-2xl">Lançamentos no Protheus</h2>
+            <p className="text-xs text-muted-foreground sm:text-sm">
+              Mantas do mesmo lote e produto são agrupadas para lançar de uma vez.
+            </p>
+          </div>
         </div>
 
         {!isAutorizado ? (
-          <Card>
-            <CardContent className="pt-6 text-sm text-muted-foreground">
-              Você não tem permissão para confirmar lançamentos no Protheus.
-            </CardContent>
-          </Card>
+          <Card><CardContent className="p-4 text-sm text-muted-foreground">Você não tem permissão para lançar apontamentos no Protheus.</CardContent></Card>
         ) : (
           <>
-            <Card>
-              <CardContent className="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-4">
+            <details className="rounded-2xl border bg-white shadow-sm" open={isAdmin}>
+              <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-semibold">
+                <SlidersHorizontal className="size-4 text-primary" /> Filtros
+              </summary>
+              <div className="grid grid-cols-2 gap-2 border-t px-3 py-3 sm:grid-cols-4">
                 <Campo label="Setor">
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3"
-                    value={setor}
-                    onChange={(e) => setSetor(e.target.value as SetorCodigo)}
-                    disabled={!isAdmin}
-                  >
-                    {SETORES.map((item) => (
-                      <option key={item} value={item}>
-                        {nomeSetor(item)}
-                      </option>
-                    ))}
+                  <select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={setor} onChange={(e) => setSetor(e.target.value as SetorCodigo)} disabled={!isAdmin}>
+                    {SETORES.map((item) => <option key={item} value={item}>{nomeSetor(item)}</option>)}
                   </select>
                 </Campo>
-                <Campo label="Data">
-                  <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
-                </Campo>
+                <Campo label="Data"><Input className="h-10" type="date" value={data} onChange={(e) => setData(e.target.value)} /></Campo>
                 <Campo label="Turno">
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3"
-                    value={turno}
-                    onChange={(e) => setTurno(e.target.value)}
-                  >
-                    <option value="">Todos</option>
-                    <option value="T1">T1</option>
-                    <option value="T2">T2</option>
-                    <option value="T3">T3</option>
+                  <select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={turno} onChange={(e) => setTurno(e.target.value)}>
+                    <option value="">Todos</option><option value="T1">T1</option><option value="T2">T2</option><option value="T3">T3</option>
                   </select>
                 </Campo>
                 <Campo label="Situação">
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                  >
-                    <option value="">Todos</option>
-                    <option value="pendente">Pendente</option>
-                    <option value="lancado">Lançado</option>
+                  <select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
+                    <option value="">Todos</option><option value="pendente">Pendente</option><option value="lancado">Lançado</option>
                   </select>
                 </Campo>
-                <Campo label="OP">
-                  <Input
-                    value={op}
-                    onChange={(e) => setOp(e.target.value)}
-                    placeholder="Buscar OP"
-                  />
-                </Campo>
+                <Campo label="OP"><Input className="h-10" value={op} onChange={(e) => setOp(e.target.value)} placeholder="Buscar OP" /></Campo>
                 <Campo label="Produto">
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3"
-                    value={produto}
-                    onChange={(e) => setProduto(e.target.value)}
-                  >
-                    <option value="">Todos</option>
-                    {produtos.map((item) => (
-                      <option key={item}>{item}</option>
-                    ))}
+                  <select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={produto} onChange={(e) => setProduto(e.target.value)}>
+                    <option value="">Todos</option>{produtos.map((item) => <option key={item}>{item}</option>)}
                   </select>
                 </Campo>
                 <Campo label="Facilitador">
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3"
-                    value={facilitador}
-                    onChange={(e) => setFacilitador(e.target.value)}
-                  >
-                    <option value="">Todos</option>
-                    {facilitadores.map((id) => (
-                      <option key={id} value={id}>
-                        {nomes[id] ?? "Usuário"}
-                      </option>
-                    ))}
+                  <select className="h-10 w-full rounded-xl border bg-background px-2 text-sm" value={facilitador} onChange={(e) => setFacilitador(e.target.value)}>
+                    <option value="">Todos</option>{facilitadores.map((id) => <option key={id} value={id}>{nomes[id] ?? "Usuário"}</option>)}
                   </select>
                 </Campo>
-              </CardContent>
-            </Card>
+              </div>
+            </details>
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={
-                    pendentesVisiveis.length > 0 &&
-                    pendentesVisiveis.every((item) => selecionados.includes(item.id))
-                  }
-                  onChange={(e) =>
-                    setSelecionados(
-                      e.target.checked ? pendentesVisiveis.map((item) => item.id) : [],
-                    )
-                  }
-                />
-                Selecionar pendentes visíveis
+            <div className="sticky top-[65px] z-20 flex items-center justify-between gap-2 rounded-2xl border bg-background/95 p-2.5 shadow-sm backdrop-blur">
+              <label className="flex items-center gap-2 text-xs font-medium sm:text-sm">
+                <input type="checkbox" checked={pendentesVisiveis.length > 0 && pendentesVisiveis.every((id) => selecionados.includes(id))} onChange={(e) => setSelecionados(e.target.checked ? pendentesVisiveis : [])} />
+                Selecionar pendentes
               </label>
-              <Button disabled={selecionados.length === 0 || confirmando} onClick={confirmar}>
-                <CheckCircle2 />
-                {confirmando ? "Confirmando..." : `Confirmar no Protheus (${selecionados.length})`}
+              <Button size="sm" disabled={selecionados.length === 0 || confirmando} onClick={confirmar}>
+                <CheckCircle2 className="size-4" /> {confirmando ? "Lançando..." : `Lançar (${selecionados.length})`}
               </Button>
             </div>
 
             {carregando ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
-            ) : visiveis.length === 0 ? (
-              <Card>
-                <CardContent className="pt-6 text-sm text-muted-foreground">
-                  Nenhum apontamento encontrado com estes filtros.
-                </CardContent>
-              </Card>
+              <p className="py-6 text-center text-sm text-muted-foreground">Carregando...</p>
+            ) : grupos.length === 0 ? (
+              <Card><CardContent className="p-5 text-center text-sm text-muted-foreground">Nenhum apontamento encontrado.</CardContent></Card>
             ) : (
-              visiveis.map((item) => (
-                <Card key={item.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start gap-3">
-                      <input
-                        className="mt-1 size-5"
-                        type="checkbox"
-                        disabled={item.status === "lancado"}
-                        checked={selecionados.includes(item.id)}
-                        onChange={() => alternar(item.id)}
-                        aria-label={`Selecionar ${item.produto_nome}`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <CardTitle className="text-base">
-                          {item.op ? `OP ${item.op} · ` : ""}
-                          {item.produto_nome}
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                          {nomes[item.usuario_id] ?? "Usuário"} · {item.turno} ·{" "}
-                          {formatarDataHora(item.created_at)}
-                        </p>
+              <div className="space-y-2">
+                {grupos.map((grupo) => {
+                  const selecionado = grupo.ids.every((id) => selecionados.includes(id));
+                  const agrupado = grupo.quantidadeRegistros > 1;
+                  return (
+                    <article key={grupo.chave} className={`rounded-2xl border bg-white p-3 shadow-sm ${selecionado ? "border-primary ring-1 ring-primary/20" : "border-slate-200"}`}>
+                      <div className="flex items-start gap-3">
+                        <input className="mt-1 size-5 shrink-0" type="checkbox" disabled={grupo.item.status === "lancado"} checked={selecionado} onChange={() => alternarGrupo(grupo)} aria-label={`Selecionar ${grupo.item.produto_nome}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-bold text-slate-950">
+                              {grupo.item.op ? `OP ${grupo.item.op} · ` : ""}{grupo.item.produto_nome}
+                            </p>
+                            {agrupado && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">{grupo.quantidadeRegistros} apontamentos agrupados</span>}
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {nomes[grupo.item.usuario_id] ?? "Usuário"} · {grupo.item.turno} · {formatarDataHora(grupo.item.created_at)}
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-slate-800">{resumoGrupo(grupo)}</p>
+                          {grupo.item.setor === "mantas" && grupo.item.lote && (
+                            <p className="mt-1 text-xs font-semibold text-primary">Lote {grupo.item.lote} · será lançado em um único lote</p>
+                          )}
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${grupo.item.status === "lancado" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>
+                          {grupo.item.status === "lancado" ? "Lançado" : "Pendente"}
+                        </span>
                       </div>
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          item.status === "lancado"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-amber-100 text-amber-900"
-                        }`}
-                      >
-                        {item.status === "lancado" ? "Lançado" : "Pendente"}
-                      </span>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="text-sm">
-                    <p>{resumo(item)}</p>
-                    {item.lancado_em && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Confirmado por {nomes[item.lancado_por ?? ""] ?? "usuário autorizado"} em{" "}
-                        {formatarDataHora(item.lancado_em)}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
+                    </article>
+                  );
+                })}
+              </div>
             )}
           </>
         )}
@@ -288,26 +233,49 @@ function ControleApontamentos() {
   );
 }
 
-function Campo({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <Label>{label}</Label>
-      {children}
-    </div>
-  );
+function agruparParaLancamento(itens: Apontamento[]) {
+  const mapa = new Map<string, GrupoLancamento>();
+  for (const item of itens) {
+    const deveAgrupar = item.setor === "mantas" && item.status === "pendente" && Boolean(item.lote);
+    const chave = deveAgrupar ? `manta:${item.produto_id}:${item.lote}` : `item:${item.id}`;
+    const atual = mapa.get(chave);
+    if (!atual) {
+      mapa.set(chave, {
+        chave,
+        ids: [item.id],
+        item,
+        quantidadeRegistros: 1,
+        plts: Number(item.quantidade_plts ?? 0),
+        rolos: Number(item.total_rolos ?? 0),
+        metragem: Number(item.metragem ?? 0),
+        area: Number(item.area_m2 ?? 0),
+      });
+      continue;
+    }
+    atual.ids.push(item.id);
+    atual.quantidadeRegistros += 1;
+    atual.plts += Number(item.quantidade_plts ?? 0);
+    atual.rolos += Number(item.total_rolos ?? 0);
+    atual.metragem += Number(item.metragem ?? 0);
+    atual.area += Number(item.area_m2 ?? 0);
+  }
+  return [...mapa.values()];
 }
 
-function resumo(item: Apontamento) {
-  if (item.setor === "fitas") return `${Number(item.area_m2 ?? 0).toLocaleString("pt-BR")} m²`;
-  const lote = item.lote ? ` · Lote ${item.lote}` : "";
-  const metragem = item.metragem ? ` · ${Number(item.metragem).toLocaleString("pt-BR")} m` : "";
-  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos${metragem}${lote}`;
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="space-y-1"><Label className="text-xs">{label}</Label>{children}</div>;
+}
+
+function resumoGrupo(grupo: GrupoLancamento) {
+  if (grupo.item.setor === "fitas") return `${fmt(grupo.area)} m² para lançar no Protheus`;
+  if (grupo.item.setor === "mantas") return `${fmt(grupo.metragem)} m · ${grupo.plts} PLTs · ${grupo.rolos} rolos`;
+  return `${grupo.plts} PLTs fechados · ${grupo.rolos} rolos`;
+}
+
+function fmt(valor: number) {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }
 
 function formatarDataHora(valor: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(valor));
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date(valor));
 }
