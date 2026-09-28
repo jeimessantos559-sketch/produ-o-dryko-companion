@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { AppShell } from "@/components/dryko/app-shell";
 import { EmDefinicao } from "@/components/dryko/em-definicao";
+import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import {
   areaFitas,
   metragemCorte,
@@ -31,7 +33,15 @@ export const Route = createFileRoute("/_authenticated/apontar")({
   }),
 });
 
-function ResumoEscuro({ label, valor, pequeno }: { label: string; valor: string; pequeno?: boolean }) {
+function ResumoEscuro({
+  label,
+  valor,
+  pequeno,
+}: {
+  label: string;
+  valor: string;
+  pequeno?: boolean;
+}) {
   return (
     <div className="px-2 py-3 text-center">
       <p className="text-[11px] font-bold uppercase opacity-70">{label}</p>
@@ -87,11 +97,9 @@ function useProdutos(setor: "corte" | "fitas" | "mantas") {
       supabase.from("marcas_produto").select("nome, ordem").eq("setor", setor),
     ]).then(([resultadoProdutos, resultadoMarcas]) => {
       const falhou = Boolean(resultadoProdutos.error || resultadoMarcas.error);
-      const ordem = new Map((resultadoMarcas.data ?? []).map((marca) => [marca.nome, marca.ordem]));
-      const lista = ((resultadoProdutos.data ?? []) as Produto[]).sort(
-        (a, b) =>
-          (ordem.get(a.categoria ?? "") ?? 999) - (ordem.get(b.categoria ?? "") ?? 999) ||
-          a.nome.localeCompare(b.nome),
+      const lista = ordenarProdutosPorMarca(
+        (resultadoProdutos.data ?? []) as Produto[],
+        resultadoMarcas.data ?? [],
       );
       setProdutos(falhou ? [] : lista);
       setErro(falhou);
@@ -364,7 +372,8 @@ function ApontarCorte() {
     toast.success("Apontamento salvo e painel atualizado.");
   }
 
-  const largura = produto?.largura != null && Number(produto.largura) > 0 ? Number(produto.largura) : null;
+  const largura =
+    produto?.largura != null && Number(produto.largura) > 0 ? Number(produto.largura) : null;
   const metragem = largura === null ? null : metragemCorte(largura, rolos);
   const fmt = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 
@@ -402,7 +411,9 @@ function ApontarCorte() {
         <section className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label htmlFor="op" className="text-xs font-bold uppercase">OP *</Label>
+              <Label htmlFor="op" className="text-xs font-bold uppercase">
+                OP *
+              </Label>
               <Input
                 id="op"
                 inputMode="numeric"
@@ -412,21 +423,16 @@ function ApontarCorte() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="produto" className="text-xs font-bold uppercase">Produto *</Label>
-              <select
+              <Label htmlFor="produto" className="text-xs font-bold uppercase">
+                Produto *
+              </Label>
+              <ProdutoSelect
                 id="produto"
-                className="h-12 w-full rounded-md border border-input bg-background px-2 text-base font-semibold"
+                produtos={produtos}
                 value={produtoId}
-                onChange={(e) => escolherProduto(e.target.value)}
-                disabled={carregando}
-              >
-                <option value="">Selecione</option>
-                {produtos.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
+                onValueChange={escolherProduto}
+                carregando={carregando}
+              />
             </div>
           </div>
           {produto && (
@@ -439,7 +445,7 @@ function ApontarCorte() {
                 {largura === null ? (
                   <strong className="text-amber-700">aguardando definição</strong>
                 ) : (
-                  <strong>{fmt(largura)}</strong>
+                  <strong>{fmt(largura)} cm</strong>
                 )}
               </span>
             </div>
@@ -535,14 +541,14 @@ function ApontarCorte() {
           <ResumoEscuro label="PLTs" valor={String(quantidade)} />
           <ResumoEscuro label="Rolos" valor={rolos.toLocaleString("pt-BR")} />
           <ResumoEscuro
-            label="Metragem"
-            valor={metragem === null ? "Aguardando largura" : `${fmt(metragem)} m`}
+            label="Produção"
+            valor={metragem === null ? "Aguardando largura" : `${fmt(metragem)} m²`}
             pequeno={metragem === null}
           />
         </section>
         {largura !== null && rolos > 0 && (
           <p className="text-xs text-muted-foreground">
-            {fmt(largura)} × {rolos.toLocaleString("pt-BR")} rolos ÷ 10 = {fmt(metragem ?? 0)} m
+            {fmt(largura)} cm × {rolos.toLocaleString("pt-BR")} rolos ÷ 10 = {fmt(metragem ?? 0)} m²
           </p>
         )}
         {quantidade > 20 && (
@@ -593,15 +599,6 @@ function ApontarMantas() {
     quantidadePlts > 0 &&
     rolosInteiros,
   );
-  const produtosPorCategoria = useMemo(() => {
-    const grupos = new Map<string, Produto[]>();
-    for (const item of produtos) {
-      const categoria = item.categoria ?? "Outros";
-      grupos.set(categoria, [...(grupos.get(categoria) ?? []), item]);
-    }
-    return [...grupos.entries()];
-  }, [produtos]);
-
   function escolherProduto(id: string) {
     setProdutoId(id);
     const escolhido = produtos.find((item) => item.id === id);
@@ -736,24 +733,13 @@ function ApontarMantas() {
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="produto-manta">Produto *</Label>
-              <select
+              <ProdutoSelect
                 id="produto-manta"
-                className="h-12 w-full rounded-md border bg-background px-3 text-base"
+                produtos={produtos}
                 value={produtoId}
-                onChange={(e) => escolherProduto(e.target.value)}
-                disabled={carregando}
-              >
-                <option value="">{carregando ? "Carregando..." : "Selecione"}</option>
-                {produtosPorCategoria.map(([categoria, itens]) => (
-                  <optgroup key={categoria} label={categoria}>
-                    {itens.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.nome}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                onValueChange={escolherProduto}
+                carregando={carregando}
+              />
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="lote-manta">Lote *</Label>
@@ -920,19 +906,13 @@ function ApontarFitas() {
             </div>
             <div className="space-y-1">
               <Label>Produto *</Label>
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3"
+              <ProdutoSelect
+                produtos={produtos}
                 value={produtoId}
-                onChange={(e) => escolherProduto(e.target.value)}
-                disabled={carregando}
-              >
-                <option value="">{carregando ? "Carregando..." : "Aguardando catálogo"}</option>
-                {produtos.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
+                onValueChange={escolherProduto}
+                carregando={carregando}
+                placeholder="Aguardando catálogo"
+              />
             </div>
             <div className="space-y-1">
               <Label>Tempo</Label>

@@ -1,8 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { useEffect } from "react";
 
-import { DrykoLogo } from "@/components/dryko/logo";
-import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
@@ -27,34 +26,22 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const navigate = useNavigate();
-  const [verificando, setVerificando] = useState(true);
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         void navigate({ to: "/painel", replace: true });
       } else {
-        setVerificando(false);
+        void navigate({ to: "/auth", replace: true });
       }
     });
   }, [navigate]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-secondary px-6 text-center">
-      <DrykoLogo size="lg" />
-      <div>
-        <h1 className="text-3xl font-bold">Aponta Produção</h1>
-        <p className="mt-2 max-w-md text-muted-foreground">
-          Registro de produção por setor e turno, com metas, pendências e relatórios.
-        </p>
+    <main className="grid min-h-svh place-items-center bg-[#1d1d21] text-white">
+      <div className="flex items-center gap-3 text-sm text-slate-300">
+        <LoaderCircle className="size-5 animate-spin text-primary" /> Carregando o sistema...
       </div>
-      <Button
-        className="h-14 px-10 text-base"
-        disabled={verificando}
-        onClick={() => navigate({ to: "/auth" })}
-      >
-        {verificando ? "Carregando..." : "Entrar"}
-      </Button>
-    </div>
+    </main>
   );
 }

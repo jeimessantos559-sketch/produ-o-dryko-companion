@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
+import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import { rolosManta } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/produtos")({ component: Produtos });
@@ -19,10 +20,19 @@ export const Route = createFileRoute("/_authenticated/produtos")({ component: Pr
 type Produto = Database["public"]["Tables"]["produtos"]["Row"];
 type Marca = Database["public"]["Tables"]["marcas_produto"]["Row"];
 
-const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas", "asfox", "misturadores", "liquidos", "pos", "avulsos"];
+const SETORES: SetorCodigo[] = [
+  "corte",
+  "fitas",
+  "mantas",
+  "asfox",
+  "misturadores",
+  "liquidos",
+  "pos",
+  "avulsos",
+];
 
 function Produtos() {
-  const { canManageProducts, loading } = useAuth();
+  const { isAdmin, loading } = useAuth();
   const [setor, setSetor] = useState<SetorCodigo>("corte");
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [marcas, setMarcas] = useState<Marca[]>([]);
@@ -47,36 +57,38 @@ function Produtos() {
       setMarcas([]);
       toast.error("Não foi possível carregar os produtos.");
     } else {
-      const ordem = new Map((listaMarcas ?? []).map((marca) => [marca.nome, marca.ordem]));
-      setProdutos(
-        [...(data ?? [])].sort(
-          (a, b) =>
-            (ordem.get(a.categoria ?? "") ?? 999) - (ordem.get(b.categoria ?? "") ?? 999) ||
-            a.nome.localeCompare(b.nome),
-        ),
-      );
+      setProdutos(ordenarProdutosPorMarca(data ?? [], listaMarcas ?? []));
       setMarcas(listaMarcas ?? []);
     }
     setCarregando(false);
   }
 
   useEffect(() => {
-    if (!canManageProducts) {
+    if (!isAdmin) {
       setCarregando(false);
       return;
     }
     void carregarProdutos(setor);
-  }, [canManageProducts, setor]);
+  }, [isAdmin, setor]);
 
-  const rolosCalculados = useMemo(() => rolosManta(metragemPorPlt, metrosPorRolo), [metragemPorPlt, metrosPorRolo]);
-  const mantaValida = categoria.trim() && metragemPorPlt > 0 && metrosPorRolo > 0 && Number.isInteger(rolosCalculados) && rolosCalculados > 0;
-  const configuracaoValida = setor === "corte"
-    ? Number.isInteger(rolosPorPlt) && rolosPorPlt > 0 && largura > 0
-    : setor === "fitas"
-      ? largura > 0
-      : setor === "mantas"
-        ? Boolean(mantaValida)
-        : true;
+  const rolosCalculados = useMemo(
+    () => rolosManta(metragemPorPlt, metrosPorRolo),
+    [metragemPorPlt, metrosPorRolo],
+  );
+  const mantaValida =
+    categoria.trim() &&
+    metragemPorPlt > 0 &&
+    metrosPorRolo > 0 &&
+    Number.isInteger(rolosCalculados) &&
+    rolosCalculados > 0;
+  const configuracaoValida =
+    setor === "corte"
+      ? Number.isInteger(rolosPorPlt) && rolosPorPlt > 0 && largura > 0
+      : setor === "fitas"
+        ? largura > 0
+        : setor === "mantas"
+          ? Boolean(mantaValida)
+          : true;
   const valido = Boolean(nome.trim() && categoria.trim() && configuracaoValida);
 
   function limparFormulario(novoSetor = setor) {
@@ -124,7 +136,9 @@ function Produtos() {
     const marca = categoria.trim().toUpperCase();
 
     if (!marcas.some((item) => item.nome === marca)) {
-      const { error: erroMarca } = await supabase.from("marcas_produto").insert({ setor, nome: marca, ordem: marcas.length + 1 });
+      const { error: erroMarca } = await supabase
+        .from("marcas_produto")
+        .insert({ setor, nome: marca, ordem: marcas.length + 1 });
       if (erroMarca && erroMarca.code !== "23505") {
         setSalvando(false);
         toast.error("Não foi possível cadastrar a marca do produto.");
@@ -149,7 +163,11 @@ function Produtos() {
 
     setSalvando(false);
     if (resultado.error) {
-      toast.error(resultado.error.code === "23505" ? "Já existe um produto com esse nome neste setor." : "Não foi possível salvar o produto.");
+      toast.error(
+        resultado.error.code === "23505"
+          ? "Já existe um produto com esse nome neste setor."
+          : "Não foi possível salvar o produto.",
+      );
       return;
     }
 
@@ -160,21 +178,35 @@ function Produtos() {
   }
 
   async function alternarAtivo(produto: Produto) {
-    const { error } = await supabase.from("produtos").update({ ativo: !produto.ativo }).eq("id", produto.id);
+    const { error } = await supabase
+      .from("produtos")
+      .update({ ativo: !produto.ativo })
+      .eq("id", produto.id);
     if (error) {
       toast.error("Não foi possível alterar o status do produto.");
       return;
     }
     invalidarCacheProdutos(setor);
-    toast.success(produto.ativo ? "Produto desativado. O histórico foi mantido." : "Produto ativado.");
+    toast.success(
+      produto.ativo ? "Produto desativado. O histórico foi mantido." : "Produto ativado.",
+    );
     await carregarProdutos(setor);
   }
 
   async function excluir(produto: Produto) {
-    if (!window.confirm(`Excluir definitivamente ${produto.nome}? Se houver histórico de produção, use Desativar.`)) return;
+    if (
+      !window.confirm(
+        `Excluir definitivamente ${produto.nome}? Se houver histórico de produção, use Desativar.`,
+      )
+    )
+      return;
     const { error } = await supabase.from("produtos").delete().eq("id", produto.id);
     if (error) {
-      toast.error(error.code === "23503" ? "Este produto possui histórico e não pode ser apagado. Desative-o para preservar os registros." : "Não foi possível excluir o produto.");
+      toast.error(
+        error.code === "23503"
+          ? "Este produto possui histórico e não pode ser apagado. Desative-o para preservar os registros."
+          : "Não foi possível excluir o produto.",
+      );
       return;
     }
     invalidarCacheProdutos(setor);
@@ -189,96 +221,287 @@ function Produtos() {
     const atual = marcas[indice];
     const outra = marcas[destino];
     if (!atual || !outra) return;
-    const { error } = await supabase.from("marcas_produto").upsert([
-      { id: atual.id, setor: atual.setor, nome: atual.nome, ordem: outra.ordem },
-      { id: outra.id, setor: outra.setor, nome: outra.nome, ordem: atual.ordem },
-    ]);
+    const anteriores = marcas;
+    const reordenadas = [...marcas];
+    reordenadas[indice] = outra;
+    reordenadas[destino] = atual;
+    const normalizadas = reordenadas.map((marca, posicao) => ({ ...marca, ordem: posicao + 1 }));
+    setMarcas(normalizadas);
+    setProdutos((atuais) => ordenarProdutosPorMarca(atuais, normalizadas));
+
+    const { error } = await supabase.from("marcas_produto").upsert(
+      normalizadas.map((marca) => ({
+        id: marca.id,
+        setor: marca.setor,
+        nome: marca.nome,
+        ordem: marca.ordem,
+      })),
+    );
     if (error) {
+      setMarcas(anteriores);
+      setProdutos((atuais) => ordenarProdutosPorMarca(atuais, anteriores));
       toast.error("Não foi possível alterar a ordem das marcas.");
       return;
     }
+    invalidarCacheProdutos(setor);
     toast.success("Ordem das marcas atualizada.");
     await carregarProdutos(setor);
   }
 
   return (
     <AppShell title="Produtos" eyebrow="ADMINISTRAÇÃO · CATÁLOGO">
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="mx-auto max-w-4xl space-y-6">
         {loading || carregando ? (
           <p className="text-sm text-muted-foreground">Carregando...</p>
-        ) : !canManageProducts ? (
-          <Card><CardContent className="pt-6 text-sm text-muted-foreground">Você não tem permissão para gerenciar produtos.</CardContent></Card>
+        ) : !isAdmin ? (
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              Você não tem permissão para gerenciar produtos.
+            </CardContent>
+          </Card>
         ) : (
           <>
             <Card className="rounded-3xl border-slate-200 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2">
-                <CardTitle className="text-base">{editandoId ? "Editar produto" : "Cadastrar novo produto"}</CardTitle>
-                {editandoId && <Button size="sm" variant="ghost" onClick={() => limparFormulario()}><X /> Cancelar edição</Button>}
+                <CardTitle className="text-xl">
+                  {editandoId ? "Editar produto" : "Cadastrar novo produto"}
+                </CardTitle>
+                {editandoId && (
+                  <Button size="sm" variant="ghost" onClick={() => limparFormulario()}>
+                    <X /> Cancelar edição
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
                   <Label htmlFor="setor-produto">Setor *</Label>
-                  <select id="setor-produto" className="h-11 w-full rounded-md border bg-background px-3" value={setor} onChange={(e) => trocarSetor(e.target.value as SetorCodigo)} disabled={Boolean(editandoId)}>
-                    {SETORES.map((codigo) => <option key={codigo} value={codigo}>{nomeSetor(codigo)}</option>)}
+                  <select
+                    id="setor-produto"
+                    className="h-12 w-full rounded-xl border border-input bg-white px-3 [color-scheme:light]"
+                    value={setor}
+                    onChange={(e) => trocarSetor(e.target.value as SetorCodigo)}
+                    disabled={Boolean(editandoId)}
+                  >
+                    {SETORES.map((codigo) => (
+                      <option key={codigo} value={codigo}>
+                        {nomeSetor(codigo)}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="categoria-produto">Marca ou família *</Label>
-                  <Input id="categoria-produto" value={categoria} onChange={(e) => setCategoria(e.target.value.toUpperCase())} placeholder="Ex.: DRYKO" />
+                  <Input
+                    id="categoria-produto"
+                    value={categoria}
+                    onChange={(e) => setCategoria(e.target.value.toUpperCase())}
+                    placeholder="Ex.: DRYKO"
+                  />
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="nome-produto">Nome *</Label>
-                  <Input id="nome-produto" value={nome} onChange={(e) => alterarNome(e.target.value)} placeholder={setor === "corte" ? "Ex.: FVD 10" : undefined} />
+                  <Input
+                    id="nome-produto"
+                    value={nome}
+                    onChange={(e) => alterarNome(e.target.value)}
+                    placeholder={setor === "corte" ? "Ex.: FVD 10" : undefined}
+                  />
                 </div>
 
-                {setor === "corte" && <>
-                  <div className="space-y-1"><Label htmlFor="largura-corte">Largura (cm) *</Label><Input id="largura-corte" type="number" min={0.01} step="0.01" value={largura || ""} onChange={(e) => setLargura(Number(e.target.value))} /></div>
-                  <div className="space-y-1"><Label htmlFor="rolos-produto">Rolos por PLT *</Label><Input id="rolos-produto" type="number" min={1} step={1} value={rolosPorPlt || ""} onChange={(e) => setRolosPorPlt(Number(e.target.value))} /></div>
-                  {largura > 0 && rolosPorPlt > 0 && <div className="rounded-xl bg-muted p-3 sm:col-span-2"><span className="text-xs text-muted-foreground">Metragem por PLT</span><p className="text-xl font-bold">{(largura * rolosPorPlt / 10).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²</p></div>}
-                </>}
-
-                {setor === "fitas" && <div className="space-y-1 sm:col-span-2"><Label htmlFor="largura-produto">Largura padrão (m) *</Label><Input id="largura-produto" type="number" min={0.01} step="0.01" value={largura || ""} onChange={(e) => setLargura(Number(e.target.value))} /></div>}
-
-                {setor === "mantas" && <>
-                  <div className="space-y-1"><Label htmlFor="metragem-produto">Metragem por PLT *</Label><Input id="metragem-produto" type="number" min={1} step={10} value={metragemPorPlt || ""} onChange={(e) => setMetragemPorPlt(Number(e.target.value))} /></div>
-                  <div className="space-y-1"><Label htmlFor="metros-rolo-produto">Metros por rolo *</Label><Input id="metros-rolo-produto" type="number" min={0.01} step="0.01" value={metrosPorRolo || ""} onChange={(e) => setMetrosPorRolo(Number(e.target.value))} /></div>
-                  <div className="rounded-md bg-muted p-3 sm:col-span-2"><span className="text-xs text-muted-foreground">Rolos por PLT</span><p className="text-xl font-bold">{Number.isInteger(rolosCalculados) ? rolosCalculados : "Revise a metragem"}</p></div>
-                </>}
-
-                <Button className="h-12 sm:col-span-2" disabled={!valido || salvando} onClick={salvar}>{salvando ? "Salvando..." : editandoId ? "Salvar alterações" : "Cadastrar produto"}</Button>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-3xl border-slate-200 shadow-sm">
-              <CardHeader><CardTitle className="text-base">Ordem das marcas</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {marcas.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma marca cadastrada.</p> : marcas.map((marca, indice) => (
-                  <div key={marca.id} className="flex items-center justify-between rounded-md border p-3">
-                    <span className="font-medium">{indice + 1}. {marca.nome}</span>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="outline" disabled={indice === 0} onClick={() => moverMarca(indice, -1)} aria-label={`Subir ${marca.nome}`}><ArrowUp /></Button>
-                      <Button size="icon" variant="outline" disabled={indice === marcas.length - 1} onClick={() => moverMarca(indice, 1)} aria-label={`Descer ${marca.nome}`}><ArrowDown /></Button>
+                {setor === "corte" && (
+                  <>
+                    <div className="space-y-1">
+                      <Label htmlFor="largura-corte">Largura (cm) *</Label>
+                      <Input
+                        id="largura-corte"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        value={largura || ""}
+                        onChange={(e) => setLargura(Number(e.target.value))}
+                      />
                     </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="rolos-produto">Rolos por PLT *</Label>
+                      <Input
+                        id="rolos-produto"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={rolosPorPlt || ""}
+                        onChange={(e) => setRolosPorPlt(Number(e.target.value))}
+                      />
+                    </div>
+                    {largura > 0 && rolosPorPlt > 0 && (
+                      <div className="rounded-xl bg-muted p-3 sm:col-span-2">
+                        <span className="text-xs text-muted-foreground">Metragem por PLT</span>
+                        <p className="text-xl font-bold">
+                          {((largura * rolosPorPlt) / 10).toLocaleString("pt-BR", {
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          m²
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {setor === "fitas" && (
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor="largura-produto">Largura padrão (m) *</Label>
+                    <Input
+                      id="largura-produto"
+                      type="number"
+                      min={0.01}
+                      step="0.01"
+                      value={largura || ""}
+                      onChange={(e) => setLargura(Number(e.target.value))}
+                    />
                   </div>
-                ))}
+                )}
+
+                {setor === "mantas" && (
+                  <>
+                    <div className="space-y-1">
+                      <Label htmlFor="metragem-produto">Metragem por PLT *</Label>
+                      <Input
+                        id="metragem-produto"
+                        type="number"
+                        min={1}
+                        step={10}
+                        value={metragemPorPlt || ""}
+                        onChange={(e) => setMetragemPorPlt(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="metros-rolo-produto">Metros por rolo *</Label>
+                      <Input
+                        id="metros-rolo-produto"
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        value={metrosPorRolo || ""}
+                        onChange={(e) => setMetrosPorRolo(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="rounded-md bg-muted p-3 sm:col-span-2">
+                      <span className="text-xs text-muted-foreground">Rolos por PLT</span>
+                      <p className="text-xl font-bold">
+                        {Number.isInteger(rolosCalculados) ? rolosCalculados : "Revise a metragem"}
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                <Button
+                  className="h-12 sm:col-span-2"
+                  disabled={!valido || salvando}
+                  onClick={salvar}
+                >
+                  {salvando
+                    ? "Salvando..."
+                    : editandoId
+                      ? "Salvar alterações"
+                      : "Cadastrar produto"}
+                </Button>
               </CardContent>
             </Card>
 
             <Card className="rounded-3xl border-slate-200 shadow-sm">
-              <CardHeader><CardTitle className="text-base">Produtos de {nomeSetor(setor)}</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle className="text-2xl">Ordem das marcas</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Esta prioridade é aplicada imediatamente nos seletores de apontamento.
+                </p>
+              </CardHeader>
               <CardContent className="space-y-2">
-                {produtos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum produto cadastrado.</p> : produtos.map((produto) => (
-                  <div key={produto.id} className={`rounded-2xl border p-3 text-sm ${produto.ativo ? "bg-white" : "bg-slate-50 opacity-70"}`}>
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div><p className="font-bold">{produto.nome}</p><p className="text-muted-foreground">{descricaoProduto(produto)}</p><p className={`mt-1 text-xs font-semibold ${produto.ativo ? "text-emerald-700" : "text-slate-500"}`}>{produto.ativo ? "Ativo" : "Inativo"}</p></div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => editar(produto)}><Pencil /> Editar</Button>
-                        <Button size="sm" variant="outline" onClick={() => void alternarAtivo(produto)}><Power /> {produto.ativo ? "Desativar" : "Ativar"}</Button>
-                        <Button size="sm" variant="destructive" onClick={() => void excluir(produto)}><Trash2 /> Excluir</Button>
+                {marcas.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma marca cadastrada.</p>
+                ) : (
+                  marcas.map((marca, indice) => (
+                    <div
+                      key={marca.id}
+                      className="flex min-h-20 items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+                    >
+                      <span className="text-lg font-semibold">
+                        {indice + 1}. {marca.nome}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          className="size-12 rounded-xl"
+                          size="icon"
+                          variant="outline"
+                          disabled={indice === 0}
+                          onClick={() => moverMarca(indice, -1)}
+                          aria-label={`Subir ${marca.nome}`}
+                        >
+                          <ArrowUp className="size-5" />
+                        </Button>
+                        <Button
+                          className="size-12 rounded-xl"
+                          size="icon"
+                          variant="outline"
+                          disabled={indice === marcas.length - 1}
+                          onClick={() => moverMarca(indice, 1)}
+                          aria-label={`Descer ${marca.nome}`}
+                        >
+                          <ArrowDown className="size-5" />
+                        </Button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-3xl border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-2xl">Produtos de {nomeSetor(setor)}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {produtos.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhum produto cadastrado.</p>
+                ) : (
+                  produtos.map((produto) => (
+                    <div
+                      key={produto.id}
+                      className={`rounded-2xl border p-4 text-sm sm:p-5 ${produto.ativo ? "bg-white" : "bg-slate-50 opacity-70"}`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-lg font-bold">{produto.nome}</p>
+                          <p className="mt-1 text-base text-muted-foreground">
+                            {descricaoProduto(produto)}
+                          </p>
+                          <p
+                            className={`mt-1 text-sm font-semibold ${produto.ativo ? "text-emerald-700" : "text-slate-500"}`}
+                          >
+                            {produto.ativo ? "Ativo" : "Inativo"}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={() => editar(produto)}>
+                            <Pencil /> Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void alternarAtivo(produto)}
+                          >
+                            <Power /> {produto.ativo ? "Desativar" : "Ativar"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => void excluir(produto)}
+                          >
+                            <Trash2 /> Excluir
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </CardContent>
             </Card>
           </>
@@ -292,10 +515,12 @@ function descricaoProduto(produto: Produto) {
   if (produto.setor === "corte") {
     const largura = Number(produto.largura ?? 0);
     const rolos = Number(produto.rolos_por_plt ?? 0);
-    const metragem = largura > 0 && rolos > 0 ? largura * rolos / 10 : null;
+    const metragem = largura > 0 && rolos > 0 ? (largura * rolos) / 10 : null;
     return `${produto.categoria ?? "Sem marca"} · ${largura > 0 ? `${largura.toLocaleString("pt-BR")} cm · ` : ""}${rolos} rolos/PLT${metragem == null ? "" : ` · ${metragem.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²/PLT`}`;
   }
-  if (produto.setor === "fitas") return `${produto.categoria ?? "Fitas"} · largura ${produto.largura} m`;
-  if (produto.setor === "mantas") return `${produto.categoria ?? "Sem categoria"} · ${produto.metragem_por_plt} m/PLT · ${produto.rolos_por_plt} rolos/PLT · ${produto.metros_por_rolo} m/rolo`;
+  if (produto.setor === "fitas")
+    return `${produto.categoria ?? "Fitas"} · largura ${produto.largura} m`;
+  if (produto.setor === "mantas")
+    return `${produto.categoria ?? "Sem categoria"} · ${produto.metragem_por_plt} m/PLT · ${produto.rolos_por_plt} rolos/PLT · ${produto.metros_por_rolo} m/rolo`;
   return `${produto.categoria ?? "Produtos"} · ${produto.ativo ? "Ativo" : "Inativo"}`;
 }
