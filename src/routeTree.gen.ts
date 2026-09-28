@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AlterarSenhaRouteImport } from './routes/alterar-senha'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedAdministracaoRouteImport } from './routes/_authenticated/administracao'
 import { Route as AuthenticatedApontarRouteImport } from './routes/_authenticated/apontar'
 import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
 import { Route as AuthenticatedControleApontamentosRouteImport } from './routes/_authenticated/controle-apontamentos'
@@ -46,6 +47,12 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAdministracaoRoute =
+  AuthenticatedAdministracaoRouteImport.update({
+    id: '/administracao',
+    path: '/administracao',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedApontarRoute = AuthenticatedApontarRouteImport.update({
   id: '/apontar',
   path: '/apontar',
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
+  '/administracao': typeof AuthenticatedAdministracaoRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
   '/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
@@ -138,6 +146,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
+  '/administracao': typeof AuthenticatedAdministracaoRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
   '/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
@@ -158,6 +167,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
+  '/_authenticated/administracao': typeof AuthenticatedAdministracaoRoute
   '/_authenticated/apontar': typeof AuthenticatedApontarRoute
   '/_authenticated/contagem': typeof AuthenticatedContagemRoute
   '/_authenticated/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/'
     | '/alterar-senha'
     | '/auth'
+    | '/administracao'
     | '/apontar'
     | '/contagem'
     | '/controle-apontamentos'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/'
     | '/alterar-senha'
     | '/auth'
+    | '/administracao'
     | '/apontar'
     | '/contagem'
     | '/controle-apontamentos'
@@ -215,6 +227,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/alterar-senha'
     | '/auth'
+    | '/_authenticated/administracao'
     | '/_authenticated/apontar'
     | '/_authenticated/contagem'
     | '/_authenticated/controle-apontamentos'
@@ -266,6 +279,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/administracao': {
+      id: '/_authenticated/administracao'
+      path: '/administracao'
+      fullPath: '/administracao'
+      preLoaderRoute: typeof AuthenticatedAdministracaoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/apontar': {
       id: '/_authenticated/apontar'
@@ -362,6 +382,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdministracaoRoute: typeof AuthenticatedAdministracaoRoute
   AuthenticatedApontarRoute: typeof AuthenticatedApontarRoute
   AuthenticatedContagemRoute: typeof AuthenticatedContagemRoute
   AuthenticatedControleApontamentosRoute: typeof AuthenticatedControleApontamentosRoute
@@ -378,6 +399,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdministracaoRoute: AuthenticatedAdministracaoRoute,
   AuthenticatedApontarRoute: AuthenticatedApontarRoute,
   AuthenticatedContagemRoute: AuthenticatedContagemRoute,
   AuthenticatedControleApontamentosRoute:

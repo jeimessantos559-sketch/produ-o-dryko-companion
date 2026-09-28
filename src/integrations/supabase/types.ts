@@ -406,6 +406,7 @@ export type Database = {
           nome: string
           onboarding_concluido: boolean
           pode_confirmar_protheus: boolean
+          pode_finalizar_metas: boolean
           pode_gerenciar_produtos: boolean
           setor_atual: Database["public"]["Enums"]["setor_codigo"] | null
           turno_atual: Database["public"]["Enums"]["turno_codigo"] | null
@@ -422,6 +423,7 @@ export type Database = {
           nome?: string
           onboarding_concluido?: boolean
           pode_confirmar_protheus?: boolean
+          pode_finalizar_metas?: boolean
           pode_gerenciar_produtos?: boolean
           setor_atual?: Database["public"]["Enums"]["setor_codigo"] | null
           turno_atual?: Database["public"]["Enums"]["turno_codigo"] | null
@@ -438,6 +440,7 @@ export type Database = {
           nome?: string
           onboarding_concluido?: boolean
           pode_confirmar_protheus?: boolean
+          pode_finalizar_metas?: boolean
           pode_gerenciar_produtos?: boolean
           setor_atual?: Database["public"]["Enums"]["setor_codigo"] | null
           turno_atual?: Database["public"]["Enums"]["turno_codigo"] | null
@@ -576,6 +579,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      concluir_troca_senha: { Args: never; Returns: undefined }
       confirmar_apontamentos_protheus: {
         Args: { p_ids: string[] }
         Returns: number
@@ -626,6 +630,19 @@ export type Database = {
         }
         Returns: string
       }
+      gerar_relatorio_turno: {
+        Args: {
+          p_data: string
+          p_resumo: Json
+          p_setor: Database["public"]["Enums"]["setor_codigo"]
+          p_turno: Database["public"]["Enums"]["turno_codigo"]
+        }
+        Returns: string
+      }
+      gerenciar_permissao_meta: {
+        Args: { p_pode_finalizar_metas: boolean; p_usuario_id: string }
+        Returns: undefined
+      }
       gerenciar_usuario: {
         Args: {
           p_ativo: boolean
@@ -643,7 +660,35 @@ export type Database = {
         }
         Returns: boolean
       }
+      metas_painel: {
+        Args: { p_setor: Database["public"]["Enums"]["setor_codigo"] }
+        Returns: {
+          apontado: number
+          created_at: string
+          criado_por: string
+          finalizado_em: string
+          finalizado_por: string
+          id: string
+          op: string
+          produto_id: string
+          produto_nome: string
+          quantidade_meta: number
+          setor: Database["public"]["Enums"]["setor_codigo"]
+          status: Database["public"]["Enums"]["meta_status"]
+          unidade: string
+          updated_at: string
+        }[]
+      }
+      painel_turno: {
+        Args: {
+          p_data: string
+          p_setor: Database["public"]["Enums"]["setor_codigo"]
+          p_turno: Database["public"]["Enums"]["turno_codigo"]
+        }
+        Returns: Json
+      }
       pode_confirmar_protheus: { Args: { _user_id: string }; Returns: boolean }
+      pode_finalizar_meta: { Args: { p_user_id: string }; Returns: boolean }
       pode_gerenciar_produtos: { Args: { _user_id: string }; Returns: boolean }
       reabrir_turno: {
         Args: { p_fechamento_id: string; p_justificativa: string }

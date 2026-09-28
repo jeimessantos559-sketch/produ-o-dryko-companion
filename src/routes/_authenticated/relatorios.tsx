@@ -100,7 +100,7 @@ function Relatorios() {
     setEnviandoId(item.id);
     try {
       await enviarRelatorio({ data: { relatorioId: item.id, destinatarios: lista } });
-      toast.success("Relatório enviado por e-mail.");
+      toast.success(`E-mail enviado para ${lista.length} destinatário(s).`);
       await carregar();
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível enviar o relatório.");
