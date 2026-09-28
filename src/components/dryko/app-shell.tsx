@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { DrykoLogo } from "@/components/dryko/logo";
+import { SetorTurnoDialog } from "@/components/dryko/setor-turno-dialog";
 import { ThemeToggle } from "@/components/dryko/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,8 +36,6 @@ import { NOMES_PAPEIS, useAuth } from "@/lib/auth";
 import { dataSaoPaulo } from "@/lib/producao";
 
 const ITENS = [
-  { to: "/painel", label: "Painel", icon: Gauge },
-  { to: "/selecionar", label: "Setor e turno", icon: Settings2 },
   { to: "/contagem", label: "Programação", icon: CalendarDays },
   { to: "/historico", label: "Histórico", icon: History },
   { to: "/passagem-turno", label: "Passagem", icon: Repeat },
@@ -67,7 +66,13 @@ type PendenciaRapida = {
   turno: "T1" | "T2" | "T3";
 };
 
-function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
+function Navegacao({
+  onNavigate,
+  onSetorTurno,
+}: {
+  onNavigate?: () => void;
+  onSetorTurno: () => void;
+}) {
   const { isAdmin, isAutorizado, roles, profile, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -86,6 +91,11 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
     void navigate({ to: "/auth", replace: true });
   }
 
+  function abrirSetorTurno() {
+    onNavigate?.();
+    onSetorTurno();
+  }
+
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="border-b border-sidebar-border px-4 py-4">
@@ -96,6 +106,28 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
+        <Link
+          to="/painel"
+          onClick={onNavigate}
+          className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
+            pathname.startsWith("/painel")
+              ? "bg-sidebar-primary text-sidebar-primary-foreground"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
+          }`}
+        >
+          <Gauge className="size-4.5 shrink-0" />
+          Painel
+        </Link>
+
+        <button
+          type="button"
+          onClick={abrirSetorTurno}
+          className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+        >
+          <Settings2 className="size-4.5 shrink-0" />
+          Setor e turno
+        </button>
+
         {itens.map((item) => {
           const ativo = pathname.startsWith(item.to);
           return (
@@ -103,7 +135,11 @@ function Navegacao({ onNavigate }: { onNavigate?: () => void }) {
               key={item.to}
               to={item.to}
               onClick={onNavigate}
-              className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${ativo ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}
+              className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
+                ativo
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+              }`}
             >
               <item.icon className="size-4.5 shrink-0" />
               {item.label}
@@ -142,6 +178,7 @@ export function AppShell({
 }: AppShellProps) {
   const [aberto, setAberto] = useState(false);
   const [modalRapido, setModalRapido] = useState<"novo" | "repetir" | null>(null);
+  const [setorTurnoAberto, setSetorTurnoAberto] = useState(false);
   const [notificacoesInternas, setNotificacoesInternas] = useState(false);
   const [carregandoNotificacoes, setCarregandoNotificacoes] = useState(false);
   const [pendenciasInternas, setPendenciasInternas] = useState<PendenciaRapida[]>([]);
@@ -211,7 +248,7 @@ export function AppShell({
       <div className="flex min-h-screen bg-background">
         <aside className="hidden w-[232px] shrink-0 md:block">
           <div className="fixed h-screen w-[232px]">
-            <Navegacao />
+            <Navegacao onSetorTurno={() => setSetorTurnoAberto(true)} />
           </div>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
@@ -230,18 +267,26 @@ export function AppShell({
                 </SheetTrigger>
                 <SheetContent side="left" className="w-[min(84vw,276px)] p-0">
                   <SheetTitle className="sr-only">Menu</SheetTitle>
-                  <Navegacao onNavigate={() => setAberto(false)} />
+                  <Navegacao
+                    onNavigate={() => setAberto(false)}
+                    onSetorTurno={() => setSetorTurnoAberto(true)}
+                  />
                 </SheetContent>
               </Sheet>
 
-              <Link to="/selecionar" className="min-w-0 flex-1" title="Alterar setor e turno">
+              <button
+                type="button"
+                onClick={() => setSetorTurnoAberto(true)}
+                className="min-w-0 flex-1 text-left"
+                title="Alterar setor e turno"
+              >
                 <p className="truncate text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground sm:text-[11px]">
                   {eyebrow ?? contexto}
                 </p>
                 <h1 className="truncate text-lg font-extrabold leading-tight tracking-tight text-foreground sm:text-2xl">
                   {title ?? contexto}
                 </h1>
-              </Link>
+              </button>
 
               <Button
                 type="button"
@@ -287,6 +332,8 @@ export function AppShell({
           </main>
         </div>
       </div>
+
+      <SetorTurnoDialog open={setorTurnoAberto} onOpenChange={setSetorTurnoAberto} />
 
       {!onApontar && !onRepeat && (
         <ApontamentoRapido
