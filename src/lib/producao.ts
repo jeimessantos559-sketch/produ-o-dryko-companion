@@ -30,13 +30,13 @@ export type TurnoOperacional = "T1" | "T2" | "T3";
 
 export const HORARIOS_TURNO: Record<TurnoOperacional, string> = {
   T1: "06:00–15:38",
-  T2: "15:38–02:00",
+  T2: "15:38–01:00",
   T3: "01:00–06:00",
 };
 
 const HORAS_PRODUTIVAS_PADRAO: Record<TurnoOperacional, number[]> = {
   T1: [6, 7, 8, 9, 10, 11, 12, 13, 14],
-  T2: [16, 17, 18, 19, 20, 21, 22, 23, 0, 1],
+  T2: [16, 17, 18, 19, 20, 21, 22, 23, 0],
   T3: [1, 2, 3, 4, 5],
 };
 
