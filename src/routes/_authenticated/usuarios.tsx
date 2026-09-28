@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Clipboard, KeyRound, Pencil, Trash2, UserPlus } from "lucide-react";
+import { Clipboard, KeyRound, Pencil, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +29,7 @@ type Configuracao = {
   papeis: AppRole[];
 };
 
-const PAPEIS: AppRole[] = ["facilitador", "autorizado_protheus", "administrador"];
+const PAPEIS_VISIVEIS: AppRole[] = ["facilitador", "administrador"];
 const SENHA_INICIAL = "123456";
 
 function Usuarios() {
@@ -58,30 +58,19 @@ function Usuarios() {
     if (error) toast.error("Não foi possível carregar os usuários.");
 
     const mapaPapeis: Record<string, AppRole[]> = {};
-    for (const item of papeis ?? []) {
-      mapaPapeis[item.user_id] = [...(mapaPapeis[item.user_id] ?? []), item.role];
-    }
+    for (const item of papeis ?? []) mapaPapeis[item.user_id] = [...(mapaPapeis[item.user_id] ?? []), item.role];
     const lista = (listaPerfis ?? []) as Profile[];
     setPerfis(lista);
-    setConfiguracoes(
-      Object.fromEntries(
-        lista.map((perfil) => [
-          perfil.id,
-          {
-            ativo: perfil.ativo,
-            podeGerenciarProdutos: perfil.pode_gerenciar_produtos,
-            podeConfirmarProtheus: perfil.pode_confirmar_protheus,
-            papeis: mapaPapeis[perfil.id] ?? [],
-          },
-        ]),
-      ),
-    );
+    setConfiguracoes(Object.fromEntries(lista.map((perfil) => [perfil.id, {
+      ativo: perfil.ativo,
+      podeGerenciarProdutos: perfil.pode_gerenciar_produtos,
+      podeConfirmarProtheus: perfil.pode_confirmar_protheus,
+      papeis: mapaPapeis[perfil.id] ?? [],
+    }])));
     setCarregando(false);
   }, [isAdmin]);
 
-  useEffect(() => {
-    void carregar();
-  }, [carregar]);
+  useEffect(() => { void carregar(); }, [carregar]);
 
   function alterar(id: string, mudanca: Partial<Configuracao>) {
     setConfiguracoes((atuais) => {
@@ -94,11 +83,7 @@ function Usuarios() {
   function alternarPapel(id: string, papel: AppRole) {
     const atual = configuracoes[id];
     if (!atual) return;
-    alterar(id, {
-      papeis: atual.papeis.includes(papel)
-        ? atual.papeis.filter((item) => item !== papel)
-        : [...atual.papeis, papel],
-    });
+    alterar(id, { papeis: atual.papeis.includes(papel) ? atual.papeis.filter((item) => item !== papel) : [...atual.papeis, papel] });
   }
 
   async function criar() {
@@ -108,7 +93,7 @@ function Usuarios() {
       const criado = await criarUsuario({ data: { nome: nome.trim() } });
       setCredencialCriada({ login: criado.login, senha: criado.senhaInicial });
       setNome("");
-      toast.success(`Usuário ${criado.login} criado com a senha inicial ${criado.senhaInicial}.`);
+      toast.success(`Usuário ${criado.login} criado.`);
       await carregar();
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível criar o usuário.");
@@ -130,12 +115,14 @@ function Usuarios() {
     const config = configuracoes[perfil.id];
     if (!config || salvandoId) return;
     setSalvandoId(perfil.id);
+    // O papel legado autorizado_protheus é removido: a caixa "Pode lançar no Protheus" passa a ser a fonte de verdade.
+    const papeis = config.papeis.filter((papel) => papel !== "autorizado_protheus");
     const { error } = await supabase.rpc("gerenciar_usuario", {
       p_usuario_id: perfil.id,
       p_ativo: config.ativo,
       p_pode_gerenciar_produtos: config.podeGerenciarProdutos,
       p_pode_confirmar_protheus: config.podeConfirmarProtheus,
-      p_papeis: config.papeis,
+      p_papeis: papeis,
     });
     setSalvandoId(null);
     if (error) {
@@ -157,14 +144,7 @@ function Usuarios() {
     if (!editando || !nomeEditado.trim() || !loginEditado.trim() || salvandoId) return;
     setSalvandoId(editando.id);
     try {
-      await gerenciarUsuarioAdmin({
-        data: {
-          action: "rename",
-          userId: editando.id,
-          nome: nomeEditado.trim(),
-          login: loginEditado.trim(),
-        },
-      });
+      await gerenciarUsuarioAdmin({ data: { action: "rename", userId: editando.id, nome: nomeEditado.trim(), login: loginEditado.trim() } });
       toast.success("Nome e login atualizados.");
       setEditando(null);
       await carregar();
@@ -180,7 +160,7 @@ function Usuarios() {
     setSalvandoId(perfil.id);
     try {
       await gerenciarUsuarioAdmin({ data: { action: "reset", userId: perfil.id } });
-      toast.success(`Senha inicial redefinida para ${SENHA_INICIAL}. No próximo acesso será exigida uma nova senha pessoal.`);
+      toast.success(`Senha redefinida para ${SENHA_INICIAL}.`);
       await carregar();
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível redefinir a senha.");
@@ -209,120 +189,68 @@ function Usuarios() {
 
   return (
     <AppShell title="Usuários" eyebrow="ADMINISTRAÇÃO · ACESSOS">
-      <div className="mx-auto max-w-4xl space-y-4">
-        <div>
-          <h2 className="text-2xl font-bold">Usuários e permissões</h2>
-          <p className="text-sm text-muted-foreground">
-            Informe apenas o nome. O login é criado automaticamente e a senha inicial é {SENHA_INICIAL}.
-          </p>
-        </div>
+      <div className="mx-auto max-w-4xl space-y-3">
+        <div><h2 className="text-xl font-extrabold sm:text-2xl">Usuários e permissões</h2><p className="text-xs text-muted-foreground sm:text-sm">Nome, acesso e permissões operacionais.</p></div>
 
         {loading || carregando ? (
           <p className="text-sm text-muted-foreground">Carregando...</p>
         ) : !isAdmin ? (
-          <Card><CardContent className="pt-6 text-sm text-muted-foreground">Esta tela é exclusiva do administrador.</CardContent></Card>
+          <Card><CardContent className="p-4 text-sm text-muted-foreground">Esta tela é exclusiva do administrador.</CardContent></Card>
         ) : (
           <>
-            <Card className="rounded-3xl">
-              <CardHeader><CardTitle className="text-base">Cadastrar usuário</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-1">
-                  <Label htmlFor="nome-usuario">Nome completo *</Label>
-                  <Input id="nome-usuario" className="h-12 text-base" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: João Gomes" />
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
-                  <strong>Senha inicial padrão:</strong> {SENHA_INICIAL}. No primeiro acesso o usuário será obrigado a criar uma senha pessoal.
-                </div>
-                <Button className="h-12 w-full" disabled={!nome.trim() || criando} onClick={criar}>
-                  <UserPlus /> {criando ? "Criando..." : "Criar usuário"}
-                </Button>
+            <Card className="rounded-2xl">
+              <CardContent className="space-y-2.5 p-4">
+                <Label htmlFor="nome-usuario" className="text-xs">Cadastrar usuário</Label>
+                <div className="grid grid-cols-[1fr_auto] gap-2"><Input id="nome-usuario" className="h-10" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome completo" /><Button className="h-10" disabled={!nome.trim() || criando} onClick={criar}><UserPlus className="size-4" /> {criando ? "Criando..." : "Criar"}</Button></div>
+                <p className="text-xs text-slate-500">Senha inicial padrão: <strong>{SENHA_INICIAL}</strong>. No primeiro acesso será solicitada uma senha pessoal.</p>
               </CardContent>
             </Card>
 
             {credencialCriada && (
-              <Card className="rounded-3xl border-emerald-200 bg-emerald-50/50">
-                <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-                  <div>
-                    <p className="font-bold">Usuário criado</p>
-                    <p className="font-mono text-sm">Login: {credencialCriada.login}</p>
-                    <p className="font-mono text-sm">Senha inicial: {credencialCriada.senha}</p>
-                  </div>
-                  <Button variant="outline" onClick={() => copiarCredencial(credencialCriada.login, credencialCriada.senha)}><Clipboard /> Copiar acesso</Button>
-                </CardContent>
-              </Card>
+              <Card className="rounded-2xl border-emerald-200 bg-emerald-50/50"><CardContent className="flex items-center justify-between gap-3 p-3"><div><p className="font-bold">Usuário criado</p><p className="font-mono text-xs">{credencialCriada.login} · {credencialCriada.senha}</p></div><Button size="sm" variant="outline" onClick={() => copiarCredencial(credencialCriada.login, credencialCriada.senha)}><Clipboard className="size-4" /> Copiar</Button></CardContent></Card>
             )}
 
-            {perfis.map((perfil) => {
-              const config = configuracoes[perfil.id];
-              if (!config) return null;
-              return (
-                <Card key={perfil.id} className="rounded-3xl">
-                  <CardHeader className="pb-2">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <CardTitle className="text-base">{perfil.nome || "Sem nome"}</CardTitle>
-                        <p className="text-sm font-semibold text-primary">Login: {perfil.login || "acesso antigo sem login"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {perfil.setor_atual ? nomeSetor(perfil.setor_atual) : "Primeiro acesso pendente"} · {perfil.turno_atual ? `Turno ${perfil.turno_atual}` : "Sem turno"}
-                        </p>
-                        <p className={`mt-1 flex items-center gap-1 text-xs font-medium ${perfil.deve_alterar_senha ? "text-amber-700" : "text-emerald-700"}`}>
-                          <KeyRound className="size-3.5" />
-                          {perfil.deve_alterar_senha ? `Senha inicial: ${SENHA_INICIAL}` : "Senha pessoal definida (não pode ser visualizada)"}
-                        </p>
+            <div className="space-y-2">
+              {perfis.map((perfil) => {
+                const config = configuracoes[perfil.id];
+                if (!config) return null;
+                return (
+                  <Card key={perfil.id} className="rounded-2xl">
+                    <CardContent className="space-y-3 p-3.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0"><p className="truncate font-bold">{perfil.nome || "Sem nome"}</p><p className="truncate text-sm font-semibold text-primary">{perfil.login || "Sem login"}</p><p className="text-xs text-slate-500">{perfil.setor_atual ? nomeSetor(perfil.setor_atual) : "Primeiro acesso"} · {perfil.turno_atual ?? "Sem turno"}</p></div>
+                        <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium"><input type="checkbox" checked={config.ativo} onChange={(e) => alterar(perfil.id, { ativo: e.target.checked })} /> Ativo</label>
                       </div>
-                      <label className="flex items-center gap-2 text-sm font-medium">
-                        <input type="checkbox" checked={config.ativo} onChange={(e) => alterar(perfil.id, { ativo: e.target.checked })} /> Usuário ativo
+
+                      <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${config.podeConfirmarProtheus ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"}`}>
+                        <div className="flex items-center gap-2"><ShieldCheck className={`size-5 ${config.podeConfirmarProtheus ? "text-primary" : "text-slate-400"}`} /><div><p className="text-sm font-bold">Pode lançar no Protheus</p><p className="text-[11px] text-slate-500">Libera confirmação e controle de apontamentos.</p></div></div>
+                        <input type="checkbox" className="size-5" checked={config.podeConfirmarProtheus} onChange={(e) => alterar(perfil.id, { podeConfirmarProtheus: e.target.checked })} />
                       </label>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <p className="mb-2 text-sm font-semibold">Papéis de acesso</p>
-                      <div className="flex flex-wrap gap-4">
-                        {PAPEIS.map((papel) => (
-                          <label key={papel} className="flex items-center gap-2 text-sm">
-                            <input type="checkbox" checked={config.papeis.includes(papel)} onChange={() => alternarPapel(perfil.id, papel)} /> {NOMES_PAPEIS[papel]}
-                          </label>
-                        ))}
+
+                      <div className="grid gap-2 text-xs sm:grid-cols-2">
+                        <div><p className="mb-1 font-semibold">Perfil</p><div className="flex flex-wrap gap-3">{PAPEIS_VISIVEIS.map((papel) => <label key={papel} className="flex items-center gap-1.5"><input type="checkbox" checked={config.papeis.includes(papel)} onChange={() => alternarPapel(perfil.id, papel)} /> {NOMES_PAPEIS[papel]}</label>)}</div></div>
+                        <div><p className="mb-1 font-semibold">Outras permissões</p><label className="flex items-center gap-1.5"><input type="checkbox" checked={config.podeGerenciarProdutos} onChange={(e) => alterar(perfil.id, { podeGerenciarProdutos: e.target.checked })} /> Gerenciar produtos</label></div>
                       </div>
-                    </div>
-                    <div>
-                      <p className="mb-2 text-sm font-semibold">Permissões adicionais</p>
-                      <div className="flex flex-col gap-2 text-sm sm:flex-row sm:gap-6">
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={config.podeGerenciarProdutos} onChange={(e) => alterar(perfil.id, { podeGerenciarProdutos: e.target.checked })} /> Gerenciar produtos</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={config.podeConfirmarProtheus} onChange={(e) => alterar(perfil.id, { podeConfirmarProtheus: e.target.checked })} /> Confirmar Protheus</label>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button size="sm" disabled={salvandoId !== null} onClick={() => salvar(perfil)}>{salvandoId === perfil.id ? "Salvando..." : "Salvar"}</Button>
+                        <Button size="sm" variant="outline" onClick={() => abrirEdicao(perfil)}><Pencil className="size-4" /> Editar</Button>
+                        <Button size="sm" variant="outline" onClick={() => void redefinirSenha(perfil)}><KeyRound className="size-4" /> {SENHA_INICIAL}</Button>
+                        {perfil.login && perfil.deve_alterar_senha && <Button size="sm" variant="outline" onClick={() => copiarCredencial(perfil.login!)}><Clipboard className="size-4" /> Acesso</Button>}
+                        {perfil.id !== user?.id && <Button size="sm" variant="destructive" onClick={() => void excluir(perfil)}><Trash2 className="size-4" /> Excluir</Button>}
                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button disabled={salvandoId !== null} onClick={() => salvar(perfil)}>{salvandoId === perfil.id ? "Salvando..." : "Salvar permissões"}</Button>
-                      <Button variant="outline" onClick={() => abrirEdicao(perfil)}><Pencil /> Editar</Button>
-                      <Button variant="outline" onClick={() => void redefinirSenha(perfil)}><KeyRound /> Redefinir para {SENHA_INICIAL}</Button>
-                      {perfil.login && perfil.deve_alterar_senha && <Button variant="outline" onClick={() => copiarCredencial(perfil.login!)}><Clipboard /> Copiar acesso</Button>}
-                      {perfil.id !== user?.id && <Button variant="destructive" onClick={() => void excluir(perfil)}><Trash2 /> Excluir</Button>}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                      <p className={`flex items-center gap-1 text-[11px] ${perfil.deve_alterar_senha ? "text-amber-700" : "text-emerald-700"}`}><KeyRound className="size-3" /> {perfil.deve_alterar_senha ? `Senha inicial ${SENHA_INICIAL}` : "Senha pessoal definida"}</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </>
         )}
       </div>
 
       <Dialog open={Boolean(editando)} onOpenChange={(aberto) => { if (!aberto) setEditando(null); }}>
-        <DialogContent className="rounded-3xl sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Editar usuário</DialogTitle>
-            <DialogDescription>Altere o nome ou o login operacional.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1"><Label>Nome</Label><Input value={nomeEditado} onChange={(e) => setNomeEditado(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Login</Label><Input autoCapitalize="none" value={loginEditado} onChange={(e) => setLoginEditado(e.target.value)} /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
-            <Button disabled={!nomeEditado.trim() || !loginEditado.trim() || salvandoId !== null} onClick={() => void salvarEdicao()}>Salvar alterações</Button>
-          </DialogFooter>
-        </DialogContent>
+        <DialogContent className="rounded-2xl sm:max-w-md"><DialogHeader><DialogTitle>Editar usuário</DialogTitle><DialogDescription>Altere o nome ou o login operacional.</DialogDescription></DialogHeader><div className="space-y-3"><div className="space-y-1"><Label>Nome</Label><Input value={nomeEditado} onChange={(e) => setNomeEditado(e.target.value)} /></div><div className="space-y-1"><Label>Login</Label><Input autoCapitalize="none" value={loginEditado} onChange={(e) => setLoginEditado(e.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button><Button disabled={!nomeEditado.trim() || !loginEditado.trim() || salvandoId !== null} onClick={() => void salvarEdicao()}>Salvar</Button></DialogFooter></DialogContent>
       </Dialog>
     </AppShell>
   );
