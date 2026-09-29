@@ -101,71 +101,92 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="border-b border-sidebar-border px-4 py-4">
-        <DrykoLogo size="sm" />
-        <div className="mt-2">
-          <p data-heading className="font-bold text-white">Aponta Produção</p>
-          <p className="text-xs text-sidebar-foreground/55">Sistema interno</p>
+      <div className="border-b border-sidebar-border px-5 pb-5 pt-6 md:px-4 md:py-4">
+        <div className="flex items-center gap-4 md:block">
+          <div className="shrink-0 scale-110 origin-left md:scale-100">
+            <DrykoLogo size="sm" />
+          </div>
+          <div className="min-w-0 md:mt-2">
+            <p data-heading className="truncate text-xl font-extrabold text-sidebar-foreground md:text-base md:font-bold">
+              Aponta Produção
+            </p>
+            <p className="mt-0.5 text-xs font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/55 md:normal-case md:font-normal md:tracking-normal">
+              Produção Dryko
+            </p>
+          </div>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
-        <Link
-          to="/painel"
-          onClick={onNavigate}
-          className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
-            pathname.startsWith("/painel")
-              ? "bg-sidebar-primary text-sidebar-primary-foreground"
-              : "text-sidebar-foreground hover:bg-sidebar-accent"
-          }`}
-        >
-          <Gauge className="size-4.5 shrink-0" />
-          Painel
-        </Link>
+      <nav className="flex-1 overflow-y-auto px-4 py-5 md:space-y-0.5 md:px-2 md:py-3">
+        <p className="mb-2 px-3 text-[11px] font-extrabold uppercase tracking-[0.24em] text-sidebar-foreground/45 md:hidden">
+          Operação
+        </p>
 
-        {itens.map((item) => {
-          const ativo = pathname.startsWith(item.to);
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={onNavigate}
-              className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
-                ativo
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent"
-              }`}
-            >
-              <item.icon className="size-4.5 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
+        <div className="space-y-1.5 md:space-y-0.5">
+          <Link
+            to="/painel"
+            onClick={onNavigate}
+            className={`flex min-h-14 items-center gap-4 rounded-2xl px-4 text-[17px] font-semibold transition-colors md:min-h-10 md:gap-3 md:rounded-xl md:px-3 md:text-sm md:font-medium ${
+              pathname.startsWith("/painel")
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-accent"
+            }`}
+          >
+            <Gauge className="size-6 shrink-0 md:size-4.5" />
+            Painel
+          </Link>
 
-        <button
-          type="button"
-          onClick={abrirSetorTurno}
-          className="flex min-h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
-        >
-          <Settings2 className="size-4.5 shrink-0" />
-          Setor e turno
-        </button>
+          {itens.map((item) => {
+            const ativo = pathname.startsWith(item.to);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                onClick={onNavigate}
+                className={`flex min-h-14 items-center gap-4 rounded-2xl px-4 text-[17px] font-semibold transition-colors md:min-h-10 md:gap-3 md:rounded-xl md:px-3 md:text-sm md:font-medium ${
+                  ativo
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                }`}
+              >
+                <item.icon className="size-6 shrink-0 md:size-4.5" />
+                {item.label}
+              </Link>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={abrirSetorTurno}
+            className="flex min-h-14 w-full items-center gap-4 rounded-2xl px-4 text-left text-[17px] font-semibold text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:min-h-10 md:gap-3 md:rounded-xl md:px-3 md:text-sm md:font-medium"
+          >
+            <Settings2 className="size-6 shrink-0 md:size-4.5" />
+            Setor e turno
+          </button>
+        </div>
       </nav>
 
-      <div className="space-y-2 border-t border-sidebar-border p-3 text-sm">
-        <div>
-          <p className="truncate font-semibold">{profile?.nome || "Usuário"}</p>
-          <p className="truncate text-xs text-sidebar-foreground/65">
-            {roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}
-          </p>
+      <div className="border-t border-sidebar-border px-5 py-4 md:p-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-foreground md:hidden">
+            <span className="text-base font-bold">{(profile?.nome || "U").trim().charAt(0).toUpperCase()}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-bold md:text-sm md:font-semibold">{profile?.nome || "Usuário"}</p>
+            <p className="truncate text-xs text-sidebar-foreground/65">
+              {roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}
+              {profile?.setor_atual ? ` · ${nomeSetor(profile.setor_atual)}` : ""}
+              {profile?.turno_atual ? ` · ${nomeTurno(profile.turno_atual)}` : ""}
+            </p>
+          </div>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="mt-2 h-11 w-full justify-start gap-3 px-3 text-[15px] font-semibold text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:h-9 md:text-sm md:font-medium"
           onClick={sair}
         >
-          <LogOut className="size-4" /> Sair
+          <LogOut className="size-5 md:size-4" /> Sair
         </Button>
       </div>
     </div>
@@ -270,7 +291,7 @@ export function AppShell({
                     <Menu className="size-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[min(84vw,276px)] p-0">
+                <SheetContent side="left" className="w-[min(88vw,360px)] p-0">
                   <SheetTitle className="sr-only">Menu</SheetTitle>
                   <Navegacao
                     onNavigate={() => setAberto(false)}
