@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { preencherLoteProgramacaoMantas } from "@/lib/programacao-lote";
+import { preencherLoteProgramacaoMantas, preencherReferenciaProgramacao } from "@/lib/programacao-lote";
 import { areaFitas, dataHoraProducaoPadrao, dataOperacional, metragemCorte, rolosManta } from "@/lib/producao";
 import {
   invalidarCacheProdutos,
@@ -183,25 +183,31 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       setCarregandoMeta(true);
       void (async () => {
         const dataDia = dataOperacional(turno);
-        const { data: prog } = await supabase
+        const opDigitada = op.trim();
+        const { data: progs } = await supabase
           .from("programacao_producao")
-          .select("quantidade_prevista")
+          .select("quantidade_prevista, op")
           .eq("setor", "corte")
           .eq("data_local", dataDia)
           .eq("global_dia", true)
-          .eq("op", op.trim())
           .eq("produto_id", produtoId)
-          .limit(1)
-          .maybeSingle();
+          .limit(5);
         if (!ativo) return;
+        const listaProg = (progs ?? []) as { quantidade_prevista: number; op: string | null }[];
+        const prog =
+          listaProg.find((p) => (p.op ?? "").trim().toUpperCase() === opDigitada.toUpperCase()) ??
+          listaProg.find((p) => !(p.op ?? "").trim()) ??
+          null;
         if (prog) {
-          const { data: doDia } = await supabase
+          const opProg = (prog.op ?? "").trim();
+          let consultaDia = supabase
             .from("apontamentos")
             .select("quantidade_plts")
             .eq("setor", "corte")
             .eq("data_local", dataDia)
-            .eq("op", op.trim())
             .eq("produto_id", produtoId);
+          if (opProg) consultaDia = consultaDia.eq("op", opProg);
+          const { data: doDia } = await consultaDia;
           if (!ativo) return;
           setMeta(null);
           setProgramadoDia(Number(prog.quantidade_prevista));
@@ -361,7 +367,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
     try {
       if (setor === "corte") {
-        const { error } = await supabase.from("apontamentos").insert({
+        const { data: salvoCorte, error } = await supabase.from("apontamentos").insert({
           usuario_id: user.id,
           setor: "corte",
           turno,
@@ -381,8 +387,14 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
               picadoAdicional: true,
             },
           ],
-        });
+        }).select("data_local").single();
         if (error) throw error;
+        void preencherReferenciaProgramacao({
+          setor: "corte",
+          dataLocal: (salvoCorte as { data_local?: string } | null)?.data_local ?? dataOperacional(turno),
+          produtoId: produto.id,
+          referencia: op,
+        });
         await salvarMetaCorte();
         toast.success(
           quantidadePlts === 0
@@ -390,7 +402,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
             : "Apontamento de Corte salvo.",
         );
       } else if (setor === "fitas") {
-        const { error } = await supabase.from("apontamentos").insert({
+        const { data: salvoFitas, error } = await supabase.from("apontamentos").insert({
           usuario_id: user.id,
           setor: "fitas",
           turno,
@@ -402,8 +414,14 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           velocidade,
           largura,
           area_m2: areaFitasCalculada,
-        });
+        }).select("data_local").single();
         if (error) throw error;
+        void preencherReferenciaProgramacao({
+          setor: "fitas",
+          dataLocal: (salvoFitas as { data_local?: string } | null)?.data_local ?? dataOperacional(turno),
+          produtoId: produto.id,
+          referencia: op,
+        });
         toast.success("Apontamento de Fitas salvo.");
       } else if (setor === "mantas") {
         const { data: salvoManta, error } = await supabase.from("apontamentos").insert({

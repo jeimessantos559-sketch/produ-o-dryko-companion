@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { preencherLoteProgramacaoMantas } from "@/lib/programacao-lote";
+import { preencherLoteProgramacaoMantas, preencherReferenciaProgramacao } from "@/lib/programacao-lote";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import {
   areaFitas,
@@ -355,7 +355,7 @@ function ApontarCorte() {
         largura: produto!.largura,
         grupos: grupos as unknown as Json,
       })
-      .select("sequencia_inicio, sequencia_fim")
+      .select("sequencia_inicio, sequencia_fim, data_local")
       .single();
     setSalvando(false);
     enviando.current = false;
@@ -363,6 +363,12 @@ function ApontarCorte() {
       toast.error(mensagemApontamento(error));
       return;
     }
+    void preencherReferenciaProgramacao({
+      setor: "corte",
+      dataLocal: (data as { data_local?: string | null }).data_local,
+      produtoId,
+      referencia: op,
+    });
     await cadastrarMetaOpcional({
       userId: user.id,
       setor: "corte",
@@ -860,7 +866,7 @@ function ApontarFitas() {
     if (!confirmarExcessoDaMeta(meta, apontado, area)) return;
     enviando.current = true;
     setSalvando(true);
-    const { error } = await supabase.from("apontamentos").insert({
+    const { data: salvoFitas, error } = await supabase.from("apontamentos").insert({
       usuario_id: user.id,
       setor: "fitas",
       turno: profile.turno_atual,
@@ -872,13 +878,19 @@ function ApontarFitas() {
       velocidade,
       largura,
       area_m2: area,
-    });
+    }).select("data_local").single();
     setSalvando(false);
     enviando.current = false;
     if (error) {
       toast.error(mensagemApontamento(error));
       return;
     }
+    void preencherReferenciaProgramacao({
+      setor: "fitas",
+      dataLocal: (salvoFitas as { data_local?: string | null } | null)?.data_local,
+      produtoId: produto.id,
+      referencia: op,
+    });
     await cadastrarMetaOpcional({
       userId: user.id,
       setor: "fitas",

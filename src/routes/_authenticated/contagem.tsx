@@ -444,12 +444,8 @@ function Contagem() {
   async function salvarProgramacao() {
     if (!user || !setor || !turno || !produtoSelecionado || salvandoProgramacao) return;
     const quantidade = numeroDoCampo(quantidadePrevista);
-    const ref = referencia.trim();
-    const ehMantas = setor === "mantas";
-    if ((!ehMantas && !ref) || !Number.isFinite(quantidade) || quantidade <= 0) {
-      toast.error(
-        ehMantas ? "Informe produto e quantidade prevista." : "Informe a OP, produto e quantidade prevista.",
-      );
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      toast.error("Informe produto e quantidade prevista.");
       return;
     }
 
@@ -460,21 +456,19 @@ function Contagem() {
       data_local: dataAtual,
       produto_id: produtoSelecionado.id,
       produto_nome: produtoSelecionado.nome,
-      op: ehMantas ? null : ref,
       quantidade_prevista: quantidade,
       unidade: unidadeProg,
       global_dia: true,
       updated_at: new Date().toISOString(),
     };
 
-    let consulta = (supabase as any)
+    const consulta = (supabase as any)
       .from("programacao_producao")
       .update(valores)
       .eq("setor", setor)
       .eq("data_local", dataAtual)
       .eq("global_dia", true)
       .eq("produto_id", produtoSelecionado.id);
-    if (!ehMantas) consulta = consulta.eq("op", ref);
     const existente = await consulta
       .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
       .limit(1)
@@ -483,7 +477,7 @@ function Contagem() {
     if (!existente.error && !existente.data) {
       resultado = await (supabase as any)
         .from("programacao_producao")
-        .insert({ ...valores, lote: null, criado_por: user.id })
+        .insert({ ...valores, op: null, lote: null, criado_por: user.id })
         .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
         .single();
     }
@@ -507,22 +501,24 @@ function Contagem() {
     toast.success("Produto adicionado à programação.");
   }
 
-  async function editarLote(id: string, atual: string | null) {
+  async function editarReferencia(id: string, atual: string | null) {
     if (!canProgramProduction) return;
-    const digitado = window.prompt("Lote da programação (deixe vazio para limpar):", atual ?? "");
+    const coluna = setor === "mantas" ? "lote" : "op";
+    const nome = coluna === "lote" ? "Lote" : "OP";
+    const digitado = window.prompt(`${nome} da programação (deixe vazio para limpar):`, atual ?? "");
     if (digitado === null) return;
-    const lote = digitado.trim() || null;
+    const valor = digitado.trim() || null;
     const { error } = await (supabase as any)
       .from("programacao_producao")
-      .update({ lote, updated_at: new Date().toISOString() })
+      .update({ [coluna]: valor, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
-      toast.error("Não foi possível atualizar o lote.");
+      toast.error(`Não foi possível atualizar ${coluna === "lote" ? "o lote" : "a OP"}.`);
       return;
     }
-    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, lote } : item)));
+    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)));
     setTextoGerado("");
-    toast.success(lote ? "Lote atualizado." : "Lote removido.");
+    toast.success(valor ? `${nome} atualizado${coluna === "op" ? "a" : ""}.` : `${nome} removid${coluna === "op" ? "a" : "o"}.`);
   }
 
   async function excluirProgramacao(id: string) {
@@ -825,7 +821,6 @@ function Contagem() {
                         carregandoProgramacao ||
                         salvandoProgramacao ||
                         !produtoId ||
-                        (setor !== "mantas" && !referencia.trim()) ||
                         !quantidadePrevista.trim()
                       }
                       onClick={() => void salvarProgramacao()}
@@ -861,14 +856,14 @@ function Contagem() {
                               <p className="font-bold">{item.produto_nome}</p>
                               {setor === "mantas" ? (
                                 <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                                  <span>{item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento"}</span>
+                                  <span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>
                                   {canProgramProduction && (
                                     <button
                                       type="button"
                                       className="inline-flex items-center gap-1 font-semibold text-primary underline-offset-2 hover:underline"
-                                      onClick={() => void editarLote(item.id, item.lote)}
+                                      onClick={() => void editarReferencia(item.id, setor === "mantas" ? item.lote : item.op)}
                                     >
-                                      <Pencil className="size-3" /> Editar lote
+                                      <Pencil className="size-3" /> {setor === "mantas" ? "Editar lote" : "Editar OP"}
                                     </button>
                                   )}
                                 </div>

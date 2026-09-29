@@ -262,12 +262,8 @@ function Programacao() {
   async function salvarProgramacao() {
     if (!user || !setor || !turno || !produto || salvando) return;
     const qtd = numeroCampo(quantidade);
-    const ref = referencia.trim();
-    const ehMantas = setor === "mantas";
-    if ((!ehMantas && !ref) || !Number.isFinite(qtd) || qtd <= 0) {
-      toast.error(
-        ehMantas ? "Informe produto e quantidade prevista." : "Informe a OP, produto e quantidade prevista.",
-      );
+    if (!Number.isFinite(qtd) || qtd <= 0) {
+      toast.error("Informe produto e quantidade prevista.");
       return;
     }
 
@@ -278,28 +274,26 @@ function Programacao() {
       data_local: dataAtual,
       produto_id: produto.id,
       produto_nome: produto.nome,
-      op: ehMantas ? null : ref,
       quantidade_prevista: qtd,
       unidade,
       global_dia: true,
       updated_at: new Date().toISOString(),
     };
 
-    let consulta = (supabase as any)
+    const consulta = (supabase as any)
       .from("programacao_producao")
       .update(valores)
       .eq("setor", setor)
       .eq("data_local", dataAtual)
       .eq("global_dia", true)
       .eq("produto_id", produto.id);
-    if (!ehMantas) consulta = consulta.eq("op", ref);
     const atualizado = await consulta.select("*").limit(1).maybeSingle();
 
     let resultado = atualizado;
     if (!atualizado.error && !atualizado.data) {
       resultado = await (supabase as any)
         .from("programacao_producao")
-        .insert({ ...valores, lote: null, criado_por: user.id })
+        .insert({ ...valores, op: null, lote: null, criado_por: user.id })
         .select("*")
         .single();
     }
@@ -320,22 +314,24 @@ function Programacao() {
     toast.success("Programação salva.");
   }
 
-  async function editarLote(id: string, atual: string | null) {
+  async function editarReferencia(id: string, atual: string | null) {
     if (!canProgramProduction) return;
-    const digitado = window.prompt("Lote da programação (deixe vazio para limpar):", atual ?? "");
+    const coluna = setor === "mantas" ? "lote" : "op";
+    const nome = coluna === "lote" ? "Lote" : "OP";
+    const digitado = window.prompt(`${nome} da programação (deixe vazio para limpar):`, atual ?? "");
     if (digitado === null) return;
-    const lote = digitado.trim() || null;
+    const valor = digitado.trim() || null;
     const { error } = await (supabase as any)
       .from("programacao_producao")
-      .update({ lote, updated_at: new Date().toISOString() })
+      .update({ [coluna]: valor, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
-      toast.error("Não foi possível atualizar o lote.");
+      toast.error(`Não foi possível atualizar ${coluna === "lote" ? "o lote" : "a OP"}.`);
       return;
     }
-    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, lote } : item)));
+    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)));
     setTextoGerado("");
-    toast.success(lote ? "Lote atualizado." : "Lote removido.");
+    toast.success(valor ? `${nome} atualizado${coluna === "op" ? "a" : ""}.` : `${nome} removid${coluna === "op" ? "a" : "o"}.`);
   }
 
   async function excluirProgramacao(item: ProgramacaoItem) {
@@ -613,16 +609,6 @@ function Programacao() {
                   </p>
                 </CardHeader>
                 <CardContent className="grid gap-3 sm:grid-cols-2">
-                  {setor !== "mantas" && (
-                  <div className="space-y-1">
-                    <Label>OP *</Label>
-                    <Input
-                      value={referencia}
-                      onChange={(e) => setReferencia(e.target.value)}
-                      placeholder="Informe a OP"
-                    />
-                  </div>
-                  )}
                   <div className="space-y-1">
                     <Label>Produto *</Label>
                     <ProdutoSelect
@@ -648,7 +634,7 @@ function Programacao() {
                   )}
                   <Button
                     className="h-11 sm:col-span-2"
-                    disabled={salvando || !produtoId || (setor !== "mantas" && !referencia.trim()) || !quantidade.trim()}
+                    disabled={salvando || !produtoId || !quantidade.trim()}
                     onClick={() => void salvarProgramacao()}
                   >
                     <Save className="size-4" /> {salvando ? "Salvando..." : "Adicionar à programação"}
@@ -690,14 +676,14 @@ function Programacao() {
                             <p className="truncate font-bold">{item.produto_nome}</p>
                             {setor === "mantas" ? (
                               <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                                <span>{item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento"}</span>
+                                <span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>
                                 {canProgramProduction && (
                                   <button
                                     type="button"
                                     className="font-semibold text-primary hover:underline"
-                                    onClick={() => void editarLote(item.id, item.lote)}
+                                    onClick={() => void editarReferencia(item.id, setor === "mantas" ? item.lote : item.op)}
                                   >
-                                    Editar lote
+                                    {setor === "mantas" ? "Editar lote" : "Editar OP"}
                                   </button>
                                 )}
                               </div>
