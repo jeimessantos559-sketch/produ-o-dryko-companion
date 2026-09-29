@@ -16,58 +16,23 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import { useAuth } from "@/lib/auth";
 import { areaFitas, dataHoraProducaoPadrao, metragemCorte, rolosManta } from "@/lib/producao";
+import {
+  invalidarCacheProdutos,
+  obterProdutosAtivos,
+  type ProdutoCatalogo,
+} from "@/lib/produtos-cache";
 
-type Produto = {
-  id: string;
-  nome: string;
-  categoria: string | null;
-  rolos_por_plt: number | null;
-  largura: number | null;
-  metragem_por_plt: number | null;
-  metros_por_rolo: number | null;
-};
+export { invalidarCacheProdutos };
+
+type Produto = ProdutoCatalogo;
 
 type MetaAtiva = {
   id: string;
   quantidade_meta: number;
   unidade: string;
 };
-
-type CacheItem = { expiresAt: number; produtos: Produto[] };
-const cacheProdutos = new Map<string, CacheItem>();
-const CACHE_MS = 15 * 60_000;
-
-async function obterProdutos(setor: string) {
-  const cache = cacheProdutos.get(setor);
-  if (cache && cache.expiresAt > Date.now()) return cache.produtos;
-
-  const [resultadoProdutos, resultadoMarcas] = await Promise.all([
-    supabase
-      .from("produtos")
-      .select("id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo")
-      .eq("setor", setor as never)
-      .eq("ativo", true),
-    supabase.from("marcas_produto").select("nome, ordem").eq("setor", setor as never),
-  ]);
-
-  if (resultadoProdutos.error) throw resultadoProdutos.error;
-  if (resultadoMarcas.error) throw resultadoMarcas.error;
-
-  const produtos = ordenarProdutosPorMarca(
-    (resultadoProdutos.data ?? []) as Produto[],
-    resultadoMarcas.data ?? [],
-  );
-  cacheProdutos.set(setor, { expiresAt: Date.now() + CACHE_MS, produtos });
-  return produtos;
-}
-
-export function invalidarCacheProdutos(setor?: string) {
-  if (setor) cacheProdutos.delete(setor);
-  else cacheProdutos.clear();
-}
 
 type Props = {
   open: boolean;
@@ -100,7 +65,10 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   const [metaNova, setMetaNova] = useState(0);
   const [carregandoMeta, setCarregandoMeta] = useState(false);
 
-  const produto = produtos.find((item) => item.id === produtoId) ?? null;
+  const produto = useMemo(
+    () => produtos.find((item) => item.id === produtoId) ?? null,
+    [produtoId, produtos],
+  );
 
   function limparFormulario() {
     setOp("");
@@ -125,7 +93,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     setCarregando(true);
     limparFormulario();
 
-    void obterProdutos(setor)
+    void obterProdutosAtivos(setor)
       .then(async (lista) => {
         if (!ativo) return;
         setProdutos(lista);
@@ -162,7 +130,8 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
             picadoAdicional?: boolean;
           };
           const qtdOriginal = Number(primeiro.quantidadePlts ?? data.quantidade_plts ?? 1);
-          const picadoOriginal = primeiro.pltPicadoRolos == null ? null : Number(primeiro.pltPicadoRolos);
+          const picadoOriginal =
+            primeiro.pltPicadoRolos == null ? null : Number(primeiro.pltPicadoRolos);
           const qtdFechados =
             picadoOriginal != null && primeiro.picadoAdicional !== true
               ? Math.max(0, qtdOriginal - 1)
@@ -196,6 +165,8 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
   useEffect(() => {
     let ativo = true;
+    let timer: number | undefined;
+
     if (!open || setor !== "corte" || !op.trim() || !produtoId) {
       setMeta(null);
       setApontadoMeta(0);
@@ -205,24 +176,32 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       };
     }
 
-    setCarregandoMeta(true);
-    void supabase
-      .from("metas_op")
-      .select("id, quantidade_meta, unidade")
-      .eq("setor", "corte")
-      .eq("op", op.trim())
-      .eq("produto_id", produtoId)
-      .eq("status", "ativa")
-      .maybeSingle()
-      .then(async ({ data }) => {
+    timer = window.setTimeout(() => {
+      setCarregandoMeta(true);
+      void (async () => {
+        const { data, error } = await supabase
+          .from("metas_op")
+          .select("id, quantidade_meta, unidade")
+          .eq("setor", "corte")
+          .eq("op", op.trim())
+          .eq("produto_id", produtoId)
+          .eq("status", "ativa")
+          .maybeSingle();
+
         if (!ativo) return;
+        if (error) {
+          setMeta(null);
+          setApontadoMeta(0);
+          return;
+        }
+
         const metaEncontrada = (data as MetaAtiva | null) ?? null;
         setMeta(metaEncontrada);
         if (!metaEncontrada) {
           setApontadoMeta(0);
-          setCarregandoMeta(false);
           return;
         }
+
         const { data: registros } = await supabase
           .from("apontamentos")
           .select("quantidade_plts")
@@ -230,12 +209,17 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           .eq("op", op.trim())
           .eq("produto_id", produtoId);
         if (!ativo) return;
-        setApontadoMeta((registros ?? []).reduce((total, item) => total + Number(item.quantidade_plts ?? 0), 0));
-        setCarregandoMeta(false);
+        setApontadoMeta(
+          (registros ?? []).reduce((total, item) => total + Number(item.quantidade_plts ?? 0), 0),
+        );
+      })().finally(() => {
+        if (ativo) setCarregandoMeta(false);
       });
+    }, 300);
 
     return () => {
       ativo = false;
+      if (timer) window.clearTimeout(timer);
     };
   }, [open, op, produtoId, setor]);
 
@@ -362,7 +346,11 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
         });
         if (error) throw error;
         await salvarMetaCorte();
-        toast.success(quantidadePlts === 0 ? "PLT picado registrado sem contabilizar pallet fechado." : "Apontamento de Corte salvo.");
+        toast.success(
+          quantidadePlts === 0
+            ? "PLT picado registrado sem contabilizar pallet fechado."
+            : "Apontamento de Corte salvo.",
+        );
       } else if (setor === "fitas") {
         const { error } = await supabase.from("apontamentos").insert({
           usuario_id: user.id,
@@ -410,40 +398,71 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[94dvh] overflow-y-auto rounded-2xl p-4 sm:max-w-xl sm:p-5">
+      <DialogContent className="max-h-[94dvh] overscroll-contain overflow-y-auto rounded-2xl p-4 sm:max-w-xl sm:p-5">
         <DialogHeader className="space-y-1 pr-7">
           <DialogTitle className="text-xl">
             {repeatLatest ? "Repetir último apontamento" : "Novo apontamento"}
             {setor ? ` · ${nomeSetorRapido(setor)}` : ""}
           </DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
-            {repeatLatest ? "Revise os dados copiados antes de confirmar." : "Registro rápido sem sair do painel."}
+            {repeatLatest
+              ? "Revise os dados copiados antes de confirmar."
+              : "Registro rápido sem sair do painel."}
           </DialogDescription>
         </DialogHeader>
 
         {!setor || !["corte", "fitas", "mantas"].includes(setor) ? (
-          <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Este setor ainda não possui formulário rápido configurado.</div>
+          <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+            Este setor ainda não possui formulário rápido configurado.
+          </div>
         ) : (
           <div className="space-y-3">
-            <HoraProducaoField id="rapido-hora-producao" value={dataHoraProducao} onChange={setDataHoraProducao} compact />
+            <HoraProducaoField
+              id="rapido-hora-producao"
+              value={dataHoraProducao}
+              onChange={setDataHoraProducao}
+              compact
+            />
 
             {setor !== "mantas" && (
               <div className="space-y-1">
                 <Label htmlFor="rapido-op">OP *</Label>
-                <Input id="rapido-op" inputMode="numeric" className="h-11 text-base" value={op} onChange={(event) => setOp(event.target.value.replace(/\D/g, ""))} placeholder="Ex.: 169813" />
+                <Input
+                  id="rapido-op"
+                  inputMode="numeric"
+                  className="h-11 text-base"
+                  value={op}
+                  onChange={(event) => setOp(event.target.value.replace(/\D/g, ""))}
+                  placeholder="Ex.: 169813"
+                />
               </div>
             )}
 
             <div className="space-y-1">
               <Label htmlFor="rapido-produto">Produto *</Label>
-              <ProdutoSelect id="rapido-produto" produtos={produtos} value={produtoId} onValueChange={selecionarProduto} carregando={carregando} />
+              <ProdutoSelect
+                id="rapido-produto"
+                produtos={produtos}
+                value={produtoId}
+                onValueChange={selecionarProduto}
+                carregando={carregando}
+              />
             </div>
 
             {setor === "corte" && produto && (
               <>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-700">
-                  <span>Padrão: <strong>{produto.rolos_por_plt} rolos/PLT</strong></span>
-                  <span>Largura: <strong>{produto.largura == null ? "não informada" : `${Number(produto.largura).toLocaleString("pt-BR")} cm`}</strong></span>
+                  <span>
+                    Padrão: <strong>{produto.rolos_por_plt} rolos/PLT</strong>
+                  </span>
+                  <span>
+                    Largura:{" "}
+                    <strong>
+                      {produto.largura == null
+                        ? "não informada"
+                        : `${Number(produto.largura).toLocaleString("pt-BR")} cm`}
+                    </strong>
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -451,7 +470,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
                     <Label htmlFor="rapido-plts">Quantidade de PLTs</Label>
                     <select
                       id="rapido-plts"
-                      className="h-11 w-full rounded-xl border border-input bg-background px-3 text-base"
+                      className="h-11 w-full touch-manipulation rounded-xl border border-input bg-background px-3 text-base"
                       value={quantidadePlts}
                       onChange={(event) => {
                         const valor = Number(event.target.value);
@@ -461,36 +480,98 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
                     >
                       <option value={0}>− PLT picado</option>
                       {Array.from({ length: 20 }, (_, indice) => indice + 1).map((quantidade) => (
-                        <option key={quantidade} value={quantidade}>{quantidade} {quantidade === 1 ? "PLT" : "PLTs"}</option>
+                        <option key={quantidade} value={quantidade}>
+                          {quantidade} {quantidade === 1 ? "PLT" : "PLTs"}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="rapido-rolos">Rolos/PLT</Label>
-                    <Input id="rapido-rolos" type="number" min={1} className="h-11 text-base" value={rolosPorPlt} onChange={(event) => setRolosPorPlt(Number(event.target.value))} />
+                    <Input
+                      id="rapido-rolos"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      className="h-11 text-base"
+                      value={rolosPorPlt}
+                      onChange={(event) => setRolosPorPlt(Number(event.target.value))}
+                    />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="rapido-picado">{quantidadePlts === 0 ? "Rolos do PLT picado *" : "PLT picado adicional (opcional)"}</Label>
-                  <Input id="rapido-picado" type="number" min={1} max={Math.max(1, rolosPorPlt - 1)} className="h-11 text-base" placeholder={quantidadePlts === 0 ? "Informe os rolos" : "Deixe vazio se não houver"} value={pltPicado} onChange={(event) => setPltPicado(event.target.value ? Number(event.target.value) : "")} />
-                  {quantidadePlts === 0 && <p className="text-xs text-amber-700">O picado entra em rolos e metragem, mas contabiliza <strong>0 PLT fechado</strong>.</p>}
+                  <Label htmlFor="rapido-picado">
+                    {quantidadePlts === 0
+                      ? "Rolos do PLT picado *"
+                      : "PLT picado adicional (opcional)"}
+                  </Label>
+                  <Input
+                    id="rapido-picado"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={Math.max(1, rolosPorPlt - 1)}
+                    className="h-11 text-base"
+                    placeholder={
+                      quantidadePlts === 0 ? "Informe os rolos" : "Deixe vazio se não houver"
+                    }
+                    value={pltPicado}
+                    onChange={(event) =>
+                      setPltPicado(event.target.value ? Number(event.target.value) : "")
+                    }
+                  />
+                  {quantidadePlts === 0 && (
+                    <p className="text-xs text-amber-700">
+                      O picado entra em rolos e metragem, mas contabiliza <strong>0 PLT fechado</strong>.
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-950 p-2.5 text-center text-white">
                   <Resumo label="PLTs fechados" valor={quantidadePlts} />
                   <Resumo label="Rolos" valor={totalRolosCorte.toLocaleString("pt-BR")} />
-                  <Resumo label="Metragem" valor={`${Number(metragemCorteCalculada ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`} />
+                  <Resumo
+                    label="Metragem"
+                    valor={`${Number(metragemCorteCalculada ?? 0).toLocaleString("pt-BR", {
+                      maximumFractionDigits: 2,
+                    })} m²`}
+                  />
                 </div>
 
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <div className="flex items-center gap-2"><Target className="size-4 text-primary" /><p className="text-sm font-semibold">Meta da OP</p></div>
+                  <div className="flex items-center gap-2">
+                    <Target className="size-4 text-primary" />
+                    <p className="text-sm font-semibold">Meta da OP</p>
+                  </div>
                   {carregandoMeta ? (
                     <p className="mt-1 text-xs text-slate-500">Consultando meta...</p>
                   ) : meta ? (
-                    <div className="mt-1 flex items-center justify-between gap-3 text-sm"><span><strong>{apontadoMeta}</strong> / {Number(meta.quantidade_meta)} PLTs</span><span className="text-xs text-slate-500">restam {Math.max(0, Number(meta.quantidade_meta) - apontadoMeta)}</span></div>
+                    <div className="mt-1 flex items-center justify-between gap-3 text-sm">
+                      <span>
+                        <strong>{apontadoMeta}</strong> / {Number(meta.quantidade_meta)} PLTs
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        restam {Math.max(0, Number(meta.quantidade_meta) - apontadoMeta)}
+                      </span>
+                    </div>
                   ) : (
-                    <div className="mt-2"><Label htmlFor="rapido-meta" className="text-xs">Definir meta nesta primeira produção (opcional)</Label><Input id="rapido-meta" type="number" min={1} max={9999} className="mt-1 h-10" value={metaNova || ""} onChange={(event) => setMetaNova(Number(event.target.value))} placeholder="Ex.: 5 PLTs" /></div>
+                    <div className="mt-2">
+                      <Label htmlFor="rapido-meta" className="text-xs">
+                        Definir meta nesta primeira produção (opcional)
+                      </Label>
+                      <Input
+                        id="rapido-meta"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={9999}
+                        className="mt-1 h-10"
+                        value={metaNova || ""}
+                        onChange={(event) => setMetaNova(Number(event.target.value))}
+                        placeholder="Ex.: 5 PLTs"
+                      />
+                    </div>
                   )}
                 </div>
               </>
@@ -499,13 +580,26 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
             {setor === "fitas" && produto && (
               <>
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="space-y-1"><Label htmlFor="rapido-tempo" className="text-xs">Tempo (min)</Label><Input id="rapido-tempo" type="number" min={1} className="h-11 text-base" value={tempo} onChange={(event) => setTempo(Number(event.target.value))} /></div>
-                  <div className="space-y-1"><Label htmlFor="rapido-velocidade" className="text-xs">Velocidade</Label><Input id="rapido-velocidade" type="number" min={0.01} step="0.01" className="h-11 text-base" value={velocidade} onChange={(event) => setVelocidade(Number(event.target.value))} /></div>
-                  <div className="space-y-1"><Label htmlFor="rapido-largura" className="text-xs">Largura (m)</Label><Input id="rapido-largura" type="number" min={0.01} step="0.01" className="h-11 text-base" value={largura} onChange={(event) => setLargura(Number(event.target.value))} /></div>
+                  <div className="space-y-1">
+                    <Label htmlFor="rapido-tempo" className="text-xs">Tempo (min)</Label>
+                    <Input id="rapido-tempo" type="number" inputMode="numeric" min={1} className="h-11 text-base" value={tempo} onChange={(event) => setTempo(Number(event.target.value))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="rapido-velocidade" className="text-xs">Velocidade</Label>
+                    <Input id="rapido-velocidade" type="number" inputMode="decimal" min={0.01} step="0.01" className="h-11 text-base" value={velocidade} onChange={(event) => setVelocidade(Number(event.target.value))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="rapido-largura" className="text-xs">Largura (m)</Label>
+                    <Input id="rapido-largura" type="number" inputMode="decimal" min={0.01} step="0.01" className="h-11 text-base" value={largura} onChange={(event) => setLargura(Number(event.target.value))} />
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-xl border-2 border-primary/25 bg-primary/5 p-3">
                   <Calculator className="size-6 shrink-0 text-primary" />
-                  <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Metragem para lançar no Protheus</p><p className="text-3xl font-extrabold leading-none text-slate-950">{areaFitasCalculada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²</p><p className="mt-1 text-xs text-slate-500">{tempo} min × {velocidade} m/min × {largura} m</p></div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Metragem para lançar no Protheus</p>
+                    <p className="text-3xl font-extrabold leading-none text-slate-950">{areaFitasCalculada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²</p>
+                    <p className="mt-1 text-xs text-slate-500">{tempo} min × {velocidade} m/min × {largura} m</p>
+                  </div>
                 </div>
               </>
             )}
@@ -520,26 +614,37 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label htmlFor="rapido-plts-manta">PLTs</Label>
-                    <select id="rapido-plts-manta" className="h-11 w-full rounded-xl border border-input bg-background px-3 text-base" value={quantidadePlts} onChange={(event) => alterarPltsManta(Number(event.target.value))}>
+                    <select id="rapido-plts-manta" className="h-11 w-full touch-manipulation rounded-xl border border-input bg-background px-3 text-base" value={quantidadePlts} onChange={(event) => alterarPltsManta(Number(event.target.value))}>
                       {Array.from({ length: 20 }, (_, indice) => indice + 1).map((quantidade) => (
                         <option key={quantidade} value={quantidade}>{quantidade} {quantidade === 1 ? "PLT" : "PLTs"}</option>
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-1"><Label htmlFor="rapido-metragem-manta">Metragem (m)</Label><Input id="rapido-metragem-manta" type="number" min={1} step={produto.metros_por_rolo ?? 10} className="h-11 text-base" value={metragemManta || ""} onChange={(event) => setMetragemManta(Number(event.target.value))} /></div>
+                  <div className="space-y-1">
+                    <Label htmlFor="rapido-metragem-manta">Metragem (m)</Label>
+                    <Input id="rapido-metragem-manta" type="number" inputMode="decimal" min={1} step={produto.metros_por_rolo ?? 10} className="h-11 text-base" value={metragemManta || ""} onChange={(event) => setMetragemManta(Number(event.target.value))} />
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-xl border-2 border-primary/25 bg-primary/5 p-3">
                   <PackageCheck className="size-6 shrink-0 text-primary" />
-                  <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Metragem para lançar no Protheus</p><p className="text-3xl font-extrabold leading-none text-slate-950">{metragemManta.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m</p><p className="mt-1 text-xs text-slate-500">Lote {lote || "—"} · {quantidadePlts} PLT(s) · {totalRolosManta.toLocaleString("pt-BR")} rolos</p></div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Metragem para lançar no Protheus</p>
+                    <p className="text-3xl font-extrabold leading-none text-slate-950">{metragemManta.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m</p>
+                    <p className="mt-1 text-xs text-slate-500">Lote {lote || "—"} · {quantidadePlts} PLT(s) · {totalRolosManta.toLocaleString("pt-BR")} rolos</p>
+                  </div>
                 </div>
               </>
             )}
           </div>
         )}
 
-        <DialogFooter className="mt-1 grid grid-cols-[auto_1fr] gap-2 sm:flex">
-          <Button type="button" variant="outline" className="h-11" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button type="button" className="h-11" disabled={!valido || salvando} onClick={salvar}>{salvando ? "Salvando..." : "Registrar apontamento"}</Button>
+        <DialogFooter className="sticky bottom-0 z-10 -mx-4 -mb-4 mt-1 grid grid-cols-[auto_1fr] gap-2 border-t border-border bg-background/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur sm:static sm:m-0 sm:flex sm:border-0 sm:bg-transparent sm:p-0">
+          <Button type="button" variant="outline" className="h-11 touch-manipulation" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="button" className="h-11 touch-manipulation" disabled={!valido || salvando} onClick={salvar}>
+            {salvando ? "Salvando..." : "Registrar apontamento"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -547,7 +652,12 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 }
 
 function Resumo({ label, valor }: { label: string; valor: string | number }) {
-  return <div className="min-w-0"><p className="truncate text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="truncate text-sm font-bold">{valor}</p></div>;
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="truncate text-sm font-bold">{valor}</p>
+    </div>
+  );
 }
 
 function nomeSetorRapido(setor: string) {
@@ -559,8 +669,11 @@ function nomeSetorRapido(setor: string) {
 
 function mensagemErroApontamento(mensagem: string) {
   const normalizada = mensagem.toLocaleLowerCase("pt-BR");
-  if (normalizada.includes("turno") && normalizada.includes("fechado")) return "Este turno está fechado. Peça a reabertura ao administrador.";
-  if (normalizada.includes("horario") && normalizada.includes("turno")) return "A hora real informada não pertence ao turno selecionado.";
-  if (normalizada.includes("futuro")) return "A hora real da produção não pode estar no futuro.";
+  if (normalizada.includes("turno") && normalizada.includes("fechado"))
+    return "Este turno está fechado. Peça a reabertura ao administrador.";
+  if (normalizada.includes("horario") && normalizada.includes("turno"))
+    return "A hora real informada não pertence ao turno selecionado.";
+  if (normalizada.includes("futuro"))
+    return "A hora real da produção não pode estar no futuro.";
   return mensagem || "Não foi possível salvar o apontamento. Revise os dados e tente novamente.";
 }
