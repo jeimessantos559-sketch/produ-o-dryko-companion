@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import {
   Select,
   SelectContent,
@@ -31,14 +33,14 @@ export function ProdutoSelect<T extends ProdutoOrdenavel>({
   id,
   className,
 }: ProdutoSelectProps<T>) {
-  const grupos = agruparProdutosPorMarca(produtos);
+  const grupos = useMemo(() => agruparProdutosPorMarca(produtos), [produtos]);
 
   return (
     <Select value={value} onValueChange={onValueChange} disabled={Boolean(disabled || carregando)}>
       <SelectTrigger
         id={id}
         className={cn(
-          "h-11 rounded-xl border-slate-300 bg-white px-3 text-base font-semibold shadow-sm",
+          "h-11 touch-manipulation rounded-xl border-slate-300 bg-white px-3 text-base font-semibold shadow-sm",
           className,
         )}
       >
@@ -58,7 +60,7 @@ export function ProdutoSelect<T extends ProdutoOrdenavel>({
               <SelectItem
                 key={produto.id}
                 value={produto.id}
-                className="min-h-9 rounded-lg px-2 pr-8 text-sm font-medium focus:bg-red-50 focus:text-slate-950"
+                className="min-h-10 touch-manipulation rounded-lg px-2 pr-8 text-sm font-medium focus:bg-red-50 focus:text-slate-950"
               >
                 {produto.nome}
               </SelectItem>
