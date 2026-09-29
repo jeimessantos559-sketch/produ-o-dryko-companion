@@ -112,6 +112,7 @@ function Programacao() {
       setProgramacao([]);
       setAjustesHora([]);
       setRegistros([]);
+      setRegistrosDia([]);
       setMetaTurno(null);
       setOcorrencias([]);
       setCarregando(false);
@@ -280,6 +281,7 @@ function Programacao() {
       lote: setor === "mantas" ? ref : null,
       quantidade_prevista: qtd,
       unidade,
+      global_dia: true,
       updated_at: new Date().toISOString(),
     };
 
@@ -287,8 +289,8 @@ function Programacao() {
       .from("programacao_producao")
       .update(valores)
       .eq("setor", setor)
-      .eq("turno", turno)
       .eq("data_local", dataAtual)
+      .eq("global_dia", true)
       .eq("produto_id", produto.id);
     consulta = setor === "mantas" ? consulta.eq("lote", ref) : consulta.eq("op", ref);
     const atualizado = await consulta.select("*").maybeSingle();

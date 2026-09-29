@@ -451,6 +451,7 @@ function Contagem() {
       lote: setor === "mantas" ? ref : null,
       quantidade_prevista: quantidade,
       unidade,
+      global_dia: true,
       updated_at: new Date().toISOString(),
     };
 
@@ -458,8 +459,8 @@ function Contagem() {
       .from("programacao_producao")
       .update(valores)
       .eq("setor", setor)
-      .eq("turno", turno)
       .eq("data_local", dataAtual)
+      .eq("global_dia", true)
       .eq("produto_id", produtoSelecionado.id);
     consulta = setor === "mantas" ? consulta.eq("lote", ref) : consulta.eq("op", ref);
     const existente = await consulta
