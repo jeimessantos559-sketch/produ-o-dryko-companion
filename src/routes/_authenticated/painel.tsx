@@ -9,10 +9,9 @@ import {
   PackageCheck,
   Search,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +27,12 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
+
+const LazyApontamentoRapido = lazy(() =>
+  import("@/components/dryko/apontamento-rapido").then((modulo) => ({
+    default: modulo.ApontamentoRapido,
+  })),
+);
 
 export const Route = createFileRoute("/_authenticated/painel")({ component: Painel });
 
@@ -319,10 +324,19 @@ function Painel() {
         </div>
       </AppShell>
 
-      <ApontamentoRapido open={apontarAberto} onOpenChange={setApontarAberto} repeatLatest={modoApontamento === "repetir"} onSaved={carregarPainel} />
+      {apontarAberto && (
+        <Suspense fallback={null}>
+          <LazyApontamentoRapido
+            open
+            onOpenChange={setApontarAberto}
+            repeatLatest={modoApontamento === "repetir"}
+            onSaved={carregarPainel}
+          />
+        </Suspense>
+      )}
 
       <Dialog open={notificacoesAbertas} onOpenChange={setNotificacoesAbertas}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-2xl p-4 sm:max-w-xl">
+        <DialogContent className="max-h-[92dvh] overscroll-contain overflow-y-auto rounded-2xl p-4 sm:max-w-xl">
           <DialogHeader><DialogTitle>Pendências de turnos anteriores</DialogTitle><DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription></DialogHeader>
           <div className="space-y-2">
             {gruposAnteriores.length === 0 ? (
