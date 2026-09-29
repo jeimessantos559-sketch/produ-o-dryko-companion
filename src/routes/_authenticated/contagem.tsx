@@ -4,6 +4,7 @@ import {
   ClipboardCopy,
   MessageSquare,
   PackageCheck,
+  Pencil,
   Save,
   Trash2,
 } from "lucide-react";
