@@ -28,13 +28,13 @@ function AlterarSenha() {
     });
   }, [navigate]);
 
-  async function salvar(e: React.FormEvent) {
+  async function salvar(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const emailNormalizado = email.trim().toLowerCase();
-    if (novaSenha.length < 8) return toast.error("A nova senha deve ter pelo menos 8 caracteres.");
-    if (novaSenha !== confirmacao) return toast.error("A confirmação não corresponde à nova senha.");
-    if (!/^\S+@\S+\.\S+$/.test(emailNormalizado)) return toast.error("Informe um e-mail válido para recuperação.");
-    if (emailNormalizado !== confirmarEmail.trim().toLowerCase()) return toast.error("A confirmação do e-mail não corresponde.");
+    if (novaSenha.length < 8) { toast.error("A nova senha deve ter pelo menos 8 caracteres."); return; }
+    if (novaSenha !== confirmacao) { toast.error("A confirmação não corresponde à nova senha."); return; }
+    if (!/^\S+@\S+\.\S+$/.test(emailNormalizado)) { toast.error("Informe um e-mail válido para recuperação."); return; }
+    if (emailNormalizado !== confirmarEmail.trim().toLowerCase()) { toast.error("A confirmação do e-mail não corresponde."); return; }
 
     setSalvando(true);
     try {

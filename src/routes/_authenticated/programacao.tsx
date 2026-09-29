@@ -76,7 +76,7 @@ type EdicaoHora = {
 };
 
 function Programacao() {
-  const { profile, user } = useAuth();
+  const { profile, user, canProgramProduction } = useAuth();
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
   const dataAtual = turno ? dataOperacional(turno) : "";
@@ -88,6 +88,7 @@ function Programacao() {
   const [programacao, setProgramacao] = useState<ProgramacaoItem[]>([]);
   const [ajustesHora, setAjustesHora] = useState<AjusteHora[]>([]);
   const [registros, setRegistros] = useState<Registro[]>([]);
+  const [registrosDia, setRegistrosDia] = useState<Registro[]>([]);
   const [metaTurno, setMetaTurno] = useState<MetaTurno | null>(null);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [produtoId, setProdutoId] = useState("");
@@ -111,6 +112,7 @@ function Programacao() {
       setProgramacao([]);
       setAjustesHora([]);
       setRegistros([]);
+      setRegistrosDia([]);
       setMetaTurno(null);
       setOcorrencias([]);
       setCarregando(false);
@@ -124,8 +126,8 @@ function Programacao() {
         .from("programacao_producao")
         .select("id, setor, turno, data_local, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
         .eq("setor", setor)
-        .eq("turno", turno)
         .eq("data_local", dataAtual)
+        .eq("global_dia", true)
         .order("created_at", { ascending: true }),
       (supabase as any)
         .from("programacao_hora")
@@ -135,9 +137,8 @@ function Programacao() {
         .eq("data_local", dataAtual),
       supabase
         .from("apontamentos")
-        .select("produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, data_hora_producao")
+        .select("turno, produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, data_hora_producao")
         .eq("setor", setor)
-        .eq("turno", turno)
         .eq("data_local", dataAtual),
       (supabase as any)
         .from("metas_turno")
@@ -182,7 +183,9 @@ function Programacao() {
           setProgramacao((resultadoProgramacao.data ?? []) as ProgramacaoItem[]);
           const horas = (resultadoHoras.data ?? []) as AjusteHora[];
           setAjustesHora(horas);
-          setRegistros((resultadoRegistros.data ?? []) as Registro[]);
+          const todosDia = (resultadoRegistros.data ?? []) as (Registro & { turno: string })[];
+          setRegistrosDia(todosDia);
+          setRegistros(todosDia.filter((item) => item.turno === turno));
           setMetaTurno((resultadoMeta.data as MetaTurno | null) ?? null);
           setOcorrencias((resultadoOcorrencias.data ?? []) as Ocorrencia[]);
 
@@ -210,7 +213,7 @@ function Programacao() {
 
   const resumoProgramacao = useMemo(() => {
     return programacao.map((item) => {
-      const realizado = registros
+      const realizado = registrosDia
         .filter((registro) => correspondeProgramacao(registro, item, setor))
         .reduce((total, registro) => total + valorRealizado(registro, setor), 0);
       const previsto = Number(item.quantidade_prevista ?? 0);
@@ -222,7 +225,7 @@ function Programacao() {
         aderencia: previsto > 0 ? (realizado / previsto) * 100 : 0,
       };
     });
-  }, [programacao, registros, setor]);
+  }, [programacao, registrosDia, setor]);
 
   const totais = useMemo(
     () =>
@@ -278,6 +281,7 @@ function Programacao() {
       lote: setor === "mantas" ? ref : null,
       quantidade_prevista: qtd,
       unidade,
+      global_dia: true,
       updated_at: new Date().toISOString(),
     };
 
@@ -285,8 +289,8 @@ function Programacao() {
       .from("programacao_producao")
       .update(valores)
       .eq("setor", setor)
-      .eq("turno", turno)
       .eq("data_local", dataAtual)
+      .eq("global_dia", true)
       .eq("produto_id", produto.id);
     consulta = setor === "mantas" ? consulta.eq("lote", ref) : consulta.eq("op", ref);
     const atualizado = await consulta.select("*").maybeSingle();
@@ -580,6 +584,7 @@ function Programacao() {
             </TabsList>
 
             <TabsContent value="programacao" className="space-y-4">
+              {canProgramProduction ? (
               <Card className="rounded-2xl border-border shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -630,6 +635,11 @@ function Programacao() {
                   </Button>
                 </CardContent>
               </Card>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Programação global do dia (acumulada entre turnos). Somente administrador ou Programador de Produção pode alterar.
+                </p>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 <Resumo label="Previsto" valor={`${fmt(totais.previsto)} ${unidade}`} />
@@ -662,6 +672,7 @@ function Programacao() {
                               {item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`}
                             </p>
                           </div>
+                          {canProgramProduction && (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -671,10 +682,11 @@ function Programacao() {
                           >
                             <Trash2 className="size-4" />
                           </Button>
+                          )}
                         </div>
                         <div className="mt-3 grid grid-cols-4 gap-1.5 text-center">
-                          <Mini label="Previsto" valor={`${fmt(item.previsto)} ${item.unidade}`} />
-                          <Mini label="Realizado" valor={`${fmt(item.realizado)} ${item.unidade}`} destaque />
+                          <Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} />
+                          <Mini label="Produzido no dia" valor={`${fmt(item.realizado)} ${item.unidade}`} destaque />
                           <Mini
                             label="Saldo"
                             valor={`${fmt(item.saldo)} ${item.unidade}`}

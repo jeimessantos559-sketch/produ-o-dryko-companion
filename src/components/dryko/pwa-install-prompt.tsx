@@ -48,6 +48,7 @@ export function PwaInstallPrompt() {
 
   async function instalar() {
     try {
+      if (!prompt) return;
       await prompt.prompt();
       const escolha = await prompt.userChoice;
       if (escolha.outcome === "accepted") {
