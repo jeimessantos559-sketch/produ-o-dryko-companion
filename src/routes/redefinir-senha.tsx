@@ -37,7 +37,7 @@ function RedefinirSenha() {
     };
   }, []);
 
-  async function salvar(e: React.FormEvent) {
+  async function salvar(e: React.FormEvent): Promise<unknown> {
     e.preventDefault();
     if (senha.length < 8) return toast.error("A senha deve ter pelo menos 8 caracteres.");
     if (senha !== confirmacao) return toast.error("A confirmação não corresponde à nova senha.");

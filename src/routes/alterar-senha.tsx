@@ -28,7 +28,7 @@ function AlterarSenha() {
     });
   }, [navigate]);
 
-  async function salvar(e: React.FormEvent) {
+  async function salvar(e: React.FormEvent): Promise<unknown> {
     e.preventDefault();
     const emailNormalizado = email.trim().toLowerCase();
     if (novaSenha.length < 8) return toast.error("A nova senha deve ter pelo menos 8 caracteres.");
