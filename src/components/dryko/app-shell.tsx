@@ -14,12 +14,10 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { DrykoLogo } from "@/components/dryko/logo";
-import { SetorTurnoDialog } from "@/components/dryko/setor-turno-dialog";
 import { ThemeToggle } from "@/components/dryko/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +32,17 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { supabase } from "@/integrations/supabase/client";
 import { NOMES_PAPEIS, useAuth } from "@/lib/auth";
 import { dataOperacional } from "@/lib/producao";
+
+const LazyApontamentoRapido = lazy(() =>
+  import("@/components/dryko/apontamento-rapido").then((modulo) => ({
+    default: modulo.ApontamentoRapido,
+  })),
+);
+const LazySetorTurnoDialog = lazy(() =>
+  import("@/components/dryko/setor-turno-dialog").then((modulo) => ({
+    default: modulo.SetorTurnoDialog,
+  })),
+);
 
 const ITENS = [
   { to: "/contagem", label: "Programação", icon: CalendarDays },
@@ -329,16 +338,22 @@ export function AppShell({
         </div>
       </div>
 
-      <SetorTurnoDialog open={setorTurnoAberto} onOpenChange={setSetorTurnoAberto} />
+      {setorTurnoAberto && (
+        <Suspense fallback={null}>
+          <LazySetorTurnoDialog open onOpenChange={setSetorTurnoAberto} />
+        </Suspense>
+      )}
 
-      {!onApontar && !onRepeat && (
-        <ApontamentoRapido
-          open={modalRapido !== null}
-          onOpenChange={(open) => {
-            if (!open) setModalRapido(null);
-          }}
-          repeatLatest={modalRapido === "repetir"}
-        />
+      {!onApontar && !onRepeat && modalRapido !== null && (
+        <Suspense fallback={null}>
+          <LazyApontamentoRapido
+            open
+            onOpenChange={(open) => {
+              if (!open) setModalRapido(null);
+            }}
+            repeatLatest={modalRapido === "repetir"}
+          />
+        </Suspense>
       )}
 
       {!onNotifications && (
