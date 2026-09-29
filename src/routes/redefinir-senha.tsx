@@ -37,15 +37,15 @@ function RedefinirSenha() {
     };
   }, []);
 
-  async function salvar(e: React.FormEvent): Promise<unknown> {
+  async function salvar(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (senha.length < 8) return toast.error("A senha deve ter pelo menos 8 caracteres.");
-    if (senha !== confirmacao) return toast.error("A confirmação não corresponde à nova senha.");
+    if (senha.length < 8) { toast.error("A senha deve ter pelo menos 8 caracteres."); return; }
+    if (senha !== confirmacao) { toast.error("A confirmação não corresponde à nova senha."); return; }
 
     setSalvando(true);
     const { error } = await supabase.auth.updateUser({ password: senha });
     setSalvando(false);
-    if (error) return toast.error(error.message || "Não foi possível redefinir a senha.");
+    if (error) { toast.error(error.message || "Não foi possível redefinir a senha."); return; }
 
     toast.success("Senha redefinida com sucesso.");
     await supabase.auth.signOut();
