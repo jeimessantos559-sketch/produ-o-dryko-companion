@@ -20,7 +20,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
+import {
+  dataOperacional,
+  horaCheiaProducao,
+  horasProdutivasTurno,
+  ordemHoraTurno,
+} from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
 export const Route = createFileRoute("/_authenticated/contagem")({ component: Contagem });
@@ -93,6 +98,8 @@ type ProgramacaoItem = {
   unidade: string;
 };
 
+type AbaContagem = "hora" | "programacao";
+
 function Contagem() {
   const { profile, user, canFinalizeGoals } = useAuth();
   const setor = profile?.setor_atual;
@@ -102,6 +109,7 @@ function Contagem() {
   const unidade = unidadeDoSetor(setor);
   const programacaoSuportada = setor === "corte" || setor === "fitas" || setor === "mantas";
 
+  const [abaAtiva, setAbaAtiva] = useState<AbaContagem>("hora");
   const [registros, setRegistros] = useState<Registro[]>([]);
   const [metaTurno, setMetaTurno] = useState<MetaTurno | null>(null);
   const [ajustesHora, setAjustesHora] = useState<AjusteHora[]>([]);
@@ -117,25 +125,35 @@ function Contagem() {
   const [textoGerado, setTextoGerado] = useState("");
   const [erro, setErro] = useState(false);
   const [erroMeta, setErroMeta] = useState(false);
+  const [carregandoProgramacao, setCarregandoProgramacao] = useState(false);
   const [salvandoMeta, setSalvandoMeta] = useState(false);
   const [salvandoProgramacao, setSalvandoProgramacao] = useState(false);
   const [salvandoOcorrencia, setSalvandoOcorrencia] = useState(false);
   const carregamentoAtual = useRef(0);
+  const carregamentoProgramacaoAtual = useRef(0);
+  const cacheProgramacao = useRef<{ chave: string; at: number } | null>(null);
 
-  const produtoSelecionado = produtos.find((item) => item.id === produtoId) ?? null;
+  const produtoSelecionado = useMemo(
+    () => produtos.find((item) => item.id === produtoId) ?? null,
+    [produtoId, produtos],
+  );
 
   useEffect(() => {
     const carga = ++carregamentoAtual.current;
     setErro(false);
     setErroMeta(false);
+    setProgramacao([]);
+    setProdutos([]);
+    setProdutoId("");
+    setReferencia("");
+    setQuantidadePrevista("");
+    cacheProgramacao.current = null;
 
     if (!setor || !turno || !dataAtual) {
       setRegistros([]);
       setMetaTurno(null);
       setAjustesHora([]);
       setOcorrencias([]);
-      setProgramacao([]);
-      setProdutos([]);
       setMetaDigitada("");
       setHorasDigitadas("");
       return;
@@ -144,7 +162,9 @@ function Contagem() {
     void Promise.all([
       supabase
         .from("apontamentos")
-        .select("produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao")
+        .select(
+          "produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+        )
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
@@ -169,44 +189,80 @@ function Contagem() {
         .eq("turno", turno)
         .eq("data_local", dataAtual)
         .order("created_at", { ascending: true }),
-      programacaoSuportada
-        ? (supabase as any)
-            .from("programacao_producao")
-            .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
-            .eq("setor", setor)
-            .eq("turno", turno)
-            .eq("data_local", dataAtual)
-            .order("created_at", { ascending: true })
-        : Promise.resolve({ data: [], error: null }),
-      programacaoSuportada ? obterProdutosAtivos(setor) : Promise.resolve([]),
-    ]).then(
-      ([resultadoApontamentos, resultadoMeta, resultadoHoras, resultadoOcorrencias, resultadoProgramacao, listaProdutos]) => {
-        if (carga !== carregamentoAtual.current) return;
+    ]).then(([resultadoApontamentos, resultadoMeta, resultadoHoras, resultadoOcorrencias]) => {
+      if (carga !== carregamentoAtual.current) return;
 
-        if (resultadoApontamentos.error || resultadoHoras.error || resultadoOcorrencias.error || resultadoProgramacao.error) {
+      if (resultadoApontamentos.error || resultadoHoras.error || resultadoOcorrencias.error) {
+        setErro(true);
+      }
+
+      setRegistros((resultadoApontamentos.data ?? []) as Registro[]);
+      setAjustesHora((resultadoHoras.data ?? []) as AjusteHora[]);
+      setOcorrencias((resultadoOcorrencias.data ?? []) as Ocorrencia[]);
+
+      if (resultadoMeta.error) {
+        setErroMeta(true);
+        setMetaTurno(null);
+        setMetaDigitada("");
+        setHorasDigitadas("");
+      } else {
+        const meta = (resultadoMeta.data as MetaTurno | null) ?? null;
+        setMetaTurno(meta);
+        setMetaDigitada(meta ? formatarCampoNumero(Number(meta.quantidade_meta)) : "");
+        setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
+      }
+    });
+  }, [dataAtual, setor, turno]);
+
+  useEffect(() => {
+    if (
+      abaAtiva !== "programacao" ||
+      !programacaoSuportada ||
+      !setor ||
+      !turno ||
+      !dataAtual
+    ) {
+      return;
+    }
+
+    const chave = `${setor}:${turno}:${dataAtual}`;
+    if (
+      cacheProgramacao.current?.chave === chave &&
+      Date.now() - cacheProgramacao.current.at < 30_000
+    ) {
+      return;
+    }
+
+    const carga = ++carregamentoProgramacaoAtual.current;
+    setCarregandoProgramacao(true);
+
+    void Promise.all([
+      (supabase as any)
+        .from("programacao_producao")
+        .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+        .eq("setor", setor)
+        .eq("turno", turno)
+        .eq("data_local", dataAtual)
+        .order("created_at", { ascending: true }),
+      obterProdutosAtivos(setor),
+    ])
+      .then(([resultadoProgramacao, listaProdutos]) => {
+        if (carga !== carregamentoProgramacaoAtual.current) return;
+        if (resultadoProgramacao.error) {
           setErro(true);
+          return;
         }
-
-        setRegistros((resultadoApontamentos.data ?? []) as Registro[]);
-        setAjustesHora((resultadoHoras.data ?? []) as AjusteHora[]);
-        setOcorrencias((resultadoOcorrencias.data ?? []) as Ocorrencia[]);
         setProgramacao((resultadoProgramacao.data ?? []) as ProgramacaoItem[]);
         setProdutos(listaProdutos as ProdutoCatalogo[]);
-
-        if (resultadoMeta.error) {
-          setErroMeta(true);
-          setMetaTurno(null);
-          setMetaDigitada("");
-          setHorasDigitadas("");
-        } else {
-          const meta = (resultadoMeta.data as MetaTurno | null) ?? null;
-          setMetaTurno(meta);
-          setMetaDigitada(meta ? formatarCampoNumero(Number(meta.quantidade_meta)) : "");
-          setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
-        }
-      },
-    );
-  }, [dataAtual, programacaoSuportada, setor, turno]);
+        cacheProgramacao.current = { chave, at: Date.now() };
+      })
+      .catch(() => {
+        if (carga === carregamentoProgramacaoAtual.current) setErro(true);
+      })
+      .finally(() => {
+        if (carga === carregamentoProgramacaoAtual.current) setCarregandoProgramacao(false);
+      });
+  }, [abaAtiva, dataAtual, programacaoSuportada, setor, turno]);
 
   const porHora = useMemo(() => {
     const mapa = new Map<string, HoraInterna>();
@@ -228,7 +284,9 @@ function Contagem() {
       .sort((a, b) => ordemHoraTurno(a.hora, turno) - ordemHoraTurno(b.hora, turno))
       .map((item) => ({
         ...item,
-        produtos: [...item.produtos.values()].sort((a, b) => a.produto.localeCompare(b.produto)),
+        produtos: [...item.produtos.values()].sort((a, b) =>
+          a.produto.localeCompare(b.produto),
+        ),
       }));
   }, [registros, turno]);
 
@@ -237,34 +295,53 @@ function Contagem() {
   const metaPorHora = duracaoProdutiva > 0 ? metaTotal / duracaoProdutiva : 0;
 
   const horasComMeta = useMemo<HoraPlanejada[]>(() => {
-    const mapa = new Map(porHora.map((item) => [item.hora, item]));
+    const producaoPorHora = new Map(porHora.map((item) => [item.hora, item]));
     const horasPlanejadas = metaTurno ? horasDisponiveis : [];
-    const horasAjustadas = ajustesHora.map((item) => chaveHora(item.hora));
-    const horasOcorrencias = ocorrencias.map((item) => horaCheiaLocal(item.created_at));
-    const chaves = [...new Set([...horasPlanejadas, ...porHora.map((item) => item.hora), ...horasAjustadas, ...horasOcorrencias])].sort(
-      (a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno),
+    const horasPlanejadasSet = new Set(horasPlanejadas);
+    const ajustesPorHora = new Map(
+      ajustesHora.map((item) => [chaveHora(item.hora), item] as const),
     );
+    const ocorrenciasPorHora = new Map<string, string[]>();
+
+    for (const ocorrencia of ocorrencias) {
+      const hora = horaCheiaLocal(ocorrencia.created_at);
+      const lista = ocorrenciasPorHora.get(hora) ?? [];
+      lista.push(ocorrencia.mensagem);
+      ocorrenciasPorHora.set(hora, lista);
+    }
+
+    const chaves = [
+      ...new Set([
+        ...horasPlanejadas,
+        ...porHora.map((item) => item.hora),
+        ...ajustesPorHora.keys(),
+        ...ocorrenciasPorHora.keys(),
+      ]),
+    ].sort((a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno));
 
     let metaAcumulada = 0;
     let realizadoAcumulado = 0;
 
     return chaves.map((hora) => {
-      const item = mapa.get(hora) ?? horaVaziaFinal(hora);
-      const ajuste = ajustesHora.find((registro) => registro.hora === Number(hora.slice(0, 2)));
-      const temMetaAutomatica = horasPlanejadas.includes(hora);
-      const alvoHora = ajuste?.meta_hora == null ? (temMetaAutomatica ? metaPorHora : 0) : Number(ajuste.meta_hora);
+      const item = producaoPorHora.get(hora) ?? horaVaziaFinal(hora);
+      const ajuste = ajustesPorHora.get(hora);
+      const alvoHora =
+        ajuste?.meta_hora == null
+          ? horasPlanejadasSet.has(hora)
+            ? metaPorHora
+            : 0
+          : Number(ajuste.meta_hora);
       const realizadoHora = valorDaHora(item, setor);
       metaAcumulada += alvoHora;
       realizadoAcumulado += realizadoHora;
 
-      const mensagens: string[] = [];
+      const mensagens = [...(ocorrenciasPorHora.get(hora) ?? [])];
       if (Number(ajuste?.parada_minutos ?? 0) > 0) {
-        mensagens.push(
-          `${ajuste?.motivo_parada || "Parada registrada"}${ajuste?.parada_minutos ? ` · ${ajuste.parada_minutos} min` : ""}`,
+        mensagens.unshift(
+          `${ajuste?.motivo_parada || "Parada registrada"}${
+            ajuste?.parada_minutos ? ` · ${ajuste.parada_minutos} min` : ""
+          }`,
         );
-      }
-      for (const ocorrencia of ocorrencias.filter((registro) => horaCheiaLocal(registro.created_at) === hora)) {
-        mensagens.push(ocorrencia.mensagem);
       }
 
       return {
@@ -289,14 +366,22 @@ function Contagem() {
   const metaInformada = numeroDoCampo(metaDigitada);
   const metaSimulada = Number.isFinite(metaInformada) ? metaInformada : 0;
   const horasSimuladas = duracaoDoCampo(horasDigitadas);
-  const metaHoraSimulada = metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
+  const metaHoraSimulada =
+    metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
 
   const resumoProgramacao = useMemo(() => {
+    const realizadoPorChave = new Map<string, number>();
+    for (const registro of registros) {
+      const chave = chaveProgramacaoRegistro(registro, setor);
+      realizadoPorChave.set(
+        chave,
+        (realizadoPorChave.get(chave) ?? 0) + valorRealizadoRegistro(registro, setor),
+      );
+    }
+
     return programacao.map((item) => {
-      const realizado = registros
-        .filter((registro) => correspondeProgramacao(registro, item, setor))
-        .reduce((total, registro) => total + valorRealizadoRegistro(registro, setor), 0);
       const previsto = Number(item.quantidade_prevista ?? 0);
+      const realizado = realizadoPorChave.get(chaveProgramacaoItem(item, setor)) ?? 0;
       return { ...item, previsto, realizado, saldo: previsto - realizado };
     });
   }, [programacao, registros, setor]);
@@ -349,7 +434,9 @@ function Contagem() {
     const quantidade = numeroDoCampo(quantidadePrevista);
     const ref = referencia.trim();
     if (!ref || !Number.isFinite(quantidade) || quantidade <= 0) {
-      toast.error(`Informe ${setor === "mantas" ? "o lote" : "a OP"}, produto e quantidade prevista.`);
+      toast.error(
+        `Informe ${setor === "mantas" ? "o lote" : "a OP"}, produto e quantidade prevista.`,
+      );
       return;
     }
 
@@ -375,7 +462,9 @@ function Contagem() {
       .eq("data_local", dataAtual)
       .eq("produto_id", produtoSelecionado.id);
     consulta = setor === "mantas" ? consulta.eq("lote", ref) : consulta.eq("op", ref);
-    const existente = await consulta.select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade").maybeSingle();
+    const existente = await consulta
+      .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+      .maybeSingle();
     let resultado = existente;
     if (!existente.error && !existente.data) {
       resultado = await (supabase as any)
@@ -397,17 +486,30 @@ function Contagem() {
     setReferencia("");
     setQuantidadePrevista("");
     setTextoGerado("");
+    cacheProgramacao.current = {
+      chave: `${setor}:${turno}:${dataAtual}`,
+      at: Date.now(),
+    };
     toast.success("Produto adicionado à programação.");
   }
 
   async function excluirProgramacao(id: string) {
-    const { error } = await (supabase as any).from("programacao_producao").delete().eq("id", id);
+    const { error } = await (supabase as any)
+      .from("programacao_producao")
+      .delete()
+      .eq("id", id);
     if (error) {
       toast.error("Não foi possível remover este item.");
       return;
     }
     setProgramacao((atuais) => atuais.filter((item) => item.id !== id));
     setTextoGerado("");
+    if (setor && turno) {
+      cacheProgramacao.current = {
+        chave: `${setor}:${turno}:${dataAtual}`,
+        at: Date.now(),
+      };
+    }
   }
 
   async function salvarOcorrencia() {
@@ -435,21 +537,33 @@ function Contagem() {
 
   function gerarOcorrencias() {
     if (!setor || !turno) return;
-    const linhas = [`OCORRÊNCIAS - ${nomeSetor(setor)} - ${nomeTurno(turno)} - ${formatarData(dataAtual)}`, ""];
+    const linhas = [
+      `OCORRÊNCIAS - ${nomeSetor(setor)} - ${nomeTurno(turno)} - ${formatarData(dataAtual)}`,
+      "",
+    ];
 
     if (ocorrencias.length) {
       linhas.push("Ocorrências registradas:");
-      ocorrencias.forEach((item) => linhas.push(`• ${horaMinutoLocal(item.created_at)} - ${item.mensagem}`));
+      ocorrencias.forEach((item) =>
+        linhas.push(`• ${horaMinutoLocal(item.created_at)} - ${item.mensagem}`),
+      );
       linhas.push("");
     }
 
     const paradas = ajustesHora
       .filter((item) => Number(item.parada_minutos ?? 0) > 0)
-      .sort((a, b) => ordemHoraTurno(chaveHora(a.hora), turno) - ordemHoraTurno(chaveHora(b.hora), turno));
+      .sort(
+        (a, b) =>
+          ordemHoraTurno(chaveHora(a.hora), turno) - ordemHoraTurno(chaveHora(b.hora), turno),
+      );
     if (paradas.length) {
       linhas.push("Paradas:");
       paradas.forEach((item) =>
-        linhas.push(`• ${chaveHora(item.hora)} - ${item.parada_minutos} min - ${item.motivo_parada || "Sem motivo informado"}`),
+        linhas.push(
+          `• ${chaveHora(item.hora)} - ${item.parada_minutos} min - ${
+            item.motivo_parada || "Sem motivo informado"
+          }`,
+        ),
       );
       linhas.push("");
     }
@@ -460,13 +574,18 @@ function Contagem() {
       comSaldo.forEach((item) => {
         const ref = item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`;
         linhas.push(
-          `• ${item.produto_nome} - ${ref}: previsto ${fmt(item.previsto)} ${item.unidade}, realizado ${fmt(item.realizado)} ${item.unidade}, saldo ${fmt(item.saldo)} ${item.unidade}`,
+          `• ${item.produto_nome} - ${ref}: previsto ${fmt(item.previsto)} ${
+            item.unidade
+          }, realizado ${fmt(item.realizado)} ${item.unidade}, saldo ${fmt(item.saldo)} ${
+            item.unidade
+          }`,
         );
       });
       linhas.push("");
     }
 
-    if (!ocorrencias.length && !paradas.length && !comSaldo.length) linhas.push("Sem ocorrências registradas no turno.");
+    if (!ocorrencias.length && !paradas.length && !comSaldo.length)
+      linhas.push("Sem ocorrências registradas no turno.");
     setTextoGerado(linhas.join("\n").trim());
   }
 
@@ -501,12 +620,12 @@ function Contagem() {
           </div>
         )}
 
-        <Tabs defaultValue="hora">
+        <Tabs value={abaAtiva} onValueChange={(valor) => setAbaAtiva(valor as AbaContagem)}>
           <TabsList className="grid h-14 w-full grid-cols-2 rounded-2xl p-1.5">
-            <TabsTrigger value="hora" className="h-11 rounded-xl text-sm font-bold">
+            <TabsTrigger value="hora" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
               Hora a hora
             </TabsTrigger>
-            <TabsTrigger value="programacao" className="h-11 rounded-xl text-sm font-bold">
+            <TabsTrigger value="programacao" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
               Programação
             </TabsTrigger>
           </TabsList>
@@ -527,7 +646,10 @@ function Contagem() {
                   </strong>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${percentualBarra}%` }} />
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width]"
+                    style={{ width: `${percentualBarra}%` }}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -540,10 +662,20 @@ function Contagem() {
 
             <div className="space-y-3">
               {horasComMeta.length === 0 ? (
-                <Card><CardContent className="p-5 text-sm text-muted-foreground">Nenhum apontamento registrado.</CardContent></Card>
+                <Card>
+                  <CardContent className="p-5 text-sm text-muted-foreground">
+                    Nenhum apontamento registrado.
+                  </CardContent>
+                </Card>
               ) : (
                 horasComMeta.map((item) => (
-                  <HoraCard key={item.hora} item={item} setor={setor} unidade={unidade} mostrarMeta={Boolean(metaTurno)} />
+                  <HoraCard
+                    key={item.hora}
+                    item={item}
+                    setor={setor}
+                    unidade={unidade}
+                    mostrarMeta={Boolean(metaTurno)}
+                  />
                 ))
               )}
             </div>
@@ -562,14 +694,21 @@ function Contagem() {
                     <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-2">
                       <div className="space-y-1.5">
                         <Label>Meta total ({unidade})</Label>
-                        <Input value={metaDigitada} onChange={(e) => setMetaDigitada(e.target.value)} placeholder="0" />
+                        <Input
+                          inputMode="decimal"
+                          value={metaDigitada}
+                          onChange={(e) => setMetaDigitada(e.target.value)}
+                          placeholder="0"
+                        />
                       </div>
                       <div className="space-y-1.5">
                         <Label>Tempo produtivo</Label>
                         <Input
                           inputMode="decimal"
                           value={horasDigitadas}
-                          onChange={(e) => setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))}
+                          onChange={(e) =>
+                            setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))
+                          }
                           placeholder="Ex.: 9:28"
                         />
                       </div>
@@ -578,11 +717,15 @@ function Contagem() {
                       Digite o tempo que quiser, como 9:28, 8:45 ou 7,5 horas.
                     </p>
                     <div className="rounded-xl bg-muted p-3 text-center">
-                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Previsto por hora</p>
-                      <p className="mt-1 text-xl font-black text-primary">{fmt(metaHoraSimulada)} {unidade}</p>
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                        Previsto por hora
+                      </p>
+                      <p className="mt-1 text-xl font-black text-primary">
+                        {fmt(metaHoraSimulada)} {unidade}
+                      </p>
                     </div>
                     <Button
-                      className="w-full"
+                      className="w-full touch-manipulation"
                       disabled={salvandoMeta || metaSimulada <= 0 || horasSimuladas <= 0}
                       onClick={() => void salvarMeta()}
                     >
@@ -611,43 +754,92 @@ function Contagem() {
                   <CardContent className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
                       <Label>{setor === "mantas" ? "Lote" : "OP"}</Label>
-                      <Input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder={setor === "mantas" ? "Informe o lote" : "Informe a OP"} />
+                      <Input
+                        inputMode={setor === "mantas" ? undefined : "numeric"}
+                        value={referencia}
+                        onChange={(e) => setReferencia(e.target.value)}
+                        placeholder={setor === "mantas" ? "Informe o lote" : "Informe a OP"}
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label>Produto</Label>
-                      <ProdutoSelect produtos={produtos} value={produtoId} onValueChange={setProdutoId} placeholder="Selecione" />
+                      <ProdutoSelect
+                        produtos={produtos}
+                        value={produtoId}
+                        onValueChange={setProdutoId}
+                        carregando={carregandoProgramacao}
+                        placeholder="Selecione"
+                      />
                     </div>
                     <div className="space-y-1 sm:col-span-2">
                       <Label>Quantidade prevista ({unidade})</Label>
-                      <Input inputMode="decimal" value={quantidadePrevista} onChange={(e) => setQuantidadePrevista(e.target.value)} placeholder="0" />
+                      <Input
+                        inputMode="decimal"
+                        value={quantidadePrevista}
+                        onChange={(e) => setQuantidadePrevista(e.target.value)}
+                        placeholder="0"
+                      />
                     </div>
-                    <Button className="sm:col-span-2" disabled={salvandoProgramacao || !produtoId || !referencia.trim() || !quantidadePrevista.trim()} onClick={() => void salvarProgramacao()}>
-                      <Save className="size-4" /> {salvandoProgramacao ? "Salvando..." : "Adicionar à programação"}
+                    <Button
+                      className="touch-manipulation sm:col-span-2"
+                      disabled={
+                        carregandoProgramacao ||
+                        salvandoProgramacao ||
+                        !produtoId ||
+                        !referencia.trim() ||
+                        !quantidadePrevista.trim()
+                      }
+                      onClick={() => void salvarProgramacao()}
+                    >
+                      <Save className="size-4" />
+                      {salvandoProgramacao ? "Salvando..." : "Adicionar à programação"}
                     </Button>
                   </CardContent>
                 </Card>
 
                 <Card className="rounded-2xl border-border shadow-sm">
-                  <CardHeader className="pb-2"><CardTitle className="text-base">Programação do turno</CardTitle></CardHeader>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Programação do turno</CardTitle>
+                  </CardHeader>
                   <CardContent className="space-y-2">
-                    {resumoProgramacao.length === 0 ? (
+                    {carregandoProgramacao ? (
+                      <p className="text-sm text-muted-foreground">Carregando programação...</p>
+                    ) : resumoProgramacao.length === 0 ? (
                       <p className="text-sm text-muted-foreground">Nenhum produto programado.</p>
                     ) : (
                       resumoProgramacao.map((item) => (
-                        <div key={item.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                        <div
+                          key={item.id}
+                          className="rounded-xl border border-border bg-muted/30 p-3"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="font-bold">{item.produto_nome}</p>
-                              <p className="text-xs text-muted-foreground">{item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`}
+                              </p>
                             </div>
-                            <Button size="icon" variant="ghost" className="size-8 text-red-600" onClick={() => void excluirProgramacao(item.id)}>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8 touch-manipulation text-red-600"
+                              onClick={() => void excluirProgramacao(item.id)}
+                            >
                               <Trash2 className="size-4" />
                             </Button>
                           </div>
                           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                             <Mini label="Previsto" valor={`${fmt(item.previsto)} ${item.unidade}`} />
-                            <Mini label="Realizado" valor={`${fmt(item.realizado)} ${item.unidade}`} destaque />
-                            <Mini label="Saldo" valor={`${fmt(item.saldo)} ${item.unidade}`} alerta={item.saldo > 0} />
+                            <Mini
+                              label="Realizado"
+                              valor={`${fmt(item.realizado)} ${item.unidade}`}
+                              destaque
+                            />
+                            <Mini
+                              label="Saldo"
+                              valor={`${fmt(item.saldo)} ${item.unidade}`}
+                              alerta={item.saldo > 0}
+                            />
                           </div>
                         </div>
                       ))
@@ -670,16 +862,25 @@ function Contagem() {
                   maxLength={1500}
                   rows={4}
                   placeholder="Digite a ocorrência..."
-                  className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
-                <Button className="w-full" disabled={salvandoOcorrencia || !mensagemOcorrencia.trim()} onClick={() => void salvarOcorrencia()}>
-                  <Save className="size-4" /> {salvandoOcorrencia ? "Salvando..." : "Registrar ocorrência"}
+                <Button
+                  className="w-full touch-manipulation"
+                  disabled={salvandoOcorrencia || !mensagemOcorrencia.trim()}
+                  onClick={() => void salvarOcorrencia()}
+                >
+                  <Save className="size-4" />
+                  {salvandoOcorrencia ? "Salvando..." : "Registrar ocorrência"}
                 </Button>
                 {ocorrencias.length > 0 && (
                   <div className="space-y-2">
                     {ocorrencias.map((item) => (
-                      <div key={item.id} className="rounded-xl bg-amber-100/80 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/60 dark:text-amber-100">
-                        <strong className="mr-2">{horaMinutoLocal(item.created_at)}</strong>{item.mensagem}
+                      <div
+                        key={item.id}
+                        className="rounded-xl bg-amber-100/80 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
+                      >
+                        <strong className="mr-2">{horaMinutoLocal(item.created_at)}</strong>
+                        {item.mensagem}
                       </div>
                     ))}
                   </div>
@@ -687,7 +888,10 @@ function Contagem() {
               </CardContent>
             </Card>
 
-            <Button className="h-12 w-full text-base font-bold" onClick={gerarOcorrencias}>
+            <Button
+              className="h-12 w-full touch-manipulation text-base font-bold"
+              onClick={gerarOcorrencias}
+            >
               <MessageSquare className="size-5" /> Gerar ocorrências
             </Button>
 
@@ -695,12 +899,22 @@ function Contagem() {
               <Card className="rounded-2xl border-primary/30">
                 <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                   <CardTitle className="text-base">Resumo gerado</CardTitle>
-                  <Button variant="outline" size="sm" onClick={() => void copiarOcorrencias()}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="touch-manipulation"
+                    onClick={() => void copiarOcorrencias()}
+                  >
                     <ClipboardCopy className="size-4" /> Copiar
                   </Button>
                 </CardHeader>
                 <CardContent>
-                  <textarea readOnly value={textoGerado} rows={12} className="w-full resize-y rounded-xl border border-input bg-muted/30 px-3 py-2 font-mono text-xs text-foreground" />
+                  <textarea
+                    readOnly
+                    value={textoGerado}
+                    rows={12}
+                    className="w-full resize-y rounded-xl border border-input bg-muted/30 px-3 py-2 font-mono text-xs text-foreground"
+                  />
                 </CardContent>
               </Card>
             )}
@@ -711,18 +925,32 @@ function Contagem() {
   );
 }
 
-function HoraCard({ item, setor, unidade, mostrarMeta }: { item: HoraPlanejada; setor: string | null | undefined; unidade: string; mostrarMeta: boolean }) {
+function HoraCard({
+  item,
+  setor,
+  unidade,
+  mostrarMeta,
+}: {
+  item: HoraPlanejada;
+  setor: string | null | undefined;
+  unidade: string;
+  mostrarMeta: boolean;
+}) {
   return (
     <article className="overflow-hidden rounded-[1.6rem] border border-border bg-card shadow-sm">
       <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xl font-black text-foreground">{intervaloHora(item.hora)}</p>
-            <p className="mt-2 text-sm font-semibold text-muted-foreground">{resumoProdutosHora(item, setor)}</p>
+            <p className="mt-2 text-sm font-semibold text-muted-foreground">
+              {resumoProdutosHora(item, setor)}
+            </p>
           </div>
           <div className="shrink-0 text-right">
             <p className="text-2xl font-black text-primary">{destaqueHora(item, setor)}</p>
-            <p className="mt-1 text-sm font-bold text-muted-foreground">{secundarioHora(item, setor)}</p>
+            <p className="mt-1 text-sm font-bold text-muted-foreground">
+              {secundarioHora(item, setor)}
+            </p>
           </div>
         </div>
 
@@ -731,7 +959,10 @@ function HoraCard({ item, setor, unidade, mostrarMeta }: { item: HoraPlanejada; 
             <div className="my-4 border-t border-border" />
             <div className="grid grid-cols-3 gap-3">
               <MetricaHora label="Previsto" valor={`${fmt(item.metaHora)} ${unidade}`} />
-              <MetricaHora label="Acumulado" valor={`${fmt(item.realizadoAcumulado)} ${unidade}`} />
+              <MetricaHora
+                label="Acumulado"
+                valor={`${fmt(item.realizadoAcumulado)} ${unidade}`}
+              />
               <MetricaHora
                 label="Δ acumulado"
                 valor={`${item.saldoAcumulado > 0 ? "+" : ""}${fmt(item.saldoAcumulado)} ${unidade}`}
@@ -744,7 +975,10 @@ function HoraCard({ item, setor, unidade, mostrarMeta }: { item: HoraPlanejada; 
         {item.ocorrencias.length > 0 && (
           <div className="mt-4 space-y-2">
             {item.ocorrencias.map((mensagem, index) => (
-              <div key={`${item.hora}-${index}`} className="flex items-start gap-2 rounded-xl bg-amber-100/80 px-3 py-2.5 text-sm font-medium text-amber-950 dark:bg-amber-950/60 dark:text-amber-100">
+              <div
+                key={`${item.hora}-${index}`}
+                className="flex items-start gap-2 rounded-xl bg-amber-100/80 px-3 py-2.5 text-sm font-medium text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
+              >
                 <MessageSquare className="mt-0.5 size-4 shrink-0" />
                 <span>{mensagem}</span>
               </div>
@@ -756,31 +990,87 @@ function HoraCard({ item, setor, unidade, mostrarMeta }: { item: HoraPlanejada; 
   );
 }
 
-function ResumoGrande({ label, valor, destaque = false, className = "" }: { label: string; valor: string; destaque?: boolean; className?: string }) {
+function ResumoGrande({
+  label,
+  valor,
+  destaque = false,
+  className = "",
+}: {
+  label: string;
+  valor: string;
+  destaque?: boolean;
+  className?: string;
+}) {
   return (
-    <Card className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}>
+    <Card
+      className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}
+    >
       <CardContent className="p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}>{valor}</p>
+        <p
+          className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}
+        >
+          {valor}
+        </p>
       </CardContent>
     </Card>
   );
 }
 
-function MetricaHora({ label, valor, negativo = false }: { label: string; valor: string; negativo?: boolean }) {
+function MetricaHora({
+  label,
+  valor,
+  negativo = false,
+}: {
+  label: string;
+  valor: string;
+  negativo?: boolean;
+}) {
   return (
     <div className="min-w-0">
       <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}>{valor}</p>
+      <p
+        className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}
+      >
+        {valor}
+      </p>
     </div>
   );
 }
 
-function Mini({ label, valor, destaque = false, alerta = false }: { label: string; valor: string; destaque?: boolean; alerta?: boolean }) {
+function Mini({
+  label,
+  valor,
+  destaque = false,
+  alerta = false,
+}: {
+  label: string;
+  valor: string;
+  destaque?: boolean;
+  alerta?: boolean;
+}) {
   return (
-    <div className={`rounded-lg p-2 ${alerta ? "bg-amber-100/80 dark:bg-amber-950/50" : destaque ? "bg-primary/10" : "bg-muted"}`}>
+    <div
+      className={`rounded-lg p-2 ${
+        alerta
+          ? "bg-amber-100/80 dark:bg-amber-950/50"
+          : destaque
+            ? "bg-primary/10"
+            : "bg-muted"
+      }`}
+    >
       <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
-      <p className={`font-bold ${alerta ? "text-amber-900 dark:text-amber-100" : destaque ? "text-primary" : ""}`}>{valor}</p>
+      <p
+        className={`font-bold ${
+          alerta
+            ? "text-amber-900 dark:text-amber-100"
+            : destaque
+              ? "text-primary"
+              : ""
+        }`}
+      >
+        {valor}
+      </p>
     </div>
   );
 }
@@ -790,7 +1080,15 @@ function linhaVazia(produto: string): Linha {
 }
 
 function horaVazia(hora: string): HoraInterna {
-  return { hora, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0, produtos: new Map() };
+  return {
+    hora,
+    apontamentos: 0,
+    plts: 0,
+    rolos: 0,
+    metragem: 0,
+    area: 0,
+    produtos: new Map(),
+  };
 }
 
 function horaVaziaFinal(hora: string): Hora {
@@ -811,16 +1109,23 @@ function unidadeDoSetor(setor: string | null | undefined) {
   return "PLTs";
 }
 
-function valorDaHora(item: Pick<Hora, "plts" | "metragem" | "area">, setor: string | null | undefined) {
+function valorDaHora(
+  item: Pick<Hora, "plts" | "metragem" | "area">,
+  setor: string | null | undefined,
+) {
   if (setor === "fitas") return Number(item.area ?? 0);
   if (setor === "mantas") return Number(item.metragem ?? 0);
   return Number(item.plts ?? 0);
 }
 
-function correspondeProgramacao(registro: Registro, item: ProgramacaoItem, setor: string | null | undefined) {
-  if (registro.produto_id !== item.produto_id) return false;
-  if (setor === "mantas") return normalizar(registro.lote) === normalizar(item.lote);
-  return normalizar(registro.op) === normalizar(item.op);
+function chaveProgramacaoRegistro(registro: Registro, setor: string | null | undefined) {
+  const referencia = setor === "mantas" ? registro.lote : registro.op;
+  return `${registro.produto_id}:${normalizar(referencia)}`;
+}
+
+function chaveProgramacaoItem(item: ProgramacaoItem, setor: string | null | undefined) {
+  const referencia = setor === "mantas" ? item.lote : item.op;
+  return `${item.produto_id}:${normalizar(referencia)}`;
 }
 
 function valorRealizadoRegistro(item: Registro, setor: string | null | undefined) {
@@ -837,7 +1142,8 @@ function resumoProdutosHora(item: Hora, setor: string | null | undefined) {
   if (!item.produtos.length) return "Sem produção registrada";
   return item.produtos
     .map((produto) => {
-      if (setor === "corte") return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`;
+      if (setor === "corte")
+        return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`;
       if (setor === "mantas") return `${produto.produto}: ${fmt(produto.metragem)} m`;
       if (setor === "fitas") return `${produto.produto}: ${fmt(produto.area)} m²`;
       return `${produto.produto}: ${fmt(produto.plts)}`;
@@ -894,7 +1200,14 @@ function duracaoDoCampo(valor: string) {
     const [horasTexto, minutosTexto = "0"] = limpo.split(":", 2);
     const horas = Number(horasTexto);
     const minutos = Number(minutosTexto);
-    if (!Number.isFinite(horas) || !Number.isFinite(minutos) || horas < 0 || minutos < 0 || minutos >= 60) return Number.NaN;
+    if (
+      !Number.isFinite(horas) ||
+      !Number.isFinite(minutos) ||
+      horas < 0 ||
+      minutos < 0 ||
+      minutos >= 60
+    )
+      return Number.NaN;
     return horas + minutos / 60;
   }
   return numeroDoCampo(limpo);
