@@ -263,9 +263,10 @@ function Programacao() {
     if (!user || !setor || !turno || !produto || salvando) return;
     const qtd = numeroCampo(quantidade);
     const ref = referencia.trim();
-    if (!ref || !Number.isFinite(qtd) || qtd <= 0) {
+    const ehMantas = setor === "mantas";
+    if ((!ehMantas && !ref) || !Number.isFinite(qtd) || qtd <= 0) {
       toast.error(
-        `Informe ${setor === "mantas" ? "o lote" : "a OP"}, produto e quantidade prevista.`,
+        ehMantas ? "Informe produto e quantidade prevista." : "Informe a OP, produto e quantidade prevista.",
       );
       return;
     }
@@ -277,8 +278,7 @@ function Programacao() {
       data_local: dataAtual,
       produto_id: produto.id,
       produto_nome: produto.nome,
-      op: setor === "mantas" ? null : ref,
-      lote: setor === "mantas" ? ref : null,
+      op: ehMantas ? null : ref,
       quantidade_prevista: qtd,
       unidade,
       global_dia: true,
@@ -292,14 +292,14 @@ function Programacao() {
       .eq("data_local", dataAtual)
       .eq("global_dia", true)
       .eq("produto_id", produto.id);
-    consulta = setor === "mantas" ? consulta.eq("lote", ref) : consulta.eq("op", ref);
-    const atualizado = await consulta.select("*").maybeSingle();
+    if (!ehMantas) consulta = consulta.eq("op", ref);
+    const atualizado = await consulta.select("*").limit(1).maybeSingle();
 
     let resultado = atualizado;
     if (!atualizado.error && !atualizado.data) {
       resultado = await (supabase as any)
         .from("programacao_producao")
-        .insert({ ...valores, criado_por: user.id })
+        .insert({ ...valores, lote: null, criado_por: user.id })
         .select("*")
         .single();
     }
@@ -318,6 +318,24 @@ function Programacao() {
     limparFormulario();
     setTextoGerado("");
     toast.success("Programação salva.");
+  }
+
+  async function editarLote(id: string, atual: string | null) {
+    if (!canProgramProduction) return;
+    const digitado = window.prompt("Lote da programação (deixe vazio para limpar):", atual ?? "");
+    if (digitado === null) return;
+    const lote = digitado.trim() || null;
+    const { error } = await (supabase as any)
+      .from("programacao_producao")
+      .update({ lote, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) {
+      toast.error("Não foi possível atualizar o lote.");
+      return;
+    }
+    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, lote } : item)));
+    setTextoGerado("");
+    toast.success(lote ? "Lote atualizado." : "Lote removido.");
   }
 
   async function excluirProgramacao(item: ProgramacaoItem) {
@@ -476,9 +494,9 @@ function Programacao() {
     if (comSaldo.length > 0) {
       linhas.push("Programação com saldo:");
       for (const item of comSaldo) {
-        const ref = item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`;
+        const ref = item.lote ? ` - Lote ${item.lote}` : setor === "mantas" ? "" : ` - OP ${item.op ?? "—"}`;
         linhas.push(
-          `• ${item.produto_nome} - ${ref}: previsto ${fmt(item.previsto)} ${item.unidade}, realizado ${fmt(item.realizado)} ${item.unidade}, saldo ${fmt(item.saldo)} ${item.unidade}`,
+          `• ${item.produto_nome}${ref}: previsto ${fmt(item.previsto)} ${item.unidade}, realizado ${fmt(item.realizado)} ${item.unidade}, saldo ${fmt(item.saldo)} ${item.unidade}`,
         );
       }
       linhas.push("");
@@ -595,14 +613,16 @@ function Programacao() {
                   </p>
                 </CardHeader>
                 <CardContent className="grid gap-3 sm:grid-cols-2">
+                  {setor !== "mantas" && (
                   <div className="space-y-1">
-                    <Label>{setor === "mantas" ? "Lote" : "OP"} *</Label>
+                    <Label>OP *</Label>
                     <Input
                       value={referencia}
                       onChange={(e) => setReferencia(e.target.value)}
-                      placeholder={setor === "mantas" ? "Informe o lote" : "Informe a OP"}
+                      placeholder="Informe a OP"
                     />
                   </div>
+                  )}
                   <div className="space-y-1">
                     <Label>Produto *</Label>
                     <ProdutoSelect
@@ -628,7 +648,7 @@ function Programacao() {
                   )}
                   <Button
                     className="h-11 sm:col-span-2"
-                    disabled={salvando || !produtoId || !referencia.trim() || !quantidade.trim()}
+                    disabled={salvando || !produtoId || (setor !== "mantas" && !referencia.trim()) || !quantidade.trim()}
                     onClick={() => void salvarProgramacao()}
                   >
                     <Save className="size-4" /> {salvando ? "Salvando..." : "Adicionar à programação"}
@@ -668,9 +688,22 @@ function Programacao() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-bold">{item.produto_nome}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`}
-                            </p>
+                            {setor === "mantas" ? (
+                              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                                <span>{item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento"}</span>
+                                {canProgramProduction && (
+                                  <button
+                                    type="button"
+                                    className="font-semibold text-primary hover:underline"
+                                    onClick={() => void editarLote(item.id, item.lote)}
+                                  >
+                                    Editar lote
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">OP {item.op ?? "—"}</p>
+                            )}
                           </div>
                           {canProgramProduction && (
                           <Button
@@ -921,7 +954,7 @@ function correspondeProgramacao(
   setor?: string | null,
 ) {
   if (registro.produto_id !== item.produto_id) return false;
-  if (setor === "mantas") return normalizar(registro.lote) === normalizar(item.lote);
+  if (setor === "mantas") return true;
   return normalizar(registro.op) === normalizar(item.op);
 }
 

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { preencherLoteProgramacaoMantas } from "@/lib/programacao-lote";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import {
   areaFitas,
@@ -675,7 +676,7 @@ function ApontarMantas() {
         total_rolos: rolos,
         metragem,
       })
-      .select("sequencia_inicio, sequencia_fim")
+      .select("sequencia_inicio, sequencia_fim, data_local")
       .single();
     setSalvando(false);
     enviando.current = false;
@@ -683,6 +684,11 @@ function ApontarMantas() {
       toast.error(mensagemApontamento(error));
       return;
     }
+    void preencherLoteProgramacaoMantas({
+      dataLocal: (data as { data_local?: string | null }).data_local,
+      produtoId: produto.id,
+      lote,
+    });
     await cadastrarMetaOpcional({
       userId: user.id,
       setor: "mantas",
