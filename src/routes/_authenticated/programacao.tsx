@@ -605,7 +605,7 @@ function Programacao() {
                     <CalendarDays className="size-5 text-primary" /> Produtos que vão rodar no dia
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Cadastre a sequência planejada do turno por produto e OP/lote.
+                    Cadastre produto e quantidade prevista. A OP/lote é preenchida no primeiro apontamento.
                   </p>
                 </CardHeader>
                 <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -674,7 +674,7 @@ function Programacao() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-bold">{item.produto_nome}</p>
-                            {setor === "mantas" ? (
+                            {(
                               <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                                 <span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>
                                 {canProgramProduction && (
@@ -687,8 +687,6 @@ function Programacao() {
                                   </button>
                                 )}
                               </div>
-                            ) : (
-                              <p className="text-xs text-muted-foreground">OP {item.op ?? "—"}</p>
                             )}
                           </div>
                           {canProgramProduction && (
@@ -941,7 +939,9 @@ function correspondeProgramacao(
 ) {
   if (registro.produto_id !== item.produto_id) return false;
   if (setor === "mantas") return true;
-  return normalizar(registro.op) === normalizar(item.op);
+  const opItem = normalizar(item.op);
+  if (!opItem) return true;
+  return normalizar(registro.op) === opItem;
 }
 
 function normalizar(valor: string | null | undefined) {

@@ -382,18 +382,11 @@ function Contagem() {
     metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
 
   const resumoProgramacao = useMemo(() => {
-    const realizadoPorChave = new Map<string, number>();
-    for (const registro of registrosDia) {
-      const chave = chaveProgramacaoRegistro(registro, setor);
-      realizadoPorChave.set(
-        chave,
-        (realizadoPorChave.get(chave) ?? 0) + valorRealizadoRegistro(registro, setor),
-      );
-    }
-
     return programacao.map((item) => {
       const previsto = Number(item.quantidade_prevista ?? 0);
-      const realizado = realizadoPorChave.get(chaveProgramacaoItem(item, setor)) ?? 0;
+      const realizado = registrosDia
+        .filter((registro) => correspondeProgramacaoItem(registro, item, setor))
+        .reduce((total, registro) => total + valorRealizadoRegistro(registro, setor), 0);
       return { ...item, previsto, realizado, saldo: previsto - realizado };
     });
   }, [programacao, registrosDia, setor]);
@@ -785,17 +778,6 @@ function Contagem() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="grid gap-3 sm:grid-cols-2">
-                    {setor !== "mantas" && (
-                    <div className="space-y-1">
-                      <Label>OP</Label>
-                      <Input
-                        inputMode="numeric"
-                        value={referencia}
-                        onChange={(e) => setReferencia(e.target.value)}
-                        placeholder="Informe a OP"
-                      />
-                    </div>
-                    )}
                     <div className="space-y-1">
                       <Label>Produto</Label>
                       <ProdutoSelect
@@ -854,7 +836,7 @@ function Contagem() {
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="font-bold">{item.produto_nome}</p>
-                              {setor === "mantas" ? (
+                              {(
                                 <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                                   <span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>
                                   {canProgramProduction && (
@@ -867,8 +849,6 @@ function Contagem() {
                                     </button>
                                   )}
                                 </div>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">OP {item.op ?? "—"}</p>
                               )}
                             </div>
                             {canProgramProduction && (
@@ -1178,16 +1158,16 @@ function valorMetaHora(
   return Number(item.metragem ?? 0);
 }
 
-function chaveProgramacaoRegistro(registro: Registro, setor: string | null | undefined) {
-  if (setor === "mantas") return `${registro.produto_id}`;
-  const referencia = registro.op;
-  return `${registro.produto_id}:${normalizar(referencia)}`;
-}
-
-function chaveProgramacaoItem(item: ProgramacaoItem, setor: string | null | undefined) {
-  if (setor === "mantas") return `${item.produto_id}`;
-  const referencia = item.op;
-  return `${item.produto_id}:${normalizar(referencia)}`;
+function correspondeProgramacaoItem(
+  registro: Registro,
+  item: ProgramacaoItem,
+  setor: string | null | undefined,
+) {
+  if (registro.produto_id !== item.produto_id) return false;
+  if (setor === "mantas") return true;
+  const opItem = normalizar(item.op);
+  if (!opItem) return true;
+  return normalizar(registro.op) === opItem;
 }
 
 function valorRealizadoRegistro(item: Registro, setor: string | null | undefined) {
