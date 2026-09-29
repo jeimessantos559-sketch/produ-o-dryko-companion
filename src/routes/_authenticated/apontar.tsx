@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { AppShell } from "@/components/dryko/app-shell";
 import { EmDefinicao } from "@/components/dryko/em-definicao";
+import { HoraProducaoField } from "@/components/dryko/hora-producao-field";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import {
   areaFitas,
+  dataHoraProducaoPadrao,
   metragemCorte,
   rolosManta,
   totalPlts,
@@ -254,9 +256,12 @@ function CampoMeta({
 
 function mensagemApontamento(error: { message?: string } | null) {
   const mensagem = error?.message ?? "";
-  if (mensagem.toLowerCase().includes("turno esta fechado")) {
+  const normalizada = mensagem.toLocaleLowerCase("pt-BR");
+  if (normalizada.includes("turno esta fechado")) {
     return "Este turno está fechado. Peça a reabertura ao administrador.";
   }
+  if (normalizada.includes("horario") && normalizada.includes("turno")) return "A hora real informada não pertence ao turno selecionado.";
+  if (normalizada.includes("futuro")) return "A hora real da produção não pode estar no futuro.";
   return "Não foi possível salvar o apontamento. Revise os dados e tente novamente.";
 }
 
@@ -269,6 +274,7 @@ function ApontarCorte() {
   const [salvando, setSalvando] = useState(false);
   const [metaNova, setMetaNova] = useState(0);
   const [ultimoSalvo, setUltimoSalvo] = useState<string | null>(null);
+  const [dataHoraProducao, setDataHoraProducao] = useState(dataHoraProducaoPadrao);
   const enviando = useRef(false);
   const produto = produtos.find((item) => item.id === produtoId);
   const { meta, apontado, carregando: carregandoMeta } = useMetaAtiva("corte", op, produtoId);
@@ -286,7 +292,7 @@ function ApontarCorte() {
           grupo.pltPicadoRolos < grupo.rolosPorPlt)),
   );
   const valido = Boolean(
-    op.trim() && produto && gruposValidos && quantidade >= 1 && quantidade <= 20 && rolos > 0,
+    dataHoraProducao && op.trim() && produto && gruposValidos && quantidade >= 1 && quantidade <= 20 && rolos > 0,
   );
 
   function escolherProduto(id: string) {
@@ -338,6 +344,7 @@ function ApontarCorte() {
         usuario_id: user.id,
         setor: "corte",
         turno: profile.turno_atual,
+        data_hora_producao: dataHoraProducao,
         op: op.trim(),
         produto_id: produtoId,
         produto_nome: produto!.nome,
@@ -369,6 +376,7 @@ function ApontarCorte() {
     setProdutoId("");
     setGrupos([grupoInicial()]);
     setMetaNova(0);
+    setDataHoraProducao(dataHoraProducaoPadrao());
     toast.success("Apontamento salvo e painel atualizado.");
   }
 
@@ -409,6 +417,7 @@ function ApontarCorte() {
         )}
 
         <section className="space-y-3">
+          <HoraProducaoField id="hora-producao-corte" value={dataHoraProducao} onChange={setDataHoraProducao} />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="op" className="text-xs font-bold uppercase">
@@ -584,6 +593,7 @@ function ApontarMantas() {
   const [salvando, setSalvando] = useState(false);
   const [metaNova, setMetaNova] = useState(0);
   const [ultimoSalvo, setUltimoSalvo] = useState<string | null>(null);
+  const [dataHoraProducao, setDataHoraProducao] = useState(dataHoraProducaoPadrao);
   const enviando = useRef(false);
   const produto = produtos.find((item) => item.id === produtoId);
   const { meta, apontado, carregando: carregandoMeta } = useMetaAtiva("mantas", op, produtoId);
@@ -591,6 +601,7 @@ function ApontarMantas() {
   const rolos = rolosManta(metragem, metrosPorRolo);
   const rolosInteiros = Number.isInteger(rolos) && rolos > 0;
   const valido = Boolean(
+    dataHoraProducao &&
     op.trim() &&
     produto &&
     lote.trim() &&
@@ -654,6 +665,7 @@ function ApontarMantas() {
         usuario_id: user.id,
         setor: "mantas",
         turno: profile.turno_atual,
+        data_hora_producao: dataHoraProducao,
         op: op.trim(),
         lote: lote.trim(),
         produto_id: produto.id,
@@ -687,6 +699,7 @@ function ApontarMantas() {
     setMetragem(0);
     setQuantidadePlts(1);
     setMetaNova(0);
+    setDataHoraProducao(dataHoraProducaoPadrao());
     toast.success("Apontamento de Mantas salvo.");
   }
 
@@ -722,6 +735,7 @@ function ApontarMantas() {
         )}
         <Card>
           <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
+            <div className="sm:col-span-2"><HoraProducaoField id="hora-producao-mantas" value={dataHoraProducao} onChange={setDataHoraProducao} /></div>
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="op-manta">OP *</Label>
               <Input
@@ -822,6 +836,7 @@ function ApontarFitas() {
   const [largura, setLargura] = useState(0.93);
   const [salvando, setSalvando] = useState(false);
   const [metaNova, setMetaNova] = useState(0);
+  const [dataHoraProducao, setDataHoraProducao] = useState(dataHoraProducaoPadrao);
   const enviando = useRef(false);
   const area = areaFitas(tempo, velocidade, largura);
   const produto = produtos.find((item) => item.id === produtoId);
@@ -834,7 +849,7 @@ function ApontarFitas() {
   }
 
   async function salvar() {
-    if (!user || !profile?.turno_atual || !produto || !op.trim() || area <= 0 || enviando.current)
+    if (!user || !profile?.turno_atual || !produto || !op.trim() || !dataHoraProducao || area <= 0 || enviando.current)
       return;
     if (!confirmarExcessoDaMeta(meta, apontado, area)) return;
     enviando.current = true;
@@ -843,6 +858,7 @@ function ApontarFitas() {
       usuario_id: user.id,
       setor: "fitas",
       turno: profile.turno_atual,
+      data_hora_producao: dataHoraProducao,
       op: op.trim(),
       produto_id: produto.id,
       produto_nome: produto.nome,
@@ -873,6 +889,7 @@ function ApontarFitas() {
     setVelocidade(0);
     setLargura(0.93);
     setMetaNova(0);
+    setDataHoraProducao(dataHoraProducaoPadrao());
   }
 
   return (
@@ -900,6 +917,7 @@ function ApontarFitas() {
         )}
         <Card>
           <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
+            <div className="sm:col-span-2"><HoraProducaoField id="hora-producao-fitas" value={dataHoraProducao} onChange={setDataHoraProducao} /></div>
             <div className="space-y-1">
               <Label>OP *</Label>
               <Input value={op} onChange={(e) => setOp(e.target.value)} />
@@ -961,7 +979,7 @@ function ApontarFitas() {
         </Card>
         <Button
           className="h-14 w-full"
-          disabled={!produto || !op.trim() || area <= 0 || salvando}
+          disabled={!produto || !op.trim() || !dataHoraProducao || area <= 0 || salvando}
           onClick={salvar}
         >
           {salvando ? "Apontando..." : "Apontar"}

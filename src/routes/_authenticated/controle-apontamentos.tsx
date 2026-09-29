@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
-import { dataOperacional } from "@/lib/producao";
+import { dataHoraProducaoFormatada, dataOperacional } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/controle-apontamentos")({ component: ControleApontamentos });
 
@@ -77,7 +77,7 @@ function ControleApontamentos() {
         .select("*")
         .eq("setor", setor)
         .eq("data_local", data)
-        .order("created_at", { ascending: false })
+        .order("data_hora_producao", { ascending: false })
         .limit(250),
       supabase.from("profiles").select("id, nome").eq("ativo", true),
     ]);
@@ -228,7 +228,7 @@ function ControleApontamentos() {
                             {agrupado && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">{grupo.quantidadeRegistros} registros agrupados</span>}
                           </div>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            <span className="font-semibold text-foreground">Apontado por:</span> {apontadores} · {grupo.item.turno} · {formatarDataHora(grupo.item.created_at)}
+                            <span className="font-semibold text-foreground">Produção:</span> {dataHoraProducaoFormatada(grupo.item.data_hora_producao)} · {grupo.item.turno} · {apontadores}
                           </p>
                           {grupo.item.status === "lancado" && grupo.item.lancado_por && (
                             <p className="mt-1 text-xs text-muted-foreground">

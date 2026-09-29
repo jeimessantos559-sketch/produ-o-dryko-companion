@@ -62,6 +62,7 @@ export type Database = {
         Row: {
           area_m2: number | null
           created_at: string
+          data_hora_producao: string
           data_local: string
           grupos: Json | null
           id: string
@@ -89,6 +90,7 @@ export type Database = {
         Insert: {
           area_m2?: number | null
           created_at?: string
+          data_hora_producao?: string
           data_local?: string
           grupos?: Json | null
           id?: string
@@ -116,6 +118,7 @@ export type Database = {
         Update: {
           area_m2?: number | null
           created_at?: string
+          data_hora_producao?: string
           data_local?: string
           grupos?: Json | null
           id?: string

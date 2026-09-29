@@ -27,7 +27,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { dataOperacional } from "@/lib/producao";
+import { dataOperacional, horaProducao } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/painel")({ component: Painel });
 
@@ -52,6 +52,7 @@ type Registro = {
   area_m2: number | null;
   status: "pendente" | "lancado";
   created_at: string;
+  data_hora_producao: string;
 };
 
 type Pendencia = Registro & {
@@ -124,18 +125,18 @@ function Painel() {
     const [{ data, error }, { data: pendenciasData, error: erroPendencias }] = await Promise.all([
       supabase
         .from("apontamentos")
-        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at")
+        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao")
         .eq("setor", profile.setor_atual)
         .eq("turno", profile.turno_atual)
         .eq("data_local", dataAtual)
-        .order("created_at", { ascending: false })
+        .order("data_hora_producao", { ascending: false })
         .limit(30),
       supabase
         .from("apontamentos")
-        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_local, turno")
+        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao, data_local, turno")
         .eq("setor", profile.setor_atual)
         .eq("status", "pendente")
-        .order("created_at", { ascending: false })
+        .order("data_hora_producao", { ascending: false })
         .limit(60),
     ]);
 
@@ -302,7 +303,7 @@ function Painel() {
                     <div key={item.id} className="flex items-center justify-between gap-2 py-2.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-950">{tituloRegistro(item, setor)}</p>
-                        <p className="truncate text-xs text-slate-500"><strong>{formatarHora(item.created_at)}</strong> · {resumoRegistro(item, setor)}</p>
+                        <p className="truncate text-xs text-slate-500"><strong>{horaProducao(item.data_hora_producao)}</strong> · {resumoRegistro(item, setor)}</p>
                       </div>
                       <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${item.status === "lancado" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status === "lancado" ? "Lançado" : "Pendente"}</span>
                     </div>
@@ -328,7 +329,7 @@ function Painel() {
               <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Nenhuma pendência anterior.</div>
             ) : gruposAnteriores.map((grupo) => (
               <article key={grupo.chave} className="rounded-xl border bg-slate-50/50 p-3">
-                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-bold">{tituloGrupo(grupo, setor)}</p><p className="text-xs text-slate-500">{formatarData(grupo.item.data_local)} · {nomeTurno(grupo.item.turno)} · {formatarHora(grupo.item.created_at)}</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Pendente</span></div>
+                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-bold">{tituloGrupo(grupo, setor)}</p><p className="text-xs text-slate-500">{formatarData(grupo.item.data_local)} · {nomeTurno(grupo.item.turno)} · {horaProducao(grupo.item.data_hora_producao)}</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Pendente</span></div>
                 <p className="mt-2 text-sm font-medium text-slate-600">{resumoGrupo(grupo, setor)}</p>
                 {isAutorizado && <Button type="button" variant="outline" size="sm" className="mt-2 w-full border-primary text-primary" disabled={confirmandoChave !== null} onClick={() => void confirmarGrupo(grupo)}>{confirmandoChave === grupo.chave ? "Lançando..." : grupo.ids.length > 1 ? `Lançar agrupado (${grupo.ids.length})` : "Conferir e lançar"}</Button>}
               </article>
@@ -408,4 +409,3 @@ function resumoGrupo(grupo: GrupoProtheus, setor: string) {
 
 function formatarNumero(valor: number) { return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
 function formatarData(valor: string) { const [ano, mes, dia] = valor.split("-"); return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor; }
-function formatarHora(valor: string) { return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(valor)); }

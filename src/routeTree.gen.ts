@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AlterarSenhaRouteImport } from './routes/alterar-senha'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as AuthenticatedAdministracaoRouteImport } from './routes/_authenticated/administracao'
 import { Route as AuthenticatedApontarRouteImport } from './routes/_authenticated/apontar'
 import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
@@ -22,6 +23,7 @@ import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedPassagemTurnoRouteImport } from './routes/_authenticated/passagem-turno'
 import { Route as AuthenticatedProdutosRouteImport } from './routes/_authenticated/produtos'
+import { Route as AuthenticatedProgramacaoRouteImport } from './routes/_authenticated/programacao'
 import { Route as AuthenticatedRelatoriosRouteImport } from './routes/_authenticated/relatorios'
 import { Route as AuthenticatedReportarProblemaRouteImport } from './routes/_authenticated/reportar-problema'
 import { Route as AuthenticatedSelecionarRouteImport } from './routes/_authenticated/selecionar'
@@ -45,6 +47,11 @@ const AlterarSenhaRoute = AlterarSenhaRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({
+  id: '/redefinir-senha',
+  path: '/redefinir-senha',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdministracaoRoute =
@@ -95,6 +102,12 @@ const AuthenticatedProdutosRoute = AuthenticatedProdutosRouteImport.update({
   path: '/produtos',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProgramacaoRoute =
+  AuthenticatedProgramacaoRouteImport.update({
+    id: '/programacao',
+    path: '/programacao',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedRelatoriosRoute = AuthenticatedRelatoriosRouteImport.update({
   id: '/relatorios',
   path: '/relatorios',
@@ -127,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/administracao': typeof AuthenticatedAdministracaoRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
@@ -136,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/painel': typeof AuthenticatedPainelRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/produtos': typeof AuthenticatedProdutosRoute
+  '/programacao': typeof AuthenticatedProgramacaoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
@@ -146,6 +161,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/administracao': typeof AuthenticatedAdministracaoRoute
   '/apontar': typeof AuthenticatedApontarRoute
   '/contagem': typeof AuthenticatedContagemRoute
@@ -155,6 +171,7 @@ export interface FileRoutesByTo {
   '/painel': typeof AuthenticatedPainelRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/produtos': typeof AuthenticatedProdutosRoute
+  '/programacao': typeof AuthenticatedProgramacaoRoute
   '/relatorios': typeof AuthenticatedRelatoriosRoute
   '/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/selecionar': typeof AuthenticatedSelecionarRoute
@@ -167,6 +184,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/alterar-senha': typeof AlterarSenhaRoute
   '/auth': typeof AuthRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/_authenticated/administracao': typeof AuthenticatedAdministracaoRoute
   '/_authenticated/apontar': typeof AuthenticatedApontarRoute
   '/_authenticated/contagem': typeof AuthenticatedContagemRoute
@@ -176,6 +194,7 @@ export interface FileRoutesById {
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/_authenticated/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/_authenticated/produtos': typeof AuthenticatedProdutosRoute
+  '/_authenticated/programacao': typeof AuthenticatedProgramacaoRoute
   '/_authenticated/relatorios': typeof AuthenticatedRelatoriosRoute
   '/_authenticated/reportar-problema': typeof AuthenticatedReportarProblemaRoute
   '/_authenticated/selecionar': typeof AuthenticatedSelecionarRoute
@@ -188,6 +207,7 @@ export interface FileRouteTypes {
     | '/'
     | '/alterar-senha'
     | '/auth'
+    | '/redefinir-senha'
     | '/administracao'
     | '/apontar'
     | '/contagem'
@@ -197,6 +217,7 @@ export interface FileRouteTypes {
     | '/painel'
     | '/passagem-turno'
     | '/produtos'
+    | '/programacao'
     | '/relatorios'
     | '/reportar-problema'
     | '/selecionar'
@@ -207,6 +228,7 @@ export interface FileRouteTypes {
     | '/'
     | '/alterar-senha'
     | '/auth'
+    | '/redefinir-senha'
     | '/administracao'
     | '/apontar'
     | '/contagem'
@@ -216,6 +238,7 @@ export interface FileRouteTypes {
     | '/painel'
     | '/passagem-turno'
     | '/produtos'
+    | '/programacao'
     | '/relatorios'
     | '/reportar-problema'
     | '/selecionar'
@@ -227,6 +250,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/alterar-senha'
     | '/auth'
+    | '/redefinir-senha'
     | '/_authenticated/administracao'
     | '/_authenticated/apontar'
     | '/_authenticated/contagem'
@@ -236,6 +260,7 @@ export interface FileRouteTypes {
     | '/_authenticated/painel'
     | '/_authenticated/passagem-turno'
     | '/_authenticated/produtos'
+    | '/_authenticated/programacao'
     | '/_authenticated/relatorios'
     | '/_authenticated/reportar-problema'
     | '/_authenticated/selecionar'
@@ -248,6 +273,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AlterarSenhaRoute: typeof AlterarSenhaRoute
   AuthRoute: typeof AuthRoute
+  RedefinirSenhaRoute: typeof RedefinirSenhaRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -278,6 +304,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/redefinir-senha': {
+      id: '/redefinir-senha'
+      path: '/redefinir-senha'
+      fullPath: '/redefinir-senha'
+      preLoaderRoute: typeof RedefinirSenhaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/administracao': {
@@ -343,6 +376,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProdutosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/programacao': {
+      id: '/_authenticated/programacao'
+      path: '/programacao'
+      fullPath: '/programacao'
+      preLoaderRoute: typeof AuthenticatedProgramacaoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/relatorios': {
       id: '/_authenticated/relatorios'
       path: '/relatorios'
@@ -391,6 +431,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedPassagemTurnoRoute: typeof AuthenticatedPassagemTurnoRoute
   AuthenticatedProdutosRoute: typeof AuthenticatedProdutosRoute
+  AuthenticatedProgramacaoRoute: typeof AuthenticatedProgramacaoRoute
   AuthenticatedRelatoriosRoute: typeof AuthenticatedRelatoriosRoute
   AuthenticatedReportarProblemaRoute: typeof AuthenticatedReportarProblemaRoute
   AuthenticatedSelecionarRoute: typeof AuthenticatedSelecionarRoute
@@ -409,6 +450,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedPassagemTurnoRoute: AuthenticatedPassagemTurnoRoute,
   AuthenticatedProdutosRoute: AuthenticatedProdutosRoute,
+  AuthenticatedProgramacaoRoute: AuthenticatedProgramacaoRoute,
   AuthenticatedRelatoriosRoute: AuthenticatedRelatoriosRoute,
   AuthenticatedReportarProblemaRoute: AuthenticatedReportarProblemaRoute,
   AuthenticatedSelecionarRoute: AuthenticatedSelecionarRoute,
@@ -425,6 +467,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AlterarSenhaRoute: AlterarSenhaRoute,
   AuthRoute: AuthRoute,
+  RedefinirSenhaRoute: RedefinirSenhaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

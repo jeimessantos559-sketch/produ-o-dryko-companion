@@ -55,7 +55,7 @@ function PassagemTurno() {
           .eq("setor", profile.setor_atual)
           .eq("turno", profile.turno_atual)
           .eq("data_local", data)
-          .order("created_at"),
+          .order("data_hora_producao"),
         supabase
           .from("metas_op")
           .select("*")

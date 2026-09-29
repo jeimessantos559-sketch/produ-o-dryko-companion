@@ -20,7 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { dataOperacional, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
+import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
 export const Route = createFileRoute("/_authenticated/contagem")({ component: Contagem });
@@ -34,7 +34,7 @@ type Registro = {
   total_rolos: number | null;
   metragem: number | null;
   area_m2: number | null;
-  created_at: string;
+  data_hora_producao: string;
 };
 
 type MetaTurno = Database["public"]["Tables"]["metas_turno"]["Row"];
@@ -144,11 +144,11 @@ function Contagem() {
     void Promise.all([
       supabase
         .from("apontamentos")
-        .select("produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, created_at")
+        .select("produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao")
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
-        .order("created_at", { ascending: true }),
+        .order("data_hora_producao", { ascending: true }),
       supabase
         .from("metas_turno")
         .select("*")
@@ -211,7 +211,7 @@ function Contagem() {
   const porHora = useMemo(() => {
     const mapa = new Map<string, HoraInterna>();
     for (const item of registros) {
-      const chave = horaCheiaLocal(item.created_at);
+      const chave = horaCheiaProducao(item.data_hora_producao);
       const atual = mapa.get(chave) ?? horaVazia(chave);
       atual.apontamentos += 1;
       atual.plts += Number(item.quantidade_plts ?? 0);

@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
-import { dataOperacional, type GrupoCorte } from "@/lib/producao";
+import { dataHoraProducaoFormatada, dataOperacional, type GrupoCorte } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/historico")({ component: Historico });
 
@@ -73,7 +73,7 @@ function Historico() {
         .eq("setor", setor)
         .gte("data_local", dataInicio)
         .lte("data_local", dataFim)
-        .order("created_at", { ascending: false })
+        .order("data_hora_producao", { ascending: false })
         .limit(500),
       supabase
         .from("apontamento_auditoria")
@@ -256,7 +256,7 @@ function Historico() {
                         {item.op ? `OP ${item.op} · ` : ""}{item.produto_nome}
                       </CardTitle>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        <span className="font-semibold text-foreground">Apontado por:</span> {nomeApontador} · {item.turno} · {formatar(item.created_at)}
+                        <span className="font-semibold text-foreground">Produção:</span> {dataHoraProducaoFormatada(item.data_hora_producao)} · {item.turno} · {nomeApontador}
                       </p>
                       {item.status === "lancado" && item.lancado_por && (
                         <p className="mt-1 text-xs text-muted-foreground">

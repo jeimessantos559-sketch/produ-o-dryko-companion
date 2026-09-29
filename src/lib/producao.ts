@@ -104,12 +104,37 @@ function partesSaoPaulo(date = new Date()) {
     mes: valor("month"),
     dia: valor("day"),
     hora: Number(valor("hour") || 0),
+    minuto: valor("minute"),
   };
 }
 
 export function dataSaoPaulo(date = new Date()) {
   const { ano, mes, dia } = partesSaoPaulo(date);
   return `${ano}-${mes}-${dia}`;
+}
+
+/** Valor local de Sao Paulo para campos datetime-local, sem conversao de fuso pelo navegador. */
+export function dataHoraProducaoPadrao(date = new Date()) {
+  const { ano, mes, dia, hora, minuto } = partesSaoPaulo(date);
+  return `${ano}-${mes}-${dia}T${String(hora).padStart(2, "0")}:${minuto}`;
+}
+
+/** Hora de um TIMESTAMP local salvo pelo banco (YYYY-MM-DD HH:mm:ss). */
+export function horaProducao(valor: string | null | undefined) {
+  const correspondencia = valor?.match(/[T ](\d{2}):(\d{2})/);
+  return correspondencia ? `${correspondencia[1]}:${correspondencia[2]}` : "—";
+}
+
+export function horaCheiaProducao(valor: string | null | undefined) {
+  const hora = horaProducao(valor);
+  return hora === "—" ? hora : `${hora.slice(0, 2)}:00`;
+}
+
+export function dataHoraProducaoFormatada(valor: string | null | undefined) {
+  const correspondencia = valor?.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  return correspondencia
+    ? `${correspondencia[3]}/${correspondencia[2]}/${correspondencia[1]} ${correspondencia[4]}:${correspondencia[5]}`
+    : "—";
 }
 
 export function dataOperacional(turno: TurnoOperacional | null | undefined, date = new Date()) {

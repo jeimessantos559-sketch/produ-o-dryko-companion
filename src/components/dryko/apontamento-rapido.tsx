@@ -2,6 +2,7 @@ import { Calculator, PackageCheck, Target } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { HoraProducaoField } from "@/components/dryko/hora-producao-field";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import { useAuth } from "@/lib/auth";
-import { areaFitas, metragemCorte, rolosManta } from "@/lib/producao";
+import { areaFitas, dataHoraProducaoPadrao, metragemCorte, rolosManta } from "@/lib/producao";
 
 type Produto = {
   id: string;
@@ -93,6 +94,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   const [tempo, setTempo] = useState(60);
   const [velocidade, setVelocidade] = useState(25);
   const [largura, setLargura] = useState(0.93);
+  const [dataHoraProducao, setDataHoraProducao] = useState(dataHoraProducaoPadrao);
   const [meta, setMeta] = useState<MetaAtiva | null>(null);
   const [apontadoMeta, setApontadoMeta] = useState(0);
   const [metaNova, setMetaNova] = useState(0);
@@ -111,6 +113,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     setTempo(60);
     setVelocidade(25);
     setLargura(0.93);
+    setDataHoraProducao(dataHoraProducaoPadrao());
     setMeta(null);
     setApontadoMeta(0);
     setMetaNova(0);
@@ -284,6 +287,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     user &&
       turno &&
       produto &&
+      dataHoraProducao &&
       ((setor === "corte" &&
         op.trim() &&
         Number.isInteger(quantidadePlts) &&
@@ -339,6 +343,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           usuario_id: user.id,
           setor: "corte",
           turno,
+          data_hora_producao: dataHoraProducao,
           op: op.trim(),
           produto_id: produto.id,
           produto_nome: produto.nome,
@@ -363,6 +368,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           usuario_id: user.id,
           setor: "fitas",
           turno,
+          data_hora_producao: dataHoraProducao,
           op: op.trim(),
           produto_id: produto.id,
           produto_nome: produto.nome,
@@ -378,6 +384,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           usuario_id: user.id,
           setor: "mantas",
           turno,
+          data_hora_producao: dataHoraProducao,
           op: null,
           lote: lote.trim(),
           produto_id: produto.id,
@@ -395,11 +402,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       await onSaved?.();
     } catch (erro) {
       const mensagem = erro instanceof Error ? erro.message : "";
-      toast.error(
-        mensagem.toLowerCase().includes("turno") && mensagem.toLowerCase().includes("fechado")
-          ? "Este turno está fechado. Peça a reabertura ao administrador."
-          : mensagem || "Não foi possível salvar o apontamento. Revise os dados e tente novamente.",
-      );
+      toast.error(mensagemErroApontamento(mensagem));
     } finally {
       setSalvando(false);
     }
@@ -422,6 +425,8 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Este setor ainda não possui formulário rápido configurado.</div>
         ) : (
           <div className="space-y-3">
+            <HoraProducaoField id="rapido-hora-producao" value={dataHoraProducao} onChange={setDataHoraProducao} compact />
+
             {setor !== "mantas" && (
               <div className="space-y-1">
                 <Label htmlFor="rapido-op">OP *</Label>
@@ -550,4 +555,12 @@ function nomeSetorRapido(setor: string) {
   if (setor === "fitas") return "Fitas";
   if (setor === "mantas") return "Mantas";
   return setor;
+}
+
+function mensagemErroApontamento(mensagem: string) {
+  const normalizada = mensagem.toLocaleLowerCase("pt-BR");
+  if (normalizada.includes("turno") && normalizada.includes("fechado")) return "Este turno está fechado. Peça a reabertura ao administrador.";
+  if (normalizada.includes("horario") && normalizada.includes("turno")) return "A hora real informada não pertence ao turno selecionado.";
+  if (normalizada.includes("futuro")) return "A hora real da produção não pode estar no futuro.";
+  return mensagem || "Não foi possível salvar o apontamento. Revise os dados e tente novamente.";
 }

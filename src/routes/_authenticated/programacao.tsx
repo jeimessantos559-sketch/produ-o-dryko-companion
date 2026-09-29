@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { dataOperacional, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
+import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
 export const Route = createFileRoute("/_authenticated/programacao")({ component: Programacao });
@@ -55,7 +55,7 @@ type Registro = {
   quantidade_plts: number | null;
   metragem: number | null;
   area_m2: number | null;
-  created_at: string;
+  data_hora_producao: string;
 };
 
 type MetaTurno = {
@@ -135,7 +135,7 @@ function Programacao() {
         .eq("data_local", dataAtual),
       supabase
         .from("apontamentos")
-        .select("produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, created_at")
+        .select("produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, data_hora_producao")
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual),
@@ -237,7 +237,7 @@ function Programacao() {
   );
 
   const horasExibidas = useMemo(() => {
-    const horasApontadas = registros.map((item) => horaLocal(item.created_at));
+    const horasApontadas = registros.map((item) => horaCheiaProducao(item.data_hora_producao));
     const horasAjustadas = ajustesHora.map((item) => chaveHora(item.hora));
     return [...new Set([...horasBase, ...horasApontadas, ...horasAjustadas])].sort(
       (a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno),
@@ -726,7 +726,7 @@ function Programacao() {
                           : 0
                         : Number(ajuste.meta_hora);
                     const realizadoHora = registros
-                      .filter((item) => horaLocal(item.created_at) === hora)
+                      .filter((item) => horaCheiaProducao(item.data_hora_producao) === hora)
                       .reduce((total, item) => total + valorRealizado(item, setor), 0);
                     const saldoHora = previstoHora - realizadoHora;
                     return (
@@ -928,15 +928,6 @@ function unidadeDoSetor(setor?: string | null) {
   if (setor === "corte") return "PLTs";
   if (setor === "mantas") return "m";
   return "m²";
-}
-
-function horaLocal(valor: string) {
-  const hora = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(valor));
-  return `${hora}:00`;
 }
 
 function horaMinutoLocal(valor: string) {
