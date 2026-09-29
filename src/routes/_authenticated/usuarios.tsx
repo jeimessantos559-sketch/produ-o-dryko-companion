@@ -30,7 +30,7 @@ type Configuracao = {
   papeis: AppRole[];
 };
 
-const PAPEIS_VISIVEIS: AppRole[] = ["facilitador", "administrador"];
+const PAPEIS_VISIVEIS: AppRole[] = ["facilitador", "administrador", "programador_producao"];
 const SENHA_INICIAL = "123456";
 
 function Usuarios() {

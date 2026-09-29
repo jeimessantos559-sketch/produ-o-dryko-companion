@@ -101,7 +101,7 @@ type ProgramacaoItem = {
 type AbaContagem = "hora" | "programacao";
 
 function Contagem() {
-  const { profile, user, canFinalizeGoals } = useAuth();
+  const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
   const dataAtual = turno ? dataOperacional(turno) : "";
@@ -115,6 +115,7 @@ function Contagem() {
   const [ajustesHora, setAjustesHora] = useState<AjusteHora[]>([]);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [programacao, setProgramacao] = useState<ProgramacaoItem[]>([]);
+  const [registrosDia, setRegistrosDia] = useState<Registro[]>([]);
   const [produtos, setProdutos] = useState<ProdutoCatalogo[]>([]);
   const [metaDigitada, setMetaDigitada] = useState("");
   const [horasDigitadas, setHorasDigitadas] = useState("");
@@ -143,6 +144,7 @@ function Contagem() {
     setErro(false);
     setErroMeta(false);
     setProgramacao([]);
+    setRegistrosDia([]);
     setProdutos([]);
     setProdutoId("");
     setReferencia("");
@@ -225,7 +227,7 @@ function Contagem() {
       return;
     }
 
-    const chave = `${setor}:${turno}:${dataAtual}`;
+    const chave = `${setor}:${dataAtual}`;
     if (
       cacheProgramacao.current?.chave === chave &&
       Date.now() - cacheProgramacao.current.at < 30_000
@@ -241,19 +243,27 @@ function Contagem() {
         .from("programacao_producao")
         .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
         .eq("setor", setor)
-        .eq("turno", turno)
         .eq("data_local", dataAtual)
+        .eq("global_dia", true)
         .order("created_at", { ascending: true }),
       obterProdutosAtivos(setor),
+      supabase
+        .from("apontamentos")
+        .select(
+          "produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+        )
+        .eq("setor", setor)
+        .eq("data_local", dataAtual),
     ])
-      .then(([resultadoProgramacao, listaProdutos]) => {
+      .then(([resultadoProgramacao, listaProdutos, resultadoDia]) => {
         if (carga !== carregamentoProgramacaoAtual.current) return;
-        if (resultadoProgramacao.error) {
+        if (resultadoProgramacao.error || resultadoDia.error) {
           setErro(true);
           return;
         }
         setProgramacao((resultadoProgramacao.data ?? []) as ProgramacaoItem[]);
         setProdutos(listaProdutos as ProdutoCatalogo[]);
+        setRegistrosDia((resultadoDia.data ?? []) as Registro[]);
         cacheProgramacao.current = { chave, at: Date.now() };
       })
       .catch(() => {
@@ -371,7 +381,7 @@ function Contagem() {
 
   const resumoProgramacao = useMemo(() => {
     const realizadoPorChave = new Map<string, number>();
-    for (const registro of registros) {
+    for (const registro of registrosDia) {
       const chave = chaveProgramacaoRegistro(registro, setor);
       realizadoPorChave.set(
         chave,
@@ -384,7 +394,7 @@ function Contagem() {
       const realizado = realizadoPorChave.get(chaveProgramacaoItem(item, setor)) ?? 0;
       return { ...item, previsto, realizado, saldo: previsto - realizado };
     });
-  }, [programacao, registros, setor]);
+  }, [programacao, registrosDia, setor]);
 
   async function salvarMeta() {
     if (!canFinalizeGoals || !user || !setor || !turno || salvandoMeta) return;
@@ -488,7 +498,7 @@ function Contagem() {
     setQuantidadePrevista("");
     setTextoGerado("");
     cacheProgramacao.current = {
-      chave: `${setor}:${turno}:${dataAtual}`,
+      chave: `${setor}:${dataAtual}`,
       at: Date.now(),
     };
     toast.success("Produto adicionado à programação.");
@@ -505,9 +515,9 @@ function Contagem() {
     }
     setProgramacao((atuais) => atuais.filter((item) => item.id !== id));
     setTextoGerado("");
-    if (setor && turno) {
+    if (setor) {
       cacheProgramacao.current = {
-        chave: `${setor}:${turno}:${dataAtual}`,
+        chave: `${setor}:${dataAtual}`,
         at: Date.now(),
       };
     }
@@ -746,6 +756,7 @@ function Contagem() {
 
             {programacaoSuportada && (
               <>
+                {canProgramProduction ? (
                 <Card className="rounded-2xl border-border shadow-sm">
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -797,10 +808,15 @@ function Contagem() {
                     </Button>
                   </CardContent>
                 </Card>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Somente administrador ou Programador de Produção pode alterar a programação.
+                  </p>
+                )}
 
                 <Card className="rounded-2xl border-border shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Programação do turno</CardTitle>
+                    <CardTitle className="text-base">Programação do dia <span className="text-xs font-normal text-muted-foreground">· produção acumulada entre turnos</span></CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {carregandoProgramacao ? (
@@ -820,6 +836,7 @@ function Contagem() {
                                 {item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`}
                               </p>
                             </div>
+                            {canProgramProduction && (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -828,11 +845,12 @@ function Contagem() {
                             >
                               <Trash2 className="size-4" />
                             </Button>
+                            )}
                           </div>
                           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                            <Mini label="Previsto" valor={`${fmt(item.previsto)} ${item.unidade}`} />
+                            <Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} />
                             <Mini
-                              label="Realizado"
+                              label="Produzido no dia"
                               valor={`${fmt(item.realizado)} ${item.unidade}`}
                               destaque
                             />

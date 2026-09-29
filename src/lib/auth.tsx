@@ -25,6 +25,7 @@ type AuthValue = {
   isAutorizado: boolean;
   canManageProducts: boolean;
   canFinalizeGoals: boolean;
+  canProgramProduction: boolean;
   mustChangePassword: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -101,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAutorizado: isAdmin || Boolean(profile?.pode_confirmar_protheus),
     canManageProducts: isAdmin || Boolean(profile?.pode_gerenciar_produtos),
     canFinalizeGoals: isAdmin || Boolean(profile?.pode_finalizar_metas),
+    canProgramProduction: isAdmin || roles.includes("programador_producao"),
     mustChangePassword: Boolean(profile?.deve_alterar_senha),
     refresh: () => loadUserData(session?.user.id, true),
     signOut: async () => {
@@ -124,4 +126,5 @@ export const NOMES_PAPEIS: Record<AppRole, string> = {
   facilitador: "Facilitador",
   autorizado_protheus: "Autorizado Protheus",
   administrador: "Administrador",
+  programador_producao: "Programador de Produção",
 };
