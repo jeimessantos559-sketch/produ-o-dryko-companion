@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { areaFitas, dataHoraProducaoPadrao, metragemCorte, rolosManta } from "@/lib/producao";
+import { areaFitas, dataHoraProducaoPadrao, dataOperacional, metragemCorte, rolosManta } from "@/lib/producao";
 import {
   invalidarCacheProdutos,
   obterProdutosAtivos,
@@ -64,6 +64,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   const [apontadoMeta, setApontadoMeta] = useState(0);
   const [metaNova, setMetaNova] = useState(0);
   const [carregandoMeta, setCarregandoMeta] = useState(false);
+  const [programadoDia, setProgramadoDia] = useState<number | null>(null);
 
   const produto = useMemo(
     () => produtos.find((item) => item.id === produtoId) ?? null,
@@ -170,6 +171,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     if (!open || setor !== "corte" || !op.trim() || !produtoId) {
       setMeta(null);
       setApontadoMeta(0);
+      setProgramadoDia(null);
       setCarregandoMeta(false);
       return () => {
         ativo = false;
@@ -179,6 +181,35 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     timer = window.setTimeout(() => {
       setCarregandoMeta(true);
       void (async () => {
+        const dataDia = dataOperacional(turno);
+        const { data: prog } = await supabase
+          .from("programacao_producao")
+          .select("quantidade_prevista")
+          .eq("setor", "corte")
+          .eq("data_local", dataDia)
+          .eq("global_dia", true)
+          .eq("op", op.trim())
+          .eq("produto_id", produtoId)
+          .limit(1)
+          .maybeSingle();
+        if (!ativo) return;
+        if (prog) {
+          const { data: doDia } = await supabase
+            .from("apontamentos")
+            .select("quantidade_plts")
+            .eq("setor", "corte")
+            .eq("data_local", dataDia)
+            .eq("op", op.trim())
+            .eq("produto_id", produtoId);
+          if (!ativo) return;
+          setMeta(null);
+          setProgramadoDia(Number(prog.quantidade_prevista));
+          setApontadoMeta(
+            (doDia ?? []).reduce((total, item) => total + Number(item.quantidade_plts ?? 0), 0),
+          );
+          return;
+        }
+        setProgramadoDia(null);
         const { data, error } = await supabase
           .from("metas_op")
           .select("id, quantidade_meta, unidade")
@@ -221,7 +252,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       ativo = false;
       if (timer) window.clearTimeout(timer);
     };
-  }, [open, op, produtoId, setor]);
+  }, [open, op, produtoId, setor, turno]);
 
   function selecionarProduto(id: string) {
     setProdutoId(id);
@@ -292,16 +323,22 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
   function confirmarMetaCorte() {
     if (setor !== "corte") return true;
-    const limite = meta ? Number(meta.quantidade_meta) : Number(metaNova || 0);
+    const limite =
+      programadoDia != null ? programadoDia : meta ? Number(meta.quantidade_meta) : Number(metaNova || 0);
     if (limite <= 0 || apontadoMeta + quantidadePlts <= limite) return true;
     const excesso = apontadoMeta + quantidadePlts - limite;
+    if (programadoDia != null) {
+      return window.confirm(
+        `Programado no dia: ${limite.toLocaleString("pt-BR")} PLTs. Este apontamento deixará o dia com ${(apontadoMeta + quantidadePlts).toLocaleString("pt-BR")} PLTs, ultrapassando o saldo em ${excesso.toLocaleString("pt-BR")} PLT(s). Deseja continuar?`,
+      );
+    }
     return window.confirm(
       `A meta é ${limite.toLocaleString("pt-BR")} PLTs. Este apontamento deixará a OP com ${(apontadoMeta + quantidadePlts).toLocaleString("pt-BR")} PLTs, ultrapassando a meta em ${excesso.toLocaleString("pt-BR")} PLT(s). Deseja continuar?`,
     );
   }
 
   async function salvarMetaCorte() {
-    if (setor !== "corte" || !user || !produto || meta || metaNova <= 0) return;
+    if (setor !== "corte" || !user || !produto || meta || programadoDia != null || metaNova <= 0) return;
     const { error } = await supabase.from("metas_op").insert({
       setor: "corte",
       op: op.trim(),
@@ -542,10 +579,16 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <div className="flex items-center gap-2">
                     <Target className="size-4 text-primary" />
-                    <p className="text-sm font-semibold">Meta da OP</p>
+                    <p className="text-sm font-semibold">{programadoDia != null ? "Programação do dia" : "Meta da OP"}</p>
                   </div>
                   {carregandoMeta ? (
-                    <p className="mt-1 text-xs text-slate-500">Consultando meta...</p>
+                    <p className="mt-1 text-xs text-slate-500">Consultando programação...</p>
+                  ) : programadoDia != null ? (
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="rounded-lg bg-muted p-2"><p className="text-muted-foreground">Programado no dia</p><p className="text-base font-bold">{programadoDia} PLTs</p></div>
+                      <div className="rounded-lg bg-muted p-2"><p className="text-muted-foreground">Produzido no dia</p><p className="text-base font-bold">{apontadoMeta} PLTs</p></div>
+                      <div className="rounded-lg bg-primary/10 p-2"><p className="text-muted-foreground">Saldo para finalizar</p><p className="text-base font-bold text-primary">{Math.max(0, programadoDia - apontadoMeta)} PLTs</p></div>
+                    </div>
                   ) : meta ? (
                     <div className="mt-1 flex items-center justify-between gap-3 text-sm">
                       <span>
