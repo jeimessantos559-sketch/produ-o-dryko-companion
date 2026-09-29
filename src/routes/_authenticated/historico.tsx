@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
-import { dataSaoPaulo, type GrupoCorte } from "@/lib/producao";
+import { dataOperacional, type GrupoCorte } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/historico")({ component: Historico });
 
@@ -37,8 +37,8 @@ const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas"];
 function Historico() {
   const { profile, isAdmin } = useAuth();
   const [setor, setSetor] = useState<SetorCodigo>(profile?.setor_atual ?? "corte");
-  const [dataInicio, setDataInicio] = useState(dataSaoPaulo());
-  const [dataFim, setDataFim] = useState(dataSaoPaulo());
+  const [dataInicio, setDataInicio] = useState(() => dataOperacional(profile?.turno_atual));
+  const [dataFim, setDataFim] = useState(() => dataOperacional(profile?.turno_atual));
   const [turno, setTurno] = useState("");
   const [status, setStatus] = useState("");
   const [op, setOp] = useState("");
@@ -56,6 +56,13 @@ function Historico() {
   useEffect(() => {
     if (profile?.setor_atual && !isAdmin) setSetor(profile.setor_atual);
   }, [isAdmin, profile?.setor_atual]);
+
+  useEffect(() => {
+    if (!profile?.turno_atual) return;
+    const dataAtual = dataOperacional(profile.turno_atual);
+    setDataInicio(dataAtual);
+    setDataFim(dataAtual);
+  }, [profile?.turno_atual]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);

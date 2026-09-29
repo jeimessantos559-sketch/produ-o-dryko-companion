@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
-import { dataSaoPaulo } from "@/lib/producao";
+import { dataOperacional } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/controle-apontamentos")({ component: ControleApontamentos });
 
@@ -45,7 +45,7 @@ type GrupoLancamento = {
 function ControleApontamentos() {
   const { profile, isAutorizado, isAdmin } = useAuth();
   const [setor, setSetor] = useState<SetorCodigo>(profile?.setor_atual ?? "corte");
-  const [data, setData] = useState(dataSaoPaulo());
+  const [data, setData] = useState(() => dataOperacional(profile?.turno_atual));
   const [turno, setTurno] = useState("");
   const [status, setStatus] = useState("pendente");
   const [op, setOp] = useState("");
@@ -60,6 +60,10 @@ function ControleApontamentos() {
   useEffect(() => {
     if (profile?.setor_atual && !isAdmin) setSetor(profile.setor_atual);
   }, [isAdmin, profile?.setor_atual]);
+
+  useEffect(() => {
+    if (profile?.turno_atual) setData(dataOperacional(profile.turno_atual));
+  }, [profile?.turno_atual]);
 
   const carregar = useCallback(async () => {
     if (!isAutorizado) {

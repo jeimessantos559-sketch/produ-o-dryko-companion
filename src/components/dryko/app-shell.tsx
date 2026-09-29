@@ -33,7 +33,7 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { NOMES_PAPEIS, useAuth } from "@/lib/auth";
-import { dataSaoPaulo } from "@/lib/producao";
+import { dataOperacional } from "@/lib/producao";
 
 const ITENS = [
   { to: "/contagem", label: "Programação", icon: CalendarDays },
@@ -192,7 +192,7 @@ export function AppShell({
       return;
     }
     setCarregandoNotificacoes(true);
-    const hoje = dataSaoPaulo();
+    const dataAtual = dataOperacional(profile.turno_atual);
     const painelTurno = supabase.rpc as unknown as (
       nome: string,
       parametros: { p_setor: string; p_turno: string; p_data: string },
@@ -203,7 +203,7 @@ export function AppShell({
     const { data, error } = await painelTurno("painel_turno", {
       p_setor: profile.setor_atual,
       p_turno: profile.turno_atual,
-      p_data: hoje,
+      p_data: dataAtual,
     });
     setCarregandoNotificacoes(false);
     if (error) {
@@ -213,7 +213,7 @@ export function AppShell({
     }
     const todas = (data?.pendencias ?? []) as PendenciaRapida[];
     setPendenciasInternas(
-      todas.filter((item) => item.data_local !== hoje || item.turno !== profile.turno_atual),
+      todas.filter((item) => item.data_local !== dataAtual || item.turno !== profile.turno_atual),
     );
   }
 

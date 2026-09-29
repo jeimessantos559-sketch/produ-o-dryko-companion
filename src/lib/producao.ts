@@ -30,15 +30,17 @@ export type TurnoOperacional = "T1" | "T2" | "T3";
 
 export const HORARIOS_TURNO: Record<TurnoOperacional, string> = {
   T1: "06:00–15:38",
-  T2: "15:38–01:00",
+  T2: "15:38–02:00",
   T3: "01:00–06:00",
 };
 
 const HORAS_PRODUTIVAS_PADRAO: Record<TurnoOperacional, number[]> = {
   T1: [6, 7, 8, 9, 10, 11, 12, 13, 14],
-  T2: [16, 17, 18, 19, 20, 21, 22, 23, 0],
+  T2: [16, 17, 18, 19, 20, 21, 22, 23, 0, 1],
   T3: [1, 2, 3, 4, 5],
 };
+
+export const HORA_INICIO_DATA_OPERACIONAL = 6;
 
 /** Horas cheias usadas na distribuicao automatica da meta do turno. */
 export function horasProdutivasTurno(turno: TurnoOperacional | null | undefined) {
@@ -93,7 +95,7 @@ function partesSaoPaulo(date = new Date()) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).formatToParts(date);
   const valor = (tipo: Intl.DateTimeFormatPartTypes) =>
     partes.find((parte) => parte.type === tipo)?.value ?? "";
@@ -113,7 +115,7 @@ export function dataSaoPaulo(date = new Date()) {
 export function dataOperacional(turno: TurnoOperacional | null | undefined, date = new Date()) {
   const { ano, mes, dia, hora } = partesSaoPaulo(date);
   const hoje = `${ano}-${mes}-${dia}`;
-  if ((turno === "T2" || turno === "T3") && hora < 6) {
+  if ((turno === "T2" || turno === "T3") && hora < HORA_INICIO_DATA_OPERACIONAL) {
     const meioDiaUtc = new Date(`${hoje}T12:00:00Z`);
     meioDiaUtc.setUTCDate(meioDiaUtc.getUTCDate() - 1);
     return meioDiaUtc.toISOString().slice(0, 10);
