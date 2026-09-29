@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { preencherLoteProgramacaoMantas } from "@/lib/programacao-lote";
 import { areaFitas, dataHoraProducaoPadrao, dataOperacional, metragemCorte, rolosManta } from "@/lib/producao";
 import {
   invalidarCacheProdutos,
@@ -405,7 +406,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
         if (error) throw error;
         toast.success("Apontamento de Fitas salvo.");
       } else if (setor === "mantas") {
-        const { error } = await supabase.from("apontamentos").insert({
+        const { data: salvoManta, error } = await supabase.from("apontamentos").insert({
           usuario_id: user.id,
           setor: "mantas",
           turno,
@@ -418,9 +419,14 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           rolos_por_plt: produto.rolos_por_plt,
           total_rolos: totalRolosManta,
           metragem: metragemManta,
-        });
+        }).select("data_local").single();
         if (error) throw error;
         toast.success("Apontamento de Mantas salvo.");
+        void preencherLoteProgramacaoMantas({
+          dataLocal: (salvoManta as { data_local?: string } | null)?.data_local ?? dataOperacional(turno),
+          produtoId: produto.id,
+          lote,
+        });
       }
 
       onOpenChange(false);
