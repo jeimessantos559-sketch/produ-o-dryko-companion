@@ -42,7 +42,7 @@ export const opcoesRegistroBiometria = createServerFn({ method: "POST" })
 
     await db.from("webauthn_challenges").delete().eq("user_id", context.userId).eq("tipo", "registro");
     await db.from("webauthn_challenges").insert({ user_id: context.userId, challenge: opcoes.challenge, tipo: "registro" });
-    return opcoes as unknown as Record<string, unknown>;
+    return { json: JSON.stringify(opcoes) };
   });
 
 export const confirmarRegistroBiometria = createServerFn({ method: "POST" })
@@ -106,7 +106,7 @@ export const opcoesLoginBiometria = createServerFn({ method: "POST" }).handler(a
   const { data: desafio, error } = await db.from("webauthn_challenges")
     .insert({ challenge: opcoes.challenge, tipo: "login" }).select("id").single();
   if (error) throw new Error("Biometria indisponível no momento.");
-  return { desafioId: desafio.id as string, opcoes: opcoes as unknown as Record<string, unknown> };
+  return { desafioId: desafio.id as string, opcoesJson: JSON.stringify(opcoes) };
 });
 
 export const entrarComBiometria = createServerFn({ method: "POST" })

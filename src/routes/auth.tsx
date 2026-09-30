@@ -58,8 +58,8 @@ function AuthPage() {
     if (enviando) return;
     setEnviando(true);
     try {
-      const { desafioId, opcoes } = await opcoesLoginBiometria();
-      const resposta = await startAuthentication({ optionsJSON: opcoes as never });
+      const { desafioId, opcoesJson } = await opcoesLoginBiometria();
+      const resposta = await startAuthentication({ optionsJSON: JSON.parse(opcoesJson) });
       const resultado = await entrarComBiometria({ data: { desafioId, resposta } });
       const { error } = await supabase.auth.setSession({ access_token: resultado.accessToken, refresh_token: resultado.refreshToken });
       if (error) throw error;

@@ -117,8 +117,8 @@ function Configuracoes() {
   async function ativarBiometria() {
     setBioOcupado(true);
     try {
-      const opcoes = await opcoesRegistroBiometria();
-      const resposta = await startRegistration({ optionsJSON: opcoes as never });
+      const { json } = await opcoesRegistroBiometria();
+      const resposta = await startRegistration({ optionsJSON: JSON.parse(json) });
       const r = await confirmarRegistroBiometria({ data: { resposta, aparelho: navigator.userAgent.slice(0, 200) } });
       window.localStorage.setItem(CHAVE_CREDENCIAL, r.credentialId);
       setCredLocal(r.credentialId);
