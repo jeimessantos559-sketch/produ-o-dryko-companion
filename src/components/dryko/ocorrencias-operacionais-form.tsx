@@ -60,7 +60,7 @@ export function OcorrenciasOperacionaisForm({
     setSalvando(true);
     const { data, error } = await (supabase as any)
       .from("ocorrencias_turno")
-      .insert({ setor, turno, data_local: dataLocal, equipamento: null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId })
+      .insert({ setor, turno, data_local: dataLocal, equipamento: null, tipo_status: null, mensagem: descricao.trim(), criado_por: userId })
       .select(CAMPOS)
       .single();
     setSalvando(false);
