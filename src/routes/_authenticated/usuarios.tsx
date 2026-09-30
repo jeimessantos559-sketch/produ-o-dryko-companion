@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Clipboard, KeyRound, Pencil, ShieldCheck, Target, Trash2, UserPlus } from "lucide-react";
+import { Clipboard, KeyRound, Pencil, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,6 +32,16 @@ type Configuracao = {
 
 const PAPEIS_VISIVEIS: AppRole[] = ["facilitador", "administrador", "programador_producao"];
 const SENHA_INICIAL = "123456";
+
+type ChaveOpcao = "facilitador" | "administrador" | "programador_producao" | "protheus" | "metas" | "produtos";
+const OPCOES: Array<{ chave: ChaveOpcao; label: string }> = [
+  { chave: "facilitador", label: "Facilitador" },
+  { chave: "administrador", label: "Administrador" },
+  { chave: "programador_producao", label: "Programador de Produção" },
+  { chave: "protheus", label: "Lançar no Protheus" },
+  { chave: "metas", label: "Finalizar metas" },
+  { chave: "produtos", label: "Gerenciar produtos" },
+];
 
 function Usuarios() {
   const { isAdmin, loading, refresh, user } = useAuth();
@@ -99,6 +109,42 @@ function Usuarios() {
     });
   }
 
+  function estaMarcada(c: Configuracao, chave: ChaveOpcao) {
+    if (chave === "protheus") return c.podeConfirmarProtheus;
+    if (chave === "metas") return c.podeFinalizarMetas;
+    if (chave === "produtos") return c.podeGerenciarProdutos;
+    return c.papeis.includes(chave);
+  }
+
+  function contarSelecionadas(c: Configuracao) {
+    return OPCOES.filter((o) => estaMarcada(c, o.chave)).length;
+  }
+
+  function alternarOpcao(id: string, chave: ChaveOpcao) {
+    const c = configuracoes[id];
+    if (!c) return;
+    if (chave === "protheus") return alterar(id, { podeConfirmarProtheus: !c.podeConfirmarProtheus });
+    if (chave === "metas") return alterar(id, { podeFinalizarMetas: !c.podeFinalizarMetas });
+    if (chave === "produtos") return alterar(id, { podeGerenciarProdutos: !c.podeGerenciarProdutos });
+    if (chave === "administrador" && id === user?.id && c.papeis.includes("administrador")) {
+      toast.error("Você não pode remover seu próprio acesso de administrador.");
+      return;
+    }
+    alternarPapel(id, chave);
+  }
+
+  function marcarTodas(id: string, valor: boolean, manterAdmin = false) {
+    const c = configuracoes[id];
+    if (!c) return;
+    const extras = c.papeis.filter((p) => !PAPEIS_VISIVEIS.includes(p));
+    alterar(id, {
+      podeConfirmarProtheus: valor,
+      podeFinalizarMetas: valor,
+      podeGerenciarProdutos: valor,
+      papeis: valor ? [...extras, ...PAPEIS_VISIVEIS] : manterAdmin ? [...extras, "administrador"] : extras,
+    });
+  }
+
   async function criar() {
     if (!nome.trim() || criando) return;
     setCriando(true);
@@ -130,33 +176,17 @@ function Usuarios() {
     setSalvandoId(perfil.id);
 
     const papeis = config.papeis.filter((papel) => papel !== "autorizado_protheus");
-    const { error } = await supabase.rpc("gerenciar_usuario", {
+    const { error } = await supabase.rpc("salvar_permissoes_usuario", {
       p_usuario_id: perfil.id,
       p_ativo: config.ativo,
-      p_pode_gerenciar_produtos: config.podeGerenciarProdutos,
-      p_pode_confirmar_protheus: config.podeConfirmarProtheus,
       p_papeis: papeis,
+      p_pode_confirmar_protheus: config.podeConfirmarProtheus,
+      p_pode_finalizar_metas: config.podeFinalizarMetas,
+      p_pode_gerenciar_produtos: config.podeGerenciarProdutos,
     });
-
-    if (!error) {
-      const metaRpc = supabase.rpc as unknown as (
-        nome: string,
-        args: { p_usuario_id: string; p_pode_finalizar_metas: boolean },
-      ) => PromiseLike<{ error: { message?: string } | null }>;
-      const resultadoMeta = await metaRpc("gerenciar_permissao_meta", {
-        p_usuario_id: perfil.id,
-        p_pode_finalizar_metas: config.podeFinalizarMetas,
-      });
-      if (resultadoMeta.error) {
-        setSalvandoId(null);
-        toast.error(resultadoMeta.error.message || "Não foi possível atualizar a permissão de metas.");
-        return;
-      }
-    }
-
     setSalvandoId(null);
     if (error) {
-      toast.error(error.message || "Não foi possível atualizar o usuário.");
+      toast.error(error.message || "Não foi possível atualizar as permissões.");
       return;
     }
     toast.success("Permissões atualizadas.");
@@ -269,25 +299,29 @@ function Usuarios() {
                         <label className="flex shrink-0 items-center gap-1.5 text-xs font-medium"><input type="checkbox" checked={config.ativo} onChange={(e) => alterar(perfil.id, { ativo: e.target.checked })} /> Ativo</label>
                       </div>
 
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${config.podeConfirmarProtheus ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"}`}>
-                          <div className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" /><div><p className="text-sm font-bold">Lançar no Protheus</p><p className="text-[11px] text-slate-500">Confirma apontamentos.</p></div></div>
-                          <input type="checkbox" className="size-5" checked={config.podeConfirmarProtheus} onChange={(e) => alterar(perfil.id, { podeConfirmarProtheus: e.target.checked })} />
-                        </label>
-
-                        <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${config.podeFinalizarMetas ? "border-primary/30 bg-primary/5" : "border-slate-200 bg-slate-50"}`}>
-                          <div className="flex items-center gap-2"><Target className="size-5 text-primary" /><div><p className="text-sm font-bold">Finalizar metas</p><p className="text-[11px] text-slate-500">Somente quem o administrador liberar.</p></div></div>
-                          <input type="checkbox" className="size-5" checked={config.podeFinalizarMetas} onChange={(e) => alterar(perfil.id, { podeFinalizarMetas: e.target.checked })} />
-                        </label>
-                      </div>
-
-                      <div className="grid gap-2 text-xs sm:grid-cols-2">
-                        <div><p className="mb-1 font-semibold">Perfil</p><div className="flex flex-wrap gap-3">{PAPEIS_VISIVEIS.map((papel) => <label key={papel} className="flex items-center gap-1.5"><input type="checkbox" checked={config.papeis.includes(papel)} onChange={() => alternarPapel(perfil.id, papel)} /> {NOMES_PAPEIS[papel]}</label>)}</div></div>
-                        <div><p className="mb-1 font-semibold">Outras permissões</p><label className="flex items-center gap-1.5"><input type="checkbox" checked={config.podeGerenciarProdutos} onChange={(e) => alterar(perfil.id, { podeGerenciarProdutos: e.target.checked })} /> Gerenciar produtos</label></div>
+                      <div className="rounded-xl border border-border bg-muted/40 p-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <p className="flex items-center gap-2 text-sm font-bold"><ShieldCheck className="size-4 text-primary" /> Permissões <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{contarSelecionadas(config)} de {OPCOES.length} selecionadas</span></p>
+                          <div className="flex gap-1">
+                            <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => marcarTodas(perfil.id, true)}>Marcar todas</Button>
+                            <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => marcarTodas(perfil.id, false, perfil.id === user?.id)}>Limpar</Button>
+                          </div>
+                        </div>
+                        <div className="grid gap-1.5 sm:grid-cols-2">
+                          {OPCOES.map((opcao) => {
+                            const marcado = estaMarcada(config, opcao.chave);
+                            return (
+                              <label key={opcao.chave} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 text-sm font-medium ${marcado ? "border-primary/40 bg-primary/5" : "border-border bg-background"}`}>
+                                <input type="checkbox" className="size-5 accent-[var(--primary)]" checked={marcado} onChange={() => alternarOpcao(perfil.id, opcao.chave)} />
+                                {opcao.label}
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-1.5">
-                        <Button size="sm" disabled={salvandoId !== null} onClick={() => salvar(perfil)}>{salvandoId === perfil.id ? "Salvando..." : "Salvar"}</Button>
+                        <Button size="sm" disabled={salvandoId !== null} onClick={() => salvar(perfil)}>{salvandoId === perfil.id ? "Salvando..." : "Salvar permissões"}</Button>
                         <Button size="sm" variant="outline" onClick={() => abrirEdicao(perfil)}><Pencil className="size-4" /> Editar</Button>
                         <Button size="sm" variant="outline" onClick={() => void redefinirSenha(perfil)}><KeyRound className="size-4" /> {SENHA_INICIAL}</Button>
                         {perfil.login && perfil.deve_alterar_senha && <Button size="sm" variant="outline" onClick={() => copiarCredencial(perfil.login!)}><Clipboard className="size-4" /> Acesso</Button>}
