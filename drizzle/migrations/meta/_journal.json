@@ -29,6 +29,13 @@
       "when": 1790532000000,
       "tag": "0003_paridade_floot",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790778002138,
+      "tag": "0004_configuracoes_permissoes_biometria",
+      "breakpoints": true
     }
   ]
 }

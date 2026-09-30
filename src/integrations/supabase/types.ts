@@ -517,6 +517,7 @@ export type Database = {
       profiles: {
         Row: {
           ativo: boolean
+          avatar_url: string | null
           created_at: string
           deve_alterar_senha: boolean
           email_recuperacao: string | null
@@ -535,6 +536,7 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean
+          avatar_url?: string | null
           created_at?: string
           deve_alterar_senha?: boolean
           email_recuperacao?: string | null
@@ -553,6 +555,7 @@ export type Database = {
         }
         Update: {
           ativo?: boolean
+          avatar_url?: string | null
           created_at?: string
           deve_alterar_senha?: boolean
           email_recuperacao?: string | null
@@ -791,6 +794,69 @@ export type Database = {
         }
         Relationships: []
       }
+      webauthn_challenges: {
+        Row: {
+          challenge: string
+          created_at: string
+          expires_at: string
+          id: string
+          tipo: string
+          user_id: string | null
+        }
+        Insert: {
+          challenge: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          tipo: string
+          user_id?: string | null
+        }
+        Update: {
+          challenge?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          tipo?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      webauthn_credenciais: {
+        Row: {
+          aparelho: string | null
+          counter: number
+          created_at: string
+          credential_id: string
+          id: string
+          last_used_at: string | null
+          public_key: string
+          transports: string[] | null
+          user_id: string
+        }
+        Insert: {
+          aparelho?: string | null
+          counter?: number
+          created_at?: string
+          credential_id: string
+          id?: string
+          last_used_at?: string | null
+          public_key: string
+          transports?: string[] | null
+          user_id: string
+        }
+        Update: {
+          aparelho?: string | null
+          counter?: number
+          created_at?: string
+          credential_id?: string
+          id?: string
+          last_used_at?: string | null
+          public_key?: string
+          transports?: string[] | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -942,6 +1008,17 @@ export type Database = {
       pode_gerenciar_produtos: { Args: { _user_id: string }; Returns: boolean }
       reabrir_turno: {
         Args: { p_fechamento_id: string; p_justificativa: string }
+        Returns: undefined
+      }
+      salvar_permissoes_usuario: {
+        Args: {
+          p_ativo: boolean
+          p_papeis: Database["public"]["Enums"]["app_role"][]
+          p_pode_confirmar_protheus: boolean
+          p_pode_finalizar_metas: boolean
+          p_pode_gerenciar_produtos: boolean
+          p_usuario_id: string
+        }
         Returns: undefined
       }
     }
