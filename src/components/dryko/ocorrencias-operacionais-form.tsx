@@ -9,6 +9,7 @@ import {
   GRUPOS_OCORRENCIAS,
   SITUACOES_OCORRENCIA,
   rotuloSituacao,
+  usaOcorrenciasEstruturadas,
   type OcorrenciaOperacional,
   type TipoStatusOcorrencia,
 } from "@/lib/ocorrencias-operacionais";
@@ -48,10 +49,32 @@ export function OcorrenciasOperacionaisForm({
   const [descricao, setDescricao] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const precisaDescricao = situacao === "ocorrencia";
-  const valido = !!equipamento && !!situacao && (!precisaDescricao || descricao.trim().length > 0);
+  const estruturado = usaOcorrenciasEstruturadas(setor);
+  const precisaDescricao = !estruturado || situacao === "ocorrencia";
+  const valido = estruturado
+    ? !!equipamento && !!situacao && (!precisaDescricao || descricao.trim().length > 0)
+    : descricao.trim().length > 0;
+
+  async function salvarLivre() {
+    if (!userId || !valido || salvando) return;
+    setSalvando(true);
+    const { data, error } = await (supabase as any)
+      .from("ocorrencias_turno")
+      .insert({ setor, turno, data_local: dataLocal, equipamento: null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId })
+      .select(CAMPOS)
+      .single();
+    setSalvando(false);
+    if (error || !data) {
+      toast.error("Não foi possível salvar a ocorrência. Tente novamente.");
+      return;
+    }
+    onChange([...ocorrencias, data as OcorrenciaOperacional]);
+    setDescricao("");
+    toast.success("Ocorrência registrada.");
+  }
 
   async function salvar() {
+    if (!estruturado) return salvarLivre();
     if (!userId || !valido || salvando || !situacao) return;
     const mensagem = precisaDescricao ? descricao.trim() : rotuloSituacao(situacao);
     setSalvando(true);
@@ -104,6 +127,7 @@ export function OcorrenciasOperacionaisForm({
 
   return (
     <div className="space-y-3">
+      {estruturado && (
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="oc-equip">Equipamento</Label>
@@ -137,9 +161,10 @@ export function OcorrenciasOperacionaisForm({
           </select>
         </div>
       </div>
+      )}
       {precisaDescricao && (
         <div className="space-y-1">
-          <Label htmlFor="oc-desc">Descrição do problema</Label>
+          <Label htmlFor="oc-desc">{estruturado ? "Descrição do problema" : "Ocorrência"}</Label>
           <textarea
             id="oc-desc"
             value={descricao}

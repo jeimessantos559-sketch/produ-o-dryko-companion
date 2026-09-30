@@ -15,7 +15,7 @@ import { useAuth } from "@/lib/auth";
 import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
-import { consolidarOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
+import { consolidarOcorrencias, linhasOcorrenciasLivres, usaOcorrenciasEstruturadas, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
@@ -348,7 +348,7 @@ function PassagemTurno() {
               </Card>
             )}
 
-            <OcorrenciasRevisao lista={ocorrencias} />
+            <OcorrenciasRevisao lista={ocorrencias} setor={profile?.setor_atual} />
 
             {!fechado ? (
               <Button
@@ -415,8 +415,9 @@ function PassagemTurno() {
   );
 }
 
-function OcorrenciasRevisao({ lista }: { lista: OcorrenciaOperacional[] }) {
-  const { grupos, outras } = consolidarOcorrencias(lista);
+function OcorrenciasRevisao({ lista, setor }: { lista: OcorrenciaOperacional[]; setor?: string | null }) {
+  const estruturado = usaOcorrenciasEstruturadas(setor);
+  const { grupos, outras } = estruturado ? consolidarOcorrencias(lista) : { grupos: [], outras: linhasOcorrenciasLivres(lista) };
   return (
     <Card>
       <CardHeader>
@@ -438,9 +439,12 @@ function OcorrenciasRevisao({ lista }: { lista: OcorrenciaOperacional[] }) {
             </div>
           </div>
         ))}
+        {!estruturado && outras.length === 0 && (
+          <p className="text-sm text-muted-foreground">Nenhuma ocorrência registrada.</p>
+        )}
         {outras.length > 0 && (
           <div>
-            <p className="mb-1 text-xs font-bold uppercase text-primary">Outras ocorrências</p>
+            <p className="mb-1 text-xs font-bold uppercase text-primary">{estruturado ? "Outras ocorrências" : "Ocorrências registradas"}</p>
             {outras.map((o, i) => (
               <p key={i} className="rounded-md border p-2 text-sm">{o}</p>
             ))}
