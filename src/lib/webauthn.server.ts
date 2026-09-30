@@ -3,6 +3,7 @@
 // na inicialização. Chaves públicas são guardadas em COSE (base64url), mesmo formato anterior.
 
 const enc = new TextEncoder();
+const at = (a: Uint8Array, i: number): number => at(a, i) ?? 0;
 
 export function b64urlEncode(bytes: Uint8Array): string {
   let bin = "";
@@ -29,21 +30,21 @@ async function sha256(dados: Uint8Array): Promise<Uint8Array> {
 function iguais(a: Uint8Array, b: Uint8Array) {
   if (a.length !== b.length) return false;
   let d = 0;
-  for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+  for (let i = 0; i < a.length; i++) d |= at(a, i) ^ at(b, i);
   return d === 0;
 }
 
 // ---------- CBOR mínimo ----------
 function lerCbor(buf: Uint8Array, pos = 0): [unknown, number] {
-  const ini = buf[pos];
+  const ini = at(buf, pos);
   if (ini === undefined) throw new Error("CBOR inválido");
   const tipo = ini >> 5;
   const info = ini & 31;
   pos++;
   let valor: number;
   if (info < 24) valor = info;
-  else if (info === 24) { valor = buf[pos]; pos += 1; }
-  else if (info === 25) { valor = (buf[pos] << 8) | buf[pos + 1]; pos += 2; }
+  else if (info === 24) { valor = at(buf, pos); pos += 1; }
+  else if (info === 25) { valor = (at(buf, pos) << 8) | at(buf, pos + 1); pos += 2; }
   else if (info === 26) { valor = new DataView(buf.buffer, buf.byteOffset + pos, 4).getUint32(0); pos += 4; }
   else if (info === 27) { valor = Number(new DataView(buf.buffer, buf.byteOffset + pos, 8).getBigUint64(0)); pos += 8; }
   else throw new Error("CBOR não suportado");
@@ -87,12 +88,12 @@ type DadosAutenticador = {
 
 function lerAuthData(ad: Uint8Array): DadosAutenticador {
   if (ad.length < 37) throw new Error("authenticatorData inválido");
-  const flags = ad[32];
+  const flags = at(ad, 32);
   const contador = new DataView(ad.buffer, ad.byteOffset + 33, 4).getUint32(0);
   const r: DadosAutenticador = { rpIdHash: ad.slice(0, 32), up: !!(flags & 0x01), uv: !!(flags & 0x04), contador };
   if (flags & 0x40) {
     let p = 37 + 16;
-    const tam = (ad[p] << 8) | ad[p + 1];
+    const tam = (at(ad, p) << 8) | at(ad, p + 1);
     p += 2;
     r.credentialId = ad.slice(p, p + tam);
     p += tam;
@@ -125,10 +126,10 @@ async function importarChave(cose: Uint8Array): Promise<{ chave: CryptoKey; alg:
 // Assinatura ECDSA vem em DER; WebCrypto espera r||s (64 bytes).
 function derParaRaw(der: Uint8Array): Uint8Array {
   let p = 2;
-  if (der[1] & 0x80) p = 2 + (der[1] & 0x7f);
+  if (at(der, 1) & 0x80) p = 2 + (at(der, 1) & 0x7f);
   const ler = () => {
-    if (der[p] !== 0x02) throw new Error("Assinatura inválida");
-    const tam = der[p + 1];
+    if (at(der, p) !== 0x02) throw new Error("Assinatura inválida");
+    const tam = at(der, p + 1);
     let v = der.slice(p + 2, p + 2 + tam);
     p += 2 + tam;
     while (v.length > 32 && v[0] === 0) v = v.slice(1);
