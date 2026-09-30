@@ -19,7 +19,6 @@ import { lazy, Suspense, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { DrykoLogo } from "@/components/dryko/logo";
-import { ThemeToggle } from "@/components/dryko/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -340,7 +339,6 @@ export function AppShell({
                 )}
               </Button>
 
-              <ThemeToggle />
 
               <Button
                 type="button"
