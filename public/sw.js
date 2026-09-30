@@ -1,9 +1,10 @@
-const CACHE = "dryko-pwa-v3";
+const CACHE = "dryko-pwa-v4";
 const ASSETS = [
-  "/manifest.webmanifest",
-  "/ap-icon-192.svg",
-  "/ap-icon-512.svg",
-  "/dryko-logo.png",
+  "/manifest.webmanifest?v=4",
+  "/ap-pwa-192-v4.png",
+  "/ap-pwa-512-v4.png",
+  "/ap-pwa-maskable-512-v4.png",
+  "/ap-touch-180-v4.png",
   "/favicon.ico",
 ];
 
