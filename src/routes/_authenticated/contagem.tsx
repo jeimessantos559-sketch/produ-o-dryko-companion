@@ -4,6 +4,7 @@ import {
   ClipboardCopy,
   MessageSquare,
   PackageCheck,
+  Pencil,
   Save,
   Trash2,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
 import {
   dataOperacional,
   horaCheiaProducao,
@@ -40,6 +42,7 @@ type Registro = {
   metragem: number | null;
   area_m2: number | null;
   data_hora_producao: string;
+  id: string;
 };
 
 type MetaTurno = Database["public"]["Tables"]["metas_turno"]["Row"];
@@ -101,12 +104,14 @@ type ProgramacaoItem = {
 type AbaContagem = "hora" | "programacao";
 
 function Contagem() {
-  const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
+  const { profile, user, canFinalizeGoals, canProgramProduction, isAdmin } = useAuth();
+  const [recarga, setRecarga] = useState(0);
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
   const dataAtual = turno ? dataOperacional(turno) : "";
   const horasDisponiveis = useMemo(() => horasProdutivasTurno(turno), [turno]);
-  const unidade = unidadeDoSetor(setor);
+  const unidade = unidadeMetaTurno(setor);
+  const unidadeProg = unidadeProgramacao(setor);
   const programacaoSuportada = setor === "corte" || setor === "fitas" || setor === "mantas";
 
   const [abaAtiva, setAbaAtiva] = useState<AbaContagem>("hora");
@@ -165,7 +170,7 @@ function Contagem() {
       supabase
         .from("apontamentos")
         .select(
-          "produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
         )
         .eq("setor", setor)
         .eq("turno", turno)
@@ -214,7 +219,7 @@ function Contagem() {
         setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
       }
     });
-  }, [dataAtual, setor, turno]);
+  }, [dataAtual, setor, turno, recarga]);
 
   useEffect(() => {
     if (
@@ -250,7 +255,7 @@ function Contagem() {
       supabase
         .from("apontamentos")
         .select(
-          "produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
         )
         .eq("setor", setor)
         .eq("data_local", dataAtual),
@@ -341,7 +346,7 @@ function Contagem() {
             ? metaPorHora
             : 0
           : Number(ajuste.meta_hora);
-      const realizadoHora = valorDaHora(item, setor);
+      const realizadoHora = valorMetaHora(item, setor);
       metaAcumulada += alvoHora;
       realizadoAcumulado += realizadoHora;
 
@@ -367,7 +372,7 @@ function Contagem() {
   }, [ajustesHora, metaPorHora, metaTurno, horasDisponiveis, ocorrencias, porHora, setor, turno]);
 
   const realizadoTurno = useMemo(
-    () => porHora.reduce((total, item) => total + valorDaHora(item, setor), 0),
+    () => porHora.reduce((total, item) => total + valorMetaHora(item, setor), 0),
     [porHora, setor],
   );
   const atingimento = metaTotal > 0 ? (realizadoTurno / metaTotal) * 100 : 0;
@@ -380,18 +385,11 @@ function Contagem() {
     metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
 
   const resumoProgramacao = useMemo(() => {
-    const realizadoPorChave = new Map<string, number>();
-    for (const registro of registrosDia) {
-      const chave = chaveProgramacaoRegistro(registro, setor);
-      realizadoPorChave.set(
-        chave,
-        (realizadoPorChave.get(chave) ?? 0) + valorRealizadoRegistro(registro, setor),
-      );
-    }
-
     return programacao.map((item) => {
       const previsto = Number(item.quantidade_prevista ?? 0);
-      const realizado = realizadoPorChave.get(chaveProgramacaoItem(item, setor)) ?? 0;
+      const realizado = registrosDia
+        .filter((registro) => correspondeProgramacaoItem(registro, item, setor))
+        .reduce((total, registro) => total + valorRealizadoRegistro(registro, setor), 0);
       return { ...item, previsto, realizado, saldo: previsto - realizado };
     });
   }, [programacao, registrosDia, setor]);
@@ -442,11 +440,8 @@ function Contagem() {
   async function salvarProgramacao() {
     if (!user || !setor || !turno || !produtoSelecionado || salvandoProgramacao) return;
     const quantidade = numeroDoCampo(quantidadePrevista);
-    const ref = referencia.trim();
-    if (!ref || !Number.isFinite(quantidade) || quantidade <= 0) {
-      toast.error(
-        `Informe ${setor === "mantas" ? "o lote" : "a OP"}, produto e quantidade prevista.`,
-      );
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      toast.error("Informe produto e quantidade prevista.");
       return;
     }
 
@@ -457,30 +452,28 @@ function Contagem() {
       data_local: dataAtual,
       produto_id: produtoSelecionado.id,
       produto_nome: produtoSelecionado.nome,
-      op: setor === "mantas" ? null : ref,
-      lote: setor === "mantas" ? ref : null,
       quantidade_prevista: quantidade,
-      unidade,
+      unidade: unidadeProg,
       global_dia: true,
       updated_at: new Date().toISOString(),
     };
 
-    let consulta = (supabase as any)
+    const consulta = (supabase as any)
       .from("programacao_producao")
       .update(valores)
       .eq("setor", setor)
       .eq("data_local", dataAtual)
       .eq("global_dia", true)
       .eq("produto_id", produtoSelecionado.id);
-    consulta = setor === "mantas" ? consulta.eq("lote", ref) : consulta.eq("op", ref);
     const existente = await consulta
       .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+      .limit(1)
       .maybeSingle();
     let resultado = existente;
     if (!existente.error && !existente.data) {
       resultado = await (supabase as any)
         .from("programacao_producao")
-        .insert({ ...valores, criado_por: user.id })
+        .insert({ ...valores, op: null, lote: null, criado_por: user.id })
         .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
         .single();
     }
@@ -502,6 +495,26 @@ function Contagem() {
       at: Date.now(),
     };
     toast.success("Produto adicionado à programação.");
+  }
+
+  async function editarReferencia(id: string, atual: string | null) {
+    if (!canProgramProduction) return;
+    const coluna = setor === "mantas" ? "lote" : "op";
+    const nome = coluna === "lote" ? "Lote" : "OP";
+    const digitado = window.prompt(`${nome} da programação (deixe vazio para limpar):`, atual ?? "");
+    if (digitado === null) return;
+    const valor = digitado.trim() || null;
+    const { error } = await (supabase as any)
+      .from("programacao_producao")
+      .update({ [coluna]: valor, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) {
+      toast.error(`Não foi possível atualizar ${coluna === "lote" ? "o lote" : "a OP"}.`);
+      return;
+    }
+    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)));
+    setTextoGerado("");
+    toast.success(valor ? `${nome} atualizado${coluna === "op" ? "a" : ""}.` : `${nome} removid${coluna === "op" ? "a" : "o"}.`);
   }
 
   async function excluirProgramacao(id: string) {
@@ -565,7 +578,7 @@ function Contagem() {
       .filter((item) => Number(item.parada_minutos ?? 0) > 0)
       .sort(
         (a, b) =>
-          ordemHoraTurno(chaveHora(a.hora), turno) - ordemHoraTurno(chaveHora(b.hora), turno),
+          ordemHoraTurno(chaveHora(item.hora), turno) - ordemHoraTurno(chaveHora(item.hora), turno),
       );
     if (paradas.length) {
       linhas.push("Paradas:");
@@ -583,9 +596,13 @@ function Contagem() {
     if (comSaldo.length) {
       linhas.push("Programação com saldo:");
       comSaldo.forEach((item) => {
-        const ref = item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`;
+        const ref = item.lote
+          ? ` - Lote ${item.lote}`
+          : setor === "mantas"
+            ? ""
+            : ` - OP ${item.op ?? "—"}`;
         linhas.push(
-          `• ${item.produto_nome} - ${ref}: previsto ${fmt(item.previsto)} ${
+          `• ${item.produto_nome}${ref}: previsto ${fmt(item.previsto)} ${
             item.unidade
           }, realizado ${fmt(item.realizado)} ${item.unidade}, saldo ${fmt(item.saldo)} ${
             item.unidade
@@ -642,6 +659,13 @@ function Contagem() {
           </TabsList>
 
           <TabsContent value="hora" className="space-y-4">
+            {isAdmin && setor ? (
+              <AjustarHorarioApontamentos
+                registros={registros}
+                setor={setor}
+                onAjustado={() => setRecarga((v) => v + 1)}
+              />
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <ResumoGrande label="Previsto" valor={`${fmt(metaTotal)} ${unidade}`} />
               <ResumoGrande label="Realizado" valor={`${fmt(realizadoTurno)} ${unidade}`} destaque />
@@ -765,15 +789,6 @@ function Contagem() {
                   </CardHeader>
                   <CardContent className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
-                      <Label>{setor === "mantas" ? "Lote" : "OP"}</Label>
-                      <Input
-                        inputMode={setor === "mantas" ? undefined : "numeric"}
-                        value={referencia}
-                        onChange={(e) => setReferencia(e.target.value)}
-                        placeholder={setor === "mantas" ? "Informe o lote" : "Informe a OP"}
-                      />
-                    </div>
-                    <div className="space-y-1">
                       <Label>Produto</Label>
                       <ProdutoSelect
                         produtos={produtos}
@@ -784,7 +799,7 @@ function Contagem() {
                       />
                     </div>
                     <div className="space-y-1 sm:col-span-2">
-                      <Label>Quantidade prevista ({unidade})</Label>
+                      <Label>Quantidade prevista ({unidadeProg})</Label>
                       <Input
                         inputMode="decimal"
                         value={quantidadePrevista}
@@ -798,7 +813,6 @@ function Contagem() {
                         carregandoProgramacao ||
                         salvandoProgramacao ||
                         !produtoId ||
-                        !referencia.trim() ||
                         !quantidadePrevista.trim()
                       }
                       onClick={() => void salvarProgramacao()}
@@ -832,9 +846,20 @@ function Contagem() {
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="font-bold">{item.produto_nome}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {item.lote ? `Lote ${item.lote}` : `OP ${item.op ?? "—"}`}
-                              </p>
+                              {(
+                                <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                                  <span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>
+                                  {canProgramProduction && (
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 font-semibold text-primary underline-offset-2 hover:underline"
+                                      onClick={() => void editarReferencia(item.id, setor === "mantas" ? item.lote : item.op)}
+                                    >
+                                      <Pencil className="size-3" /> {setor === "mantas" ? "Editar lote" : "Editar OP"}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             {canProgramProduction && (
                             <Button
@@ -1122,29 +1147,37 @@ function somarRegistro(linha: Linha, item: Registro) {
   linha.area += Number(item.area_m2 ?? 0);
 }
 
-function unidadeDoSetor(setor: string | null | undefined) {
+/** Unidade da Meta do turno: Corte por metragem (m²), Fitas m², Mantas metros. */
+function unidadeMetaTurno(setor: string | null | undefined) {
+  if (setor === "mantas") return "m";
+  return "m²";
+}
+
+/** Unidade da Programação do dia: Corte PLTs, Fitas m², Mantas metros. */
+function unidadeProgramacao(setor: string | null | undefined) {
   if (setor === "fitas") return "m²";
   if (setor === "mantas") return "m";
   return "PLTs";
 }
 
-function valorDaHora(
+function valorMetaHora(
   item: Pick<Hora, "plts" | "metragem" | "area">,
   setor: string | null | undefined,
 ) {
   if (setor === "fitas") return Number(item.area ?? 0);
-  if (setor === "mantas") return Number(item.metragem ?? 0);
-  return Number(item.plts ?? 0);
+  return Number(item.metragem ?? 0);
 }
 
-function chaveProgramacaoRegistro(registro: Registro, setor: string | null | undefined) {
-  const referencia = setor === "mantas" ? registro.lote : registro.op;
-  return `${registro.produto_id}:${normalizar(referencia)}`;
-}
-
-function chaveProgramacaoItem(item: ProgramacaoItem, setor: string | null | undefined) {
-  const referencia = setor === "mantas" ? item.lote : item.op;
-  return `${item.produto_id}:${normalizar(referencia)}`;
+function correspondeProgramacaoItem(
+  registro: Registro,
+  item: ProgramacaoItem,
+  setor: string | null | undefined,
+) {
+  if (registro.produto_id !== item.produto_id) return false;
+  if (setor === "mantas") return true;
+  const opItem = normalizar(item.op);
+  if (!opItem) return true;
+  return normalizar(registro.op) === opItem;
 }
 
 function valorRealizadoRegistro(item: Registro, setor: string | null | undefined) {
