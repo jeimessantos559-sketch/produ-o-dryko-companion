@@ -44,6 +44,7 @@ export type OcorrenciaOperacional = {
 export type EquipamentoResumo = { equipamento: string; linhas: string[]; comProblema: boolean };
 export type GrupoResumo = { titulo: string; itens: EquipamentoResumo[] };
 
+/** Consolida ocorrências na ordem fixa. Sem registro = "Sem ocorrências". */
 export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
   const ordenadas = [...lista].sort((a, b) => a.created_at.localeCompare(b.created_at));
   const grupos: GrupoResumo[] = GRUPOS_OCORRENCIAS.map((grupo) => ({
@@ -69,8 +70,31 @@ export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
   return { grupos, outras };
 }
 
-export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true) {
+/** Somente Corte e Fitas usam o padrão estruturado por equipamento. */
+export function usaOcorrenciasEstruturadas(setor: unknown) {
+  const s = String(setor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return s === "corte" || s === "fitas";
+}
+
+/** Lista simples: somente ocorrências realmente registradas. */
+export function linhasOcorrenciasLivres(lista: OcorrenciaOperacional[]) {
+  return [...lista]
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((o) => {
+      const tipo = o.tipo_status ?? "ocorrencia";
+      const msg = tipo === "ocorrencia" ? o.mensagem : o.mensagem || rotuloSituacao(tipo);
+      return o.equipamento ? `${o.equipamento}: ${msg}` : msg;
+    })
+    .filter((l) => l.trim().length > 0);
+}
+
+/** Texto no padrão WhatsApp (asteriscos) ou simples. Setores fora de Corte/Fitas geram lista livre. */
+export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true, setor?: unknown) {
   const b = (t: string) => (negrito ? `*${t}*` : t);
+  if (setor !== undefined && !usaOcorrenciasEstruturadas(setor)) {
+    const livres = linhasOcorrenciasLivres(lista);
+    return livres.length ? livres.map((l) => `- ${l}`).join("\n") : "Sem ocorrências registradas.";
+  }
   const { grupos, outras } = consolidarOcorrencias(lista);
   const linhas: string[] = [];
   grupos.forEach((grupo, i) => {
@@ -87,6 +111,7 @@ export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true)
   return linhas.join("\n");
 }
 
+/** Normaliza ocorrências vindas do resumo salvo (Json). */
 export function ocorrenciasDoResumo(valor: unknown): OcorrenciaOperacional[] | null {
   if (!Array.isArray(valor)) return null;
   return valor
