@@ -16,6 +16,7 @@ import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { consolidarOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
+import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
   component: PassagemTurno,
@@ -328,6 +329,24 @@ function PassagemTurno() {
                 )}
               </CardContent>
             </Card>
+
+            {!fechado && profile?.setor_atual && profile.turno_atual && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Registrar ocorrência operacional</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <OcorrenciasOperacionaisForm
+                    setor={profile.setor_atual}
+                    turno={profile.turno_atual}
+                    dataLocal={data}
+                    userId={user?.id}
+                    ocorrencias={ocorrencias}
+                    onChange={setOcorrencias}
+                  />
+                </CardContent>
+              </Card>
+            )}
 
             <OcorrenciasRevisao lista={ocorrencias} />
 
