@@ -420,30 +420,6 @@ function Programacao() {
 
     linhas.push(textoOcorrencias(ocorrencias), "");
 
-    const paradas = [...ajustesHora]
-      .filter((item) => Number(item.parada_minutos ?? 0) > 0)
-      .sort((a, b) => ordemHoraTurno(chaveHora(a.hora), turno) - ordemHoraTurno(chaveHora(b.hora), turno));
-    if (paradas.length > 0) {
-      linhas.push("Paradas:");
-      for (const item of paradas) {
-        linhas.push(
-          `• ${chaveHora(item.hora)} - ${item.parada_minutos} min - ${item.motivo_parada || "Sem motivo informado"}`,
-        );
-      }
-      linhas.push("");
-    }
-
-    const comSaldo = resumoProgramacao.filter((item) => item.saldo > 0.0001);
-    if (comSaldo.length > 0) {
-      linhas.push("Programação com saldo:");
-      for (const item of comSaldo) {
-        const ref = item.lote ? ` - Lote ${item.lote}` : setor === "mantas" ? "" : ` - OP ${item.op ?? "—"}`;
-        linhas.push(
-          `• ${item.produto_nome}${ref}: previsto ${fmt(item.previsto)} ${item.unidade}, realizado ${fmt(item.realizado)} ${item.unidade}, saldo ${fmt(item.saldo)} ${item.unidade}`,
-        );
-      }
-      linhas.push("");
-    }
 
 
     setTextoGerado(linhas.join("\n").trim());
