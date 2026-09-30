@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/auth";
 import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
+import { consolidarOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
   component: PassagemTurno,
@@ -31,6 +32,7 @@ function PassagemTurno() {
   const [metas, setMetas] = useState<Meta[]>([]);
   const [fechamento, setFechamento] = useState<Fechamento | null>(null);
   const [anteriores, setAnteriores] = useState<Fechamento[]>([]);
+  const [ocorrencias, setOcorrencias] = useState<OcorrenciaOperacional[]>([]);
   const [nomes, setNomes] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
   const [processando, setProcessando] = useState(false);
@@ -47,7 +49,7 @@ function PassagemTurno() {
       return;
     }
     setCarregando(true);
-    const [{ data: registros }, { data: listaMetas }, { data: fechamentos }, { data: perfis }] =
+    const [{ data: registros }, { data: listaMetas }, { data: fechamentos }, { data: perfis }, { data: listaOcorrencias }] =
       await Promise.all([
         supabase
           .from("apontamentos")
@@ -70,7 +72,15 @@ function PassagemTurno() {
           .order("turno", { ascending: false })
           .limit(8),
         supabase.from("profiles").select("id, nome"),
+        (supabase as any)
+          .from("ocorrencias_turno")
+          .select("id, equipamento, tipo_status, mensagem, created_at")
+          .eq("setor", profile.setor_atual)
+          .eq("turno", profile.turno_atual)
+          .eq("data_local", data)
+          .order("created_at", { ascending: true }),
       ]);
+    setOcorrencias((listaOcorrencias ?? []) as OcorrenciaOperacional[]);
     setApontamentos(registros ?? []);
     setMetas(listaMetas ?? []);
     const listaFechamentos = fechamentos ?? [];
@@ -119,6 +129,13 @@ function PassagemTurno() {
       totais,
       metas: metas as unknown as Json,
       apontamentos: apontamentos as unknown as Json,
+      ocorrencias: ocorrencias.map((o) => ({
+        id: o.id,
+        equipamento: o.equipamento,
+        tipo_status: o.tipo_status,
+        mensagem: o.mensagem,
+        created_at: o.created_at,
+      })) as unknown as Json,
     };
   }
 
@@ -312,6 +329,8 @@ function PassagemTurno() {
               </CardContent>
             </Card>
 
+            <OcorrenciasRevisao lista={ocorrencias} />
+
             {!fechado ? (
               <Button
                 className="h-14 w-full text-base"
@@ -374,6 +393,42 @@ function PassagemTurno() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function OcorrenciasRevisao({ lista }: { lista: OcorrenciaOperacional[] }) {
+  const { grupos, outras } = consolidarOcorrencias(lista);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Ocorrências operacionais</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {grupos.map((grupo) => (
+          <div key={grupo.titulo}>
+            <p className="mb-1 text-xs font-bold uppercase text-primary">{grupo.titulo}</p>
+            <div className="divide-y rounded-md border">
+              {grupo.itens.map((item) => (
+                <div key={item.equipamento} className="flex flex-wrap justify-between gap-2 p-2 text-sm">
+                  <span className="font-medium">{item.equipamento}</span>
+                  <span className={item.comProblema ? "font-semibold text-destructive" : "text-muted-foreground"}>
+                    {item.linhas.join(" · ")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {outras.length > 0 && (
+          <div>
+            <p className="mb-1 text-xs font-bold uppercase text-primary">Outras ocorrências</p>
+            {outras.map((o, i) => (
+              <p key={i} className="rounded-md border p-2 text-sm">{o}</p>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

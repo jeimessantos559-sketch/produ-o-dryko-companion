@@ -21,6 +21,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
+import { textoOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
@@ -63,11 +65,7 @@ type MetaTurno = {
   horas_produtivas: number;
 };
 
-type Ocorrencia = {
-  id: string;
-  mensagem: string;
-  created_at: string;
-};
+type Ocorrencia = OcorrenciaOperacional;
 
 type EdicaoHora = {
   meta: string;
@@ -94,12 +92,10 @@ function Programacao() {
   const [produtoId, setProdutoId] = useState("");
   const [referencia, setReferencia] = useState("");
   const [quantidade, setQuantidade] = useState("");
-  const [mensagemOcorrencia, setMensagemOcorrencia] = useState("");
   const [textoGerado, setTextoGerado] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [salvandoHora, setSalvandoHora] = useState<string | null>(null);
-  const [salvandoOcorrencia, setSalvandoOcorrencia] = useState(false);
   const [edicoesHora, setEdicoesHora] = useState<Record<string, EdicaoHora>>({});
   const cargaAtual = useRef(0);
 
@@ -149,7 +145,7 @@ function Programacao() {
         .maybeSingle(),
       (supabase as any)
         .from("ocorrencias_turno")
-        .select("id, mensagem, created_at")
+        .select("id, equipamento, tipo_status, mensagem, created_at")
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
@@ -415,49 +411,6 @@ function Programacao() {
     toast.success(`${hora} atualizado.`);
   }
 
-  async function salvarOcorrencia() {
-    if (!user || !setor || !turno || salvandoOcorrencia) return;
-    const mensagem = mensagemOcorrencia.trim();
-    if (!mensagem) {
-      toast.error("Digite a ocorrência antes de salvar.");
-      return;
-    }
-
-    setSalvandoOcorrencia(true);
-    const { data, error } = await (supabase as any)
-      .from("ocorrencias_turno")
-      .insert({
-        setor,
-        turno,
-        data_local: dataAtual,
-        mensagem,
-        criado_por: user.id,
-      })
-      .select("id, mensagem, created_at")
-      .single();
-    setSalvandoOcorrencia(false);
-
-    if (error || !data) {
-      toast.error(error?.message || "Não foi possível salvar a ocorrência.");
-      return;
-    }
-
-    setOcorrencias((atuais) => [...atuais, data as Ocorrencia]);
-    setMensagemOcorrencia("");
-    setTextoGerado("");
-    toast.success("Ocorrência registrada.");
-  }
-
-  async function excluirOcorrencia(id: string) {
-    const { error } = await (supabase as any).from("ocorrencias_turno").delete().eq("id", id);
-    if (error) {
-      toast.error("Não foi possível excluir a ocorrência.");
-      return;
-    }
-    setOcorrencias((atuais) => atuais.filter((item) => item.id !== id));
-    setTextoGerado("");
-  }
-
   function gerarOcorrencias() {
     if (!setor || !turno) return;
     const linhas: string[] = [
@@ -465,13 +418,7 @@ function Programacao() {
       "",
     ];
 
-    if (ocorrencias.length > 0) {
-      linhas.push("Ocorrências registradas:");
-      for (const item of ocorrencias) {
-        linhas.push(`• ${horaMinutoLocal(item.created_at)} - ${item.mensagem}`);
-      }
-      linhas.push("");
-    }
+    linhas.push(textoOcorrencias(ocorrencias), "");
 
     const paradas = [...ajustesHora]
       .filter((item) => Number(item.parada_minutos ?? 0) > 0)
@@ -498,9 +445,6 @@ function Programacao() {
       linhas.push("");
     }
 
-    if (ocorrencias.length === 0 && paradas.length === 0 && comSaldo.length === 0) {
-      linhas.push("Sem ocorrências registradas no turno.");
-    }
 
     setTextoGerado(linhas.join("\n").trim());
   }
@@ -831,64 +775,24 @@ function Programacao() {
                     <MessageSquare className="size-5 text-primary" /> Registrar ocorrência
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Digite aqui qualquer observação importante do turno, como falha, retrabalho,
-                    material, equipamento ou informação para a próxima equipe.
+                    Escolha o equipamento e a situação. Equipamentos sem registro saem como “Sem ocorrências”.
                   </p>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <textarea
-                    value={mensagemOcorrencia}
-                    onChange={(e) => setMensagemOcorrencia(e.target.value)}
-                    maxLength={1500}
-                    rows={4}
-                    placeholder="Ex.: L2 parada para ajuste técnico no equipamento..."
-                    className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-muted-foreground">
-                      {mensagemOcorrencia.length}/1500
-                    </span>
-                    <Button
-                      disabled={salvandoOcorrencia || !mensagemOcorrencia.trim()}
-                      onClick={() => void salvarOcorrencia()}
-                    >
-                      <Save className="size-4" />
-                      {salvandoOcorrencia ? "Salvando..." : "Registrar ocorrência"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-2xl border-border shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Ocorrências registradas</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {ocorrencias.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Nenhuma ocorrência manual registrada neste turno.
-                    </p>
-                  ) : (
-                    ocorrencias.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-primary">
-                            {horaMinutoLocal(item.created_at)}
-                          </p>
-                          <p className="mt-1 whitespace-pre-wrap text-sm">{item.mensagem}</p>
-                        </div>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="size-8 shrink-0 text-red-600"
-                          onClick={() => void excluirOcorrencia(item.id)}
-                          aria-label="Excluir ocorrência"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    ))
-                  )}
+                <CardContent>
+                  {setor && turno ? (
+                    <OcorrenciasOperacionaisForm
+                      setor={setor}
+                      turno={turno}
+                      dataLocal={dataAtual}
+                      userId={user?.id}
+                      ocorrencias={ocorrencias}
+                      permitirExcluir
+                      onChange={(lista) => {
+                        setOcorrencias(lista);
+                        setTextoGerado("");
+                      }}
+                    />
+                  ) : null}
                 </CardContent>
               </Card>
 

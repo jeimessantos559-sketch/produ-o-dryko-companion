@@ -21,6 +21,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
+import { textoOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
 import {
   dataOperacional,
@@ -85,11 +87,7 @@ type AjusteHora = {
   motivo_parada: string | null;
 };
 
-type Ocorrencia = {
-  id: string;
-  mensagem: string;
-  created_at: string;
-};
+type Ocorrencia = OcorrenciaOperacional;
 
 type ProgramacaoItem = {
   id: string;
@@ -104,7 +102,7 @@ type ProgramacaoItem = {
 type AbaContagem = "hora" | "programacao";
 
 function Contagem() {
-  const { profile, user, canFinalizeGoals, canProgramProduction, isAdmin } = useAuth();
+  const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
   const [recarga, setRecarga] = useState(0);
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
@@ -127,14 +125,12 @@ function Contagem() {
   const [produtoId, setProdutoId] = useState("");
   const [referencia, setReferencia] = useState("");
   const [quantidadePrevista, setQuantidadePrevista] = useState("");
-  const [mensagemOcorrencia, setMensagemOcorrencia] = useState("");
   const [textoGerado, setTextoGerado] = useState("");
   const [erro, setErro] = useState(false);
   const [erroMeta, setErroMeta] = useState(false);
   const [carregandoProgramacao, setCarregandoProgramacao] = useState(false);
   const [salvandoMeta, setSalvandoMeta] = useState(false);
   const [salvandoProgramacao, setSalvandoProgramacao] = useState(false);
-  const [salvandoOcorrencia, setSalvandoOcorrencia] = useState(false);
   const carregamentoAtual = useRef(0);
   const carregamentoProgramacaoAtual = useRef(0);
   const cacheProgramacao = useRef<{ chave: string; at: number } | null>(null);
@@ -191,7 +187,7 @@ function Contagem() {
         .eq("data_local", dataAtual),
       (supabase as any)
         .from("ocorrencias_turno")
-        .select("id, mensagem, created_at")
+        .select("id, equipamento, tipo_status, mensagem, created_at")
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
@@ -536,29 +532,6 @@ function Contagem() {
     }
   }
 
-  async function salvarOcorrencia() {
-    if (!user || !setor || !turno || salvandoOcorrencia) return;
-    const mensagem = mensagemOcorrencia.trim();
-    if (!mensagem) return;
-
-    setSalvandoOcorrencia(true);
-    const { data, error } = await (supabase as any)
-      .from("ocorrencias_turno")
-      .insert({ setor, turno, data_local: dataAtual, mensagem, criado_por: user.id })
-      .select("id, mensagem, created_at")
-      .single();
-    setSalvandoOcorrencia(false);
-
-    if (error || !data) {
-      toast.error(error?.message || "Não foi possível salvar a ocorrência.");
-      return;
-    }
-    setOcorrencias((atuais) => [...atuais, data as Ocorrencia]);
-    setMensagemOcorrencia("");
-    setTextoGerado("");
-    toast.success("Ocorrência registrada.");
-  }
-
   function gerarOcorrencias() {
     if (!setor || !turno) return;
     const linhas = [
@@ -566,13 +539,7 @@ function Contagem() {
       "",
     ];
 
-    if (ocorrencias.length) {
-      linhas.push("Ocorrências registradas:");
-      ocorrencias.forEach((item) =>
-        linhas.push(`• ${horaMinutoLocal(item.created_at)} - ${item.mensagem}`),
-      );
-      linhas.push("");
-    }
+    linhas.push(textoOcorrencias(ocorrencias), "");
 
     const paradas = ajustesHora
       .filter((item) => Number(item.parada_minutos ?? 0) > 0)
@@ -612,8 +579,6 @@ function Contagem() {
       linhas.push("");
     }
 
-    if (!ocorrencias.length && !paradas.length && !comSaldo.length)
-      linhas.push("Sem ocorrências registradas no turno.");
     setTextoGerado(linhas.join("\n").trim());
   }
 
@@ -659,7 +624,7 @@ function Contagem() {
           </TabsList>
 
           <TabsContent value="hora" className="space-y-4">
-            {isAdmin && setor ? (
+            {setor ? (
               <AjustarHorarioApontamentos
                 registros={registros}
                 setor={setor}
@@ -900,35 +865,19 @@ function Contagem() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <textarea
-                  value={mensagemOcorrencia}
-                  onChange={(e) => setMensagemOcorrencia(e.target.value)}
-                  maxLength={1500}
-                  rows={4}
-                  placeholder="Digite a ocorrência..."
-                  className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-                <Button
-                  className="w-full touch-manipulation"
-                  disabled={salvandoOcorrencia || !mensagemOcorrencia.trim()}
-                  onClick={() => void salvarOcorrencia()}
-                >
-                  <Save className="size-4" />
-                  {salvandoOcorrencia ? "Salvando..." : "Registrar ocorrência"}
-                </Button>
-                {ocorrencias.length > 0 && (
-                  <div className="space-y-2">
-                    {ocorrencias.map((item) => (
-                      <div
-                        key={item.id}
-                        className="rounded-xl bg-amber-100/80 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
-                      >
-                        <strong className="mr-2">{horaMinutoLocal(item.created_at)}</strong>
-                        {item.mensagem}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {setor && turno ? (
+                  <OcorrenciasOperacionaisForm
+                    setor={setor}
+                    turno={turno}
+                    dataLocal={dataAtual}
+                    userId={user?.id}
+                    ocorrencias={ocorrencias}
+                    onChange={(lista) => {
+                      setOcorrencias(lista);
+                      setTextoGerado("");
+                    }}
+                  />
+                ) : null}
               </CardContent>
             </Card>
 

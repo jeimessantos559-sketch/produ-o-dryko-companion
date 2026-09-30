@@ -40,7 +40,7 @@ function resumo(r: RegistroHorario, setor: string) {
 }
 
 function mensagemErro(msg: string) {
-  if (/administrador/i.test(msg)) return "Somente o administrador pode ajustar o horário.";
+  if (/permiss|ativo/i.test(msg)) return "Seu usuário não tem permissão para ajustar o horário.";
   if (/futuro/i.test(msg)) return "O horário não pode estar no futuro.";
   if (/turno/i.test(msg)) return "O horário informado não pertence ao turno do apontamento.";
   if (/data operacional/i.test(msg)) return "O ajuste deve permanecer na mesma data operacional.";
@@ -92,7 +92,7 @@ export function AjustarHorarioApontamentos({ registros, setor, onAjustado }: Pro
           <SheetHeader className="text-left">
             <SheetTitle>Ajustar horário</SheetTitle>
             <SheetDescription>
-              Somente administrador. Altera apenas a data e hora do apontamento, dentro do mesmo turno.
+              Altera apenas a data e hora do apontamento, dentro do mesmo turno.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-3 pb-4">

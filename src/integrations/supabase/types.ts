@@ -402,9 +402,11 @@ export type Database = {
           created_at: string
           criado_por: string
           data_local: string
+          equipamento: string | null
           id: string
           mensagem: string
           setor: Database["public"]["Enums"]["setor_codigo"]
+          tipo_status: string
           turno: Database["public"]["Enums"]["turno_codigo"]
           updated_at: string
         }
@@ -412,9 +414,11 @@ export type Database = {
           created_at?: string
           criado_por: string
           data_local: string
+          equipamento?: string | null
           id?: string
           mensagem: string
           setor: Database["public"]["Enums"]["setor_codigo"]
+          tipo_status?: string
           turno: Database["public"]["Enums"]["turno_codigo"]
           updated_at?: string
         }
@@ -422,9 +426,11 @@ export type Database = {
           created_at?: string
           criado_por?: string
           data_local?: string
+          equipamento?: string | null
           id?: string
           mensagem?: string
           setor?: Database["public"]["Enums"]["setor_codigo"]
+          tipo_status?: string
           turno?: Database["public"]["Enums"]["turno_codigo"]
           updated_at?: string
         }
