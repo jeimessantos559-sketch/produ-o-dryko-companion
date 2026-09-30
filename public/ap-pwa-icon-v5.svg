@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Aponta Produção DRYKO</title>
+  <desc id="desc">Ícone corporativo vermelho e preto da DRYKO com marca e símbolo de confirmação.</desc>
+
+  <rect width="512" height="512" fill="#ed1c24"/>
+
+  <!-- Curva branca inspirada na identidade visual oficial da DRYKO. -->
+  <path d="M0 361C148 302 331 323 512 245V512H0Z" fill="#ffffff"/>
+  <path d="M0 384C152 327 333 346 512 270V512H0Z" fill="#15171b"/>
+
+  <text
+    x="256"
+    y="233"
+    text-anchor="middle"
+    font-family="Arial Black, Arial, Helvetica, sans-serif"
+    font-size="105"
+    font-weight="900"
+    letter-spacing="-4"
+    fill="#ffffff"
+  >DRYKO</text>
+
+  <path
+    d="M199 404L237 441L317 346"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="26"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
