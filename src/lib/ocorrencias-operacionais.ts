@@ -83,7 +83,11 @@ export function linhasOcorrenciasLivres(lista: OcorrenciaOperacional[]) {
     .map((o) => {
       const tipo = o.tipo_status ?? "ocorrencia";
       const msg = tipo === "ocorrencia" ? o.mensagem : o.mensagem || rotuloSituacao(tipo);
-      return o.equipamento ? `${o.equipamento}: ${msg}` : msg;
+      const d = new Date(o.created_at);
+      const h = Number.isNaN(d.getTime())
+        ? ""
+        : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(d) + " - ";
+      return h + (o.equipamento ? `${o.equipamento}: ${msg}` : msg);
     })
     .filter((l) => l.trim().length > 0);
 }
@@ -93,7 +97,7 @@ export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true,
   const b = (t: string) => (negrito ? `*${t}*` : t);
   if (setor !== undefined && !usaOcorrenciasEstruturadas(setor)) {
     const livres = linhasOcorrenciasLivres(lista);
-    return livres.length ? livres.map((l) => `- ${l}`).join("\n") : "Sem ocorrências registradas.";
+    return livres.length ? livres.join("\n") : "Sem ocorrências registradas no turno.";
   }
   const { grupos, outras } = consolidarOcorrencias(lista);
   const linhas: string[] = [];
