@@ -415,7 +415,7 @@ function PassagemTurno() {
   );
 }
 
-function OcorrenciasRevisao({ lista, setor }: { lista: OcorrenciaOperacional[]; setor?: string | null }) {
+function OcorrenciasRevisao({ lista, setor }: { lista: OcorrenciaOperacional[]; setor?: string | null | undefined }) {
   const estruturado = usaOcorrenciasEstruturadas(setor);
   const { grupos, outras } = estruturado ? consolidarOcorrencias(lista) : { grupos: [], outras: linhasOcorrenciasLivres(lista) };
   return (
