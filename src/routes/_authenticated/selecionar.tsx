@@ -50,8 +50,9 @@ function Selecionar() {
       return;
     }
     await refresh();
-    const resultado = await navigate({ to: "/painel", replace: true });
-    if (!resultado) {
+    try {
+      await navigate({ to: "/painel", replace: true });
+    } catch {
       setSalvando(false);
       toast.error("Setor e turno salvos, mas não foi possível abrir o painel. Atualize a página.");
     }
