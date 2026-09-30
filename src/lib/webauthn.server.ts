@@ -3,7 +3,7 @@
 // na inicialização. Chaves públicas são guardadas em COSE (base64url), mesmo formato anterior.
 
 const enc = new TextEncoder();
-const at = (a: Uint8Array, i: number): number => at(a, i) ?? 0;
+const at = (a: Uint8Array, i: number): number => a[i] ?? 0;
 
 export function b64urlEncode(bytes: Uint8Array): string {
   let bin = "";
@@ -37,7 +37,7 @@ function iguais(a: Uint8Array, b: Uint8Array) {
 // ---------- CBOR mínimo ----------
 function lerCbor(buf: Uint8Array, pos = 0): [unknown, number] {
   const ini = at(buf, pos);
-  if (ini === undefined) throw new Error("CBOR inválido");
+  if (pos >= buf.length) throw new Error("CBOR inválido");
   const tipo = ini >> 5;
   const info = ini & 31;
   pos++;
