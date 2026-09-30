@@ -65,7 +65,14 @@ export function PwaInstallPrompt() {
   return (
     <div className="fixed inset-x-3 bottom-4 z-[100] mx-auto max-w-md rounded-2xl border border-border bg-card p-3 shadow-2xl sm:bottom-6">
       <div className="flex items-center gap-3">
-        <img src="/pwa-icon-192.svg" alt="DRYKO" className="size-12 rounded-xl" />
+        <img
+          src="/ap-pwa-192-v4.png"
+          alt="Aponta Produção DRYKO"
+          width={48}
+          height={48}
+          className="size-12 shrink-0 rounded-xl"
+          draggable={false}
+        />
         <div className="min-w-0 flex-1">
           <p className="font-bold text-foreground">Instalar Aponta Produção</p>
           <p className="text-xs text-muted-foreground">Use como aplicativo, sem precisar abrir o navegador.</p>
