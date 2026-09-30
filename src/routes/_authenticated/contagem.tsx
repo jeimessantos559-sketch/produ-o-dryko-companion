@@ -578,7 +578,7 @@ function Contagem() {
       .filter((item) => Number(item.parada_minutos ?? 0) > 0)
       .sort(
         (a, b) =>
-          ordemHoraTurno(chaveHora(item.hora), turno) - ordemHoraTurno(chaveHora(item.hora), turno),
+          ordemHoraTurno(chaveHora(a.hora), turno) - ordemHoraTurno(chaveHora(b.hora), turno),
       );
     if (paradas.length) {
       linhas.push("Paradas:");
