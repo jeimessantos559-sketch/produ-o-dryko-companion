@@ -17,8 +17,8 @@ type CacheAcesso = {
 let cacheAcesso: CacheAcesso | null = null;
 const CACHE_ACESSO_MS = 30_000;
 
-async function carregarPerfilAcesso(userId: string) {
-  if (cacheAcesso?.userId === userId && cacheAcesso.expiresAt > Date.now()) {
+async function carregarPerfilAcesso(userId: string, forcar = false) {
+  if (!forcar && cacheAcesso?.userId === userId && cacheAcesso.expiresAt > Date.now()) {
     return cacheAcesso.perfil;
   }
   const { data } = await supabase
@@ -37,16 +37,23 @@ export const Route = createFileRoute("/_authenticated")({
     const { data, error } = await supabase.auth.getSession();
     if (error || !data.session?.user) throw redirect({ to: "/auth" });
 
-    const perfilOperacional = await carregarPerfilAcesso(data.session.user.id);
+    let perfilOperacional = await carregarPerfilAcesso(data.session.user.id);
     if (!perfilOperacional?.ativo) {
       cacheAcesso = null;
       await supabase.auth.signOut();
       throw redirect({ to: "/auth" });
     }
-    if (perfilOperacional.deve_alterar_senha) {
+
+    // Estes dois estados mudam durante o primeiro acesso. Antes de redirecionar,
+    // revalida no banco para não usar o cache antigo por até 30 segundos.
+    if (perfilOperacional.deve_alterar_senha || (!perfilOperacional.onboarding_concluido && location.pathname !== "/selecionar")) {
+      perfilOperacional = await carregarPerfilAcesso(data.session.user.id, true);
+    }
+
+    if (perfilOperacional?.deve_alterar_senha) {
       throw redirect({ to: "/alterar-senha" });
     }
-    if (!perfilOperacional.onboarding_concluido && location.pathname !== "/selecionar") {
+    if (!perfilOperacional?.onboarding_concluido && location.pathname !== "/selecionar") {
       throw redirect({ to: "/selecionar" });
     }
     return { user: data.session.user };
