@@ -539,7 +539,7 @@ function Contagem() {
       "",
     ];
 
-    linhas.push(textoOcorrencias(ocorrencias), "");
+    linhas.push(textoOcorrencias(ocorrencias, true, setor), "");
 
 
     setTextoGerado(linhas.join("\n").trim());

@@ -1,5 +1,5 @@
 import type { Json } from "@/integrations/supabase/types";
-import { consolidarOcorrencias, ocorrenciasDoResumo, textoOcorrencias } from "@/lib/ocorrencias-operacionais";
+import { consolidarOcorrencias, linhasOcorrenciasLivres, ocorrenciasDoResumo, textoOcorrencias, usaOcorrenciasEstruturadas } from "@/lib/ocorrencias-operacionais";
 
 type ResumoRegistro = {
   totais?: Json;
@@ -148,7 +148,7 @@ export function linhasDoRelatorio(resumo: Json) {
     `Registros detalhados: ${apontamentos.length}`,
     ...(() => {
       const oc = ocorrenciasDoResumo(raiz["ocorrencias"]);
-      return oc ? ["", "OCORRENCIAS OPERACIONAIS", ...textoOcorrencias(oc, false).split("\n")] : [];
+      return oc ? ["", "OCORRENCIAS OPERACIONAIS", ...textoOcorrencias(oc, false, raiz.setor).split("\n")] : [];
     })(),
   ];
 }
@@ -364,7 +364,11 @@ function montarPaginasOcorrencias(resumo: Json) {
   const raiz = registro(resumo);
   const lista = ocorrenciasDoResumo(raiz["ocorrencias"]);
   if (!lista) return [];
-  const { grupos, outras } = consolidarOcorrencias(lista);
+  const estruturado = usaOcorrenciasEstruturadas(raiz.setor);
+  if (!estruturado && lista.length === 0) return [];
+  const { grupos, outras } = estruturado
+    ? consolidarOcorrencias(lista)
+    : { grupos: [], outras: linhasOcorrenciasLivres(lista) };
   const subtitulo = `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`;
   const paginas: string[][] = [];
   let comandos: string[] = [];
@@ -394,7 +398,7 @@ function montarPaginasOcorrencias(resumo: Json) {
   novaPagina();
   const secoes = [
     ...grupos,
-    ...(outras.length ? [{ titulo: "Outras ocorrencias", itens: [{ equipamento: "Geral", linhas: outras, comProblema: true }] }] : []),
+    ...(outras.length ? [{ titulo: estruturado ? "Outras ocorrencias" : "Ocorrencias registradas", itens: [{ equipamento: "Geral", linhas: outras, comProblema: true }] }] : []),
   ];
   for (const grupo of secoes) {
     garantir(40);
