@@ -1,8 +1,10 @@
-import "reflect-metadata";
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { instalarReflectShim } from "./lib/reflect-shim";
+
+instalarReflectShim();
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
