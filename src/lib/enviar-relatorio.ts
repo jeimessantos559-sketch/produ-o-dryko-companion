@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { gerarPdfRelatorio } from "@/lib/relatorio-pdf";
+import { ocorrenciasDoResumo, textoOcorrencias } from "@/lib/ocorrencias-operacionais";
 
 const entrada = z.object({
   relatorioId: z.string().uuid(),
@@ -13,21 +14,10 @@ const entrada = z.object({
 function configuracao() {
   const url = process.env["APPS_SCRIPT_WEB_APP_URL"];
   const token = process.env["APPS_SCRIPT_API_TOKEN"];
-  if (!url || !token) {
-    throw new Error("A integração com o Apps Script ainda não está configurada no Lovable.");
-  }
-
+  if (!url || !token) throw new Error("A integração com o Apps Script ainda não está configurada no Lovable.");
   let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error("A URL configurada para o Apps Script é inválida.");
-  }
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.hostname !== "script.google.com" ||
-    !/^\/macros\/s\/[^/]+\/exec$/.test(parsed.pathname)
-  ) {
+  try { parsed = new URL(url); } catch { throw new Error("A URL configurada para o Apps Script é inválida."); }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "script.google.com" || !/^\/macros\/s\/[^/]+\/exec$/.test(parsed.pathname)) {
     throw new Error("A URL do Apps Script deve ser a implantação Web App terminada em /exec.");
   }
   return { url, token };
@@ -50,9 +40,7 @@ function turnoExibicao(valor: string) {
 }
 
 function limparErro(erro: unknown) {
-  return (erro instanceof Error ? erro.message : "Falha desconhecida no envio.")
-    .replace(/[\r\n]+/g, " ")
-    .slice(0, 500);
+  return (erro instanceof Error ? erro.message : "Falha desconhecida no envio.").replace(/[\r\n]+/g, " ").slice(0, 500);
 }
 
 const NOMES_SETOR: Record<string, string> = {
@@ -128,10 +116,8 @@ async function enviarViaAppsScript(opts: { reportId: string; to: string[]; subje
   });
   const textoResposta = await resposta.text();
   let retorno: { ok?: boolean; error?: string } = {};
-  try { retorno = JSON.parse(textoResposta) as typeof retorno; } catch { /* tratado abaixo */ }
-  if (!resposta.ok || retorno.ok !== true) {
-    throw new Error(retorno.error || `Apps Script respondeu com status ${resposta.status} ou conteúdo inválido.`);
-  }
+  try { retorno = JSON.parse(textoResposta) as typeof retorno; } catch { }
+  if (!resposta.ok || retorno.ok !== true) throw new Error(retorno.error || `Apps Script respondeu com status ${resposta.status} ou conteúdo inválido.`);
 }
 
 export const enviarRelatorio = createServerFn({ method: "POST" })
@@ -141,30 +127,18 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
     const destinatarios = normalizarDestinatarios(data.destinatarios);
     if (destinatarios.length === 0) throw new Error("Informe ao menos um destinatário válido.");
 
-    const { data: relatorio, error } = await context.supabase
-      .from("relatorios")
-      .select("*")
-      .eq("id", data.relatorioId)
-      .single();
+    const { data: relatorio, error } = await context.supabase.from("relatorios").select("*").eq("id", data.relatorioId).single();
     if (error || !relatorio) throw new Error("Relatório não encontrado ou sem permissão.");
 
     const { data: bloqueio, error: erroBloqueio } = await context.supabase
       .from("relatorios")
-      .update({
-        status_envio: "enviando",
-        destinatarios,
-        tentativas_envio: relatorio.tentativas_envio + 1,
-        erro_envio: null,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status_envio: "enviando", destinatarios, tentativas_envio: relatorio.tentativas_envio + 1, erro_envio: null, updated_at: new Date().toISOString() })
       .eq("id", relatorio.id)
       .in("status_envio", ["aguardando", "falhou", "enviado"])
       .select("id")
       .maybeSingle();
 
-    if (erroBloqueio || !bloqueio) {
-      throw new Error("Este relatório já está sendo enviado. Aguarde alguns segundos e tente novamente.");
-    }
+    if (erroBloqueio || !bloqueio) throw new Error("Este relatório já está sendo enviado. Aguarde alguns segundos e tente novamente.");
 
     try {
       const dataFormatada = dataExibicao(relatorio.data_local);
@@ -192,6 +166,10 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
         `Pendentes: ${txt(campo(totais, "pendentes"))}`,
         `Lançados: ${txt(campo(totais, "lancados"))}`,
         "",
+        ...(() => {
+          const oc = ocorrenciasDoResumo(campo(raiz, "ocorrencias"));
+          return oc ? ["OCORRÊNCIAS OPERACIONAIS", "", textoOcorrencias(oc, false, campo(raiz, "setor")), ""] : [];
+        })(),
         "O relatório completo está anexado em PDF.",
       ].join("\n");
 
@@ -199,38 +177,16 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
       try {
         await enviarViaGmail(envio);
       } catch (erroGmail) {
-        // fallback técnico: só usa o Apps Script se o Gmail não estiver configurado
-        if (erroGmail instanceof Error && erroGmail.message === "GMAIL_NAO_CONFIGURADO" && process.env["APPS_SCRIPT_WEB_APP_URL"]) {
-          await enviarViaAppsScript(envio);
-        } else if (erroGmail instanceof Error && erroGmail.message === "GMAIL_NAO_CONFIGURADO") {
-          throw new Error("O envio por Gmail não está configurado neste projeto.");
-        } else {
-          throw erroGmail;
-        }
+        if (erroGmail instanceof Error && erroGmail.message === "GMAIL_NAO_CONFIGURADO" && process.env["APPS_SCRIPT_WEB_APP_URL"]) await enviarViaAppsScript(envio);
+        else if (erroGmail instanceof Error && erroGmail.message === "GMAIL_NAO_CONFIGURADO") throw new Error("O envio por Gmail não está configurado neste projeto.");
+        else throw erroGmail;
       }
 
-      await context.supabase
-        .from("relatorios")
-        .update({
-          status_envio: "enviado",
-          destinatarios,
-          enviado_em: new Date().toISOString(),
-          erro_envio: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", relatorio.id);
-
+      await context.supabase.from("relatorios").update({ status_envio: "enviado", destinatarios, enviado_em: new Date().toISOString(), erro_envio: null, updated_at: new Date().toISOString() }).eq("id", relatorio.id);
       return { ok: true, destinatarios };
     } catch (erro) {
       const mensagem = limparErro(erro);
-      await context.supabase
-        .from("relatorios")
-        .update({
-          status_envio: "falhou",
-          erro_envio: `${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date())} · ${mensagem}`,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", relatorio.id);
+      await context.supabase.from("relatorios").update({ status_envio: "falhou", erro_envio: `${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date())} · ${mensagem}`, updated_at: new Date().toISOString() }).eq("id", relatorio.id);
       throw new Error(mensagem);
     }
   });
