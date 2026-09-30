@@ -10,6 +10,7 @@ import {
   Menu,
   Plus,
   Repeat,
+  Settings,
   Settings2,
   ShieldCheck,
   TriangleAlert,
@@ -18,7 +19,6 @@ import { lazy, Suspense, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { DrykoLogo } from "@/components/dryko/logo";
-import { ThemeToggle } from "@/components/dryko/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +31,7 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { NOMES_PAPEIS, useAuth } from "@/lib/auth";
+import { useAvatarUrl } from "@/lib/avatar";
 import { dataOperacional } from "@/lib/producao";
 
 const LazyApontamentoRapido = lazy(() =>
@@ -79,6 +80,7 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
   const { isAdmin, isAutorizado, roles, profile, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  const avatarUrl = useAvatarUrl(profile?.avatar_url);
 
   const itens = [
     ...ITENS,
@@ -169,7 +171,7 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
       <div className="border-t border-sidebar-border px-5 py-4 md:p-3">
         <div className="flex items-center gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-foreground md:hidden">
-            <span className="text-base font-bold">{(profile?.nome || "U").trim().charAt(0).toUpperCase()}</span>
+            {avatarUrl ? <img src={avatarUrl} alt="" className="size-full rounded-full object-cover" /> : <span className="text-base font-bold">{(profile?.nome || "U").trim().charAt(0).toUpperCase()}</span>}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-bold md:text-sm md:font-semibold">{profile?.nome || "Usuário"}</p>
@@ -180,10 +182,17 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
             </p>
           </div>
         </div>
+        <Link
+          to="/configuracoes"
+          onClick={onNavigate}
+          className={`mt-2 flex h-11 w-full items-center gap-3 rounded-md px-3 text-[15px] font-semibold transition-colors md:h-9 md:text-sm md:font-medium ${pathname.startsWith("/configuracoes") ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`}
+        >
+          <Settings className="size-5 md:size-4" /> Configurações
+        </Link>
         <Button
           variant="ghost"
           size="sm"
-          className="mt-2 h-11 w-full justify-start gap-3 px-3 text-[15px] font-semibold text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:h-9 md:text-sm md:font-medium"
+          className="mt-1 h-11 w-full justify-start gap-3 px-3 text-[15px] font-semibold text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:h-9 md:text-sm md:font-medium"
           onClick={sair}
         >
           <LogOut className="size-5 md:size-4" /> Sair
@@ -330,7 +339,6 @@ export function AppShell({
                 )}
               </Button>
 
-              <ThemeToggle />
 
               <Button
                 type="button"
