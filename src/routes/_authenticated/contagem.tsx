@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
 import {
   dataOperacional,
   horaCheiaProducao,
@@ -41,6 +42,7 @@ type Registro = {
   metragem: number | null;
   area_m2: number | null;
   data_hora_producao: string;
+  id: string;
 };
 
 type MetaTurno = Database["public"]["Tables"]["metas_turno"]["Row"];
@@ -102,7 +104,8 @@ type ProgramacaoItem = {
 type AbaContagem = "hora" | "programacao";
 
 function Contagem() {
-  const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
+  const { profile, user, canFinalizeGoals, canProgramProduction, isAdmin } = useAuth();
+  const [recarga, setRecarga] = useState(0);
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
   const dataAtual = turno ? dataOperacional(turno) : "";
@@ -167,7 +170,7 @@ function Contagem() {
       supabase
         .from("apontamentos")
         .select(
-          "produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
         )
         .eq("setor", setor)
         .eq("turno", turno)
@@ -216,7 +219,7 @@ function Contagem() {
         setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
       }
     });
-  }, [dataAtual, setor, turno]);
+  }, [dataAtual, setor, turno, recarga]);
 
   useEffect(() => {
     if (
@@ -252,7 +255,7 @@ function Contagem() {
       supabase
         .from("apontamentos")
         .select(
-          "produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
         )
         .eq("setor", setor)
         .eq("data_local", dataAtual),
@@ -656,6 +659,13 @@ function Contagem() {
           </TabsList>
 
           <TabsContent value="hora" className="space-y-4">
+            {isAdmin && setor ? (
+              <AjustarHorarioApontamentos
+                registros={registros}
+                setor={setor}
+                onAjustado={() => setRecarga((v) => v + 1)}
+              />
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <ResumoGrande label="Previsto" valor={`${fmt(metaTotal)} ${unidade}`} />
               <ResumoGrande label="Realizado" valor={`${fmt(realizadoTurno)} ${unidade}`} destaque />
