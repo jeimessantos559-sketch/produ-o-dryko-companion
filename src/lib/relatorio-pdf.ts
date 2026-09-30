@@ -1,5 +1,4 @@
 import type { Json } from "@/integrations/supabase/types";
-import { consolidarOcorrencias, linhasOcorrenciasLivres, ocorrenciasDoResumo, textoOcorrencias, usaOcorrenciasEstruturadas } from "@/lib/ocorrencias-operacionais";
 
 type ResumoRegistro = {
   totais?: Json;
@@ -146,10 +145,6 @@ export function linhasDoRelatorio(resumo: Json) {
       ? `Producao: ${texto(totais.area)} m2`
       : `PLTs: ${texto(totais.plts)} | Rolos: ${texto(totais.rolos)} | Producao: ${texto(totais.metragem)} ${unidadeMetragem(setor)}`,
     `Registros detalhados: ${apontamentos.length}`,
-    ...(() => {
-      const oc = ocorrenciasDoResumo(raiz["ocorrencias"]);
-      return oc ? ["", usaOcorrenciasEstruturadas(raiz.setor) ? "OCORRENCIAS OPERACIONAIS" : "OCORRENCIAS GERAIS", ...textoOcorrencias(oc, false, raiz.setor).split("\n")] : [];
-    })(),
   ];
 }
 
@@ -360,66 +355,6 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
   return paginas;
 }
 
-function montarPaginasOcorrencias(resumo: Json) {
-  const raiz = registro(resumo);
-  const lista = ocorrenciasDoResumo(raiz["ocorrencias"]);
-  if (!lista) return [];
-  const estruturado = usaOcorrenciasEstruturadas(raiz.setor);
-  if (!estruturado && lista.length === 0) return [];
-  const { grupos, outras } = estruturado
-    ? consolidarOcorrencias(lista)
-    : { grupos: [], outras: linhasOcorrenciasLivres(lista) };
-  const subtitulo = `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`;
-  const paginas: string[][] = [];
-  let comandos: string[] = [];
-  let y = 0;
-  const novaPagina = () => {
-    comandos = [];
-    paginas.push(comandos);
-    cabecalhoPagina(comandos, estruturado ? "OCORRENCIAS OPERACIONAIS" : "OCORRENCIAS GERAIS", subtitulo);
-    y = 732;
-  };
-  const garantir = (altura: number) => {
-    if (y - altura < 60) novaPagina();
-  };
-  const quebrar = (valor: string, max: number) => {
-    const palavras = semAcentos(valor).split(/\s+/);
-    const linhas: string[] = [];
-    let atual = "";
-    for (const p of palavras) {
-      if ((atual + " " + p).trim().length > max) {
-        if (atual) linhas.push(atual);
-        atual = p.slice(0, max);
-      } else atual = (atual + " " + p).trim();
-    }
-    if (atual) linhas.push(atual);
-    return linhas.length ? linhas : ["-"];
-  };
-  novaPagina();
-  const secoes = [
-    ...grupos,
-    ...(outras.length ? [{ titulo: estruturado ? "Outras ocorrencias" : "Ocorrencias gerais do turno", itens: [{ equipamento: estruturado ? "Geral" : "Registro", linhas: outras, comProblema: true }] }] : []),
-  ];
-  for (const grupo of secoes) {
-    garantir(40);
-    comandos.push(comandoRetangulo(36, y - 6, 523, 20, "0.96 0.93 0.93"));
-    comandos.push(comandoTexto(grupo.titulo.toUpperCase(), 44, y, 9.5, true, "0.55 0.04 0.06"));
-    y -= 24;
-    for (const item of grupo.itens) {
-      const linhas = item.linhas.flatMap((l) => quebrar(l, 70));
-      garantir(14 * linhas.length + 6);
-      comandos.push(comandoTexto(limitar(item.equipamento, 26), 44, y, 8.8, true));
-      const cor = item.comProblema ? "0.67 0.14 0.05" : "0.07 0.45 0.23";
-      linhas.forEach((l, i) => comandos.push(comandoTexto(l, 190, y - i * 13, 8.5, false, cor)));
-      y -= 13 * linhas.length + 5;
-      comandos.push(comandoLinha(44, y + 4, 557, y + 4, "0.92 0.92 0.94"));
-      y -= 4;
-    }
-    y -= 8;
-  }
-  return paginas;
-}
-
 function montarPdf(paginas: string[][]) {
   const totalPaginas = paginas.length;
   paginas.forEach((comandos, indice) => rodapePagina(comandos, indice + 1, totalPaginas));
@@ -457,7 +392,7 @@ function montarPdf(paginas: string[][]) {
 export function gerarPdfRelatorio(resumo: Json) {
   const primeira = montarPrimeiraPagina(resumo);
   const detalhamento = montarPaginasDetalhamento(resumo, primeira.consumidos);
-  return montarPdf([primeira.comandos, ...detalhamento, ...montarPaginasOcorrencias(resumo)]);
+  return montarPdf([primeira.comandos, ...detalhamento]);
 }
 
 export function arquivoPdf(resumo: Json, nome: string) {
