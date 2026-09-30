@@ -195,7 +195,7 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
         "",
         ...(() => {
           const oc = ocorrenciasDoResumo(campo(raiz, "ocorrencias"));
-          return oc ? ["OCORRÊNCIAS OPERACIONAIS", "", textoOcorrencias(oc, false), ""] : [];
+          return oc ? ["OCORRÊNCIAS OPERACIONAIS", "", textoOcorrencias(oc, false, campo(raiz, "setor")), ""] : [];
         })(),
         "O relatório completo está anexado em PDF.",
       ].join("\n");

@@ -418,7 +418,7 @@ function Programacao() {
       "",
     ];
 
-    linhas.push(textoOcorrencias(ocorrencias), "");
+    linhas.push(textoOcorrencias(ocorrencias, true, setor), "");
 
 
 
