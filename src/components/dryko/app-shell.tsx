@@ -1,5 +1,4 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useAvatarUrl } from "@/lib/avatar";
 import {
   Bell,
   CalendarDays,
@@ -33,6 +32,7 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { NOMES_PAPEIS, useAuth } from "@/lib/auth";
+import { useAvatarUrl } from "@/lib/avatar";
 import { dataOperacional } from "@/lib/producao";
 
 const LazyApontamentoRapido = lazy(() =>
