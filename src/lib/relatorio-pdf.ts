@@ -147,7 +147,7 @@ export function linhasDoRelatorio(resumo: Json) {
       : `PLTs: ${texto(totais.plts)} | Rolos: ${texto(totais.rolos)} | Producao: ${texto(totais.metragem)} ${unidadeMetragem(setor)}`,
     `Registros detalhados: ${apontamentos.length}`,
     ...(() => {
-      const oc = ocorrenciasDoResumo(raiz.ocorrencias);
+      const oc = ocorrenciasDoResumo(raiz["ocorrencias"]);
       return oc ? ["", "OCORRENCIAS OPERACIONAIS", ...textoOcorrencias(oc, false).split("\n")] : [];
     })(),
   ];
@@ -362,7 +362,7 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
 
 function montarPaginasOcorrencias(resumo: Json) {
   const raiz = registro(resumo);
-  const lista = ocorrenciasDoResumo(raiz.ocorrencias);
+  const lista = ocorrenciasDoResumo(raiz["ocorrencias"]);
   if (!lista) return [];
   const { grupos, outras } = consolidarOcorrencias(lista);
   const subtitulo = `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`;
