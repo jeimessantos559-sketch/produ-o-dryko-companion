@@ -95,10 +95,10 @@ export function ocorrenciasDoResumo(valor: unknown): OcorrenciaOperacional[] | n
   return valor
     .filter((v): v is Record<string, unknown> => !!v && typeof v === "object")
     .map((v) => ({
-      id: String(v.id ?? ""),
-      equipamento: typeof v.equipamento === "string" ? v.equipamento : null,
-      tipo_status: typeof v.tipo_status === "string" ? v.tipo_status : null,
-      mensagem: String(v.mensagem ?? ""),
-      created_at: String(v.created_at ?? ""),
+      id: String(v["id"] ?? ""),
+      equipamento: typeof v["equipamento"] === "string" ? v["equipamento"] : null,
+      tipo_status: typeof v["tipo_status"] === "string" ? v["tipo_status"] : null,
+      mensagem: String(v["mensagem"] ?? ""),
+      created_at: String(v["created_at"] ?? ""),
     }));
 }
