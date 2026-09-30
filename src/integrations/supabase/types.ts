@@ -790,6 +790,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ajustar_horario_apontamento: {
+        Args: { p_data_hora: string; p_id: string }
+        Returns: undefined
+      }
       alterar_status_meta: {
         Args: {
           p_meta_id: string
