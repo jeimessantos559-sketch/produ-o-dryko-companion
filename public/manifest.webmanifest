@@ -13,21 +13,21 @@
   "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "/ap-icon-192.svg",
+      "src": "/ap-pwa-192-v4.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/ap-icon-512.svg",
+      "src": "/ap-pwa-512-v4.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/ap-icon-512.svg",
+      "src": "/ap-pwa-maskable-512-v4.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],
@@ -36,13 +36,13 @@
       "name": "Painel",
       "short_name": "Painel",
       "url": "/painel",
-      "icons": [{ "src": "/ap-icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/ap-pwa-192-v4.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Programação",
       "short_name": "Programação",
       "url": "/contagem",
-      "icons": [{ "src": "/ap-icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/ap-pwa-192-v4.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }
