@@ -751,7 +751,9 @@ function Programacao() {
                     <MessageSquare className="size-5 text-primary" /> Registrar ocorrência
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Escolha o equipamento e a situação. Equipamentos sem registro saem como “Sem ocorrências”.
+                    {setor === "corte" || setor === "fitas"
+                      ? "Escolha o equipamento e a situação. Equipamentos sem registro saem como “Sem ocorrências”."
+                      : "Digite a ocorrência do turno em texto livre."}
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -776,8 +778,9 @@ function Programacao() {
                 <div className="flex gap-2">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0" />
                   <p>
-                    Ao gerar, o sistema reúne as mensagens acima, as paradas registradas no Hora a
-                    hora e os produtos programados que ainda ficaram com saldo.
+                    {setor === "corte" || setor === "fitas"
+                      ? "Ao gerar, o sistema cria o resumo no padrão por equipamentos, com “Sem ocorrências” para os equipamentos sem registro."
+                      : "Ao gerar, o sistema cria uma lista simples das ocorrências registradas no turno."}
                   </p>
                 </div>
               </div>
