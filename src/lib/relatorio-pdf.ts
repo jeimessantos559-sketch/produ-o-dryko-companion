@@ -148,7 +148,7 @@ export function linhasDoRelatorio(resumo: Json) {
     `Registros detalhados: ${apontamentos.length}`,
     ...(() => {
       const oc = ocorrenciasDoResumo(raiz["ocorrencias"]);
-      return oc ? ["", "OCORRENCIAS OPERACIONAIS", ...textoOcorrencias(oc, false, raiz.setor).split("\n")] : [];
+      return oc ? ["", usaOcorrenciasEstruturadas(raiz.setor) ? "OCORRENCIAS OPERACIONAIS" : "OCORRENCIAS GERAIS", ...textoOcorrencias(oc, false, raiz.setor).split("\n")] : [];
     })(),
   ];
 }
@@ -376,7 +376,7 @@ function montarPaginasOcorrencias(resumo: Json) {
   const novaPagina = () => {
     comandos = [];
     paginas.push(comandos);
-    cabecalhoPagina(comandos, "OCORRENCIAS OPERACIONAIS", subtitulo);
+    cabecalhoPagina(comandos, estruturado ? "OCORRENCIAS OPERACIONAIS" : "OCORRENCIAS GERAIS", subtitulo);
     y = 732;
   };
   const garantir = (altura: number) => {
@@ -398,7 +398,7 @@ function montarPaginasOcorrencias(resumo: Json) {
   novaPagina();
   const secoes = [
     ...grupos,
-    ...(outras.length ? [{ titulo: estruturado ? "Outras ocorrencias" : "Ocorrencias registradas", itens: [{ equipamento: "Geral", linhas: outras, comProblema: true }] }] : []),
+    ...(outras.length ? [{ titulo: estruturado ? "Outras ocorrencias" : "Ocorrencias gerais do turno", itens: [{ equipamento: estruturado ? "Geral" : "Registro", linhas: outras, comProblema: true }] }] : []),
   ];
   for (const grupo of secoes) {
     garantir(40);

@@ -421,7 +421,7 @@ function OcorrenciasRevisao({ lista, setor }: { lista: OcorrenciaOperacional[]; 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Ocorrências operacionais</CardTitle>
+        <CardTitle className="text-base">{estruturado ? "Ocorrências operacionais" : "Ocorrências gerais do turno"}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {grupos.map((grupo) => (

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { gerarPdfRelatorio } from "@/lib/relatorio-pdf";
-import { ocorrenciasDoResumo, textoOcorrencias } from "@/lib/ocorrencias-operacionais";
+import { ocorrenciasDoResumo, textoOcorrencias, usaOcorrenciasEstruturadas } from "@/lib/ocorrencias-operacionais";
 
 const entrada = z.object({
   relatorioId: z.string().uuid(),
@@ -195,7 +195,7 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
         "",
         ...(() => {
           const oc = ocorrenciasDoResumo(campo(raiz, "ocorrencias"));
-          return oc ? ["OCORRÊNCIAS OPERACIONAIS", "", textoOcorrencias(oc, false, campo(raiz, "setor")), ""] : [];
+          return oc ? [usaOcorrenciasEstruturadas(campo(raiz, "setor")) ? "OCORRÊNCIAS OPERACIONAIS" : "OCORRÊNCIAS GERAIS", "", textoOcorrencias(oc, false, campo(raiz, "setor")), ""] : [];
         })(),
         "O relatório completo está anexado em PDF.",
       ].join("\n");
