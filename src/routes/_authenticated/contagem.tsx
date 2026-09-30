@@ -21,6 +21,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
+import { textoOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
 import {
   dataOperacional,
@@ -85,11 +87,7 @@ type AjusteHora = {
   motivo_parada: string | null;
 };
 
-type Ocorrencia = {
-  id: string;
-  mensagem: string;
-  created_at: string;
-};
+type Ocorrencia = OcorrenciaOperacional;
 
 type ProgramacaoItem = {
   id: string;
@@ -104,7 +102,7 @@ type ProgramacaoItem = {
 type AbaContagem = "hora" | "programacao";
 
 function Contagem() {
-  const { profile, user, canFinalizeGoals, canProgramProduction, isAdmin } = useAuth();
+  const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
   const [recarga, setRecarga] = useState(0);
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
@@ -127,14 +125,12 @@ function Contagem() {
   const [produtoId, setProdutoId] = useState("");
   const [referencia, setReferencia] = useState("");
   const [quantidadePrevista, setQuantidadePrevista] = useState("");
-  const [mensagemOcorrencia, setMensagemOcorrencia] = useState("");
   const [textoGerado, setTextoGerado] = useState("");
   const [erro, setErro] = useState(false);
   const [erroMeta, setErroMeta] = useState(false);
   const [carregandoProgramacao, setCarregandoProgramacao] = useState(false);
   const [salvandoMeta, setSalvandoMeta] = useState(false);
   const [salvandoProgramacao, setSalvandoProgramacao] = useState(false);
-  const [salvandoOcorrencia, setSalvandoOcorrencia] = useState(false);
   const carregamentoAtual = useRef(0);
   const carregamentoProgramacaoAtual = useRef(0);
   const cacheProgramacao = useRef<{ chave: string; at: number } | null>(null);
@@ -191,7 +187,7 @@ function Contagem() {
         .eq("data_local", dataAtual),
       (supabase as any)
         .from("ocorrencias_turno")
-        .select("id, mensagem, created_at")
+        .select("id, equipamento, tipo_status, mensagem, created_at")
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
@@ -536,29 +532,6 @@ function Contagem() {
     }
   }
 
-  async function salvarOcorrencia() {
-    if (!user || !setor || !turno || salvandoOcorrencia) return;
-    const mensagem = mensagemOcorrencia.trim();
-    if (!mensagem) return;
-
-    setSalvandoOcorrencia(true);
-    const { data, error } = await (supabase as any)
-      .from("ocorrencias_turno")
-      .insert({ setor, turno, data_local: dataAtual, mensagem, criado_por: user.id })
-      .select("id, mensagem, created_at")
-      .single();
-    setSalvandoOcorrencia(false);
-
-    if (error || !data) {
-      toast.error(error?.message || "Não foi possível salvar a ocorrência.");
-      return;
-    }
-    setOcorrencias((atuais) => [...atuais, data as Ocorrencia]);
-    setMensagemOcorrencia("");
-    setTextoGerado("");
-    toast.success("Ocorrência registrada.");
-  }
-
   function gerarOcorrencias() {
     if (!setor || !turno) return;
     const linhas = [
@@ -566,54 +539,8 @@ function Contagem() {
       "",
     ];
 
-    if (ocorrencias.length) {
-      linhas.push("Ocorrências registradas:");
-      ocorrencias.forEach((item) =>
-        linhas.push(`• ${horaMinutoLocal(item.created_at)} - ${item.mensagem}`),
-      );
-      linhas.push("");
-    }
+    linhas.push(textoOcorrencias(ocorrencias, true, setor), "");
 
-    const paradas = ajustesHora
-      .filter((item) => Number(item.parada_minutos ?? 0) > 0)
-      .sort(
-        (a, b) =>
-          ordemHoraTurno(chaveHora(a.hora), turno) - ordemHoraTurno(chaveHora(b.hora), turno),
-      );
-    if (paradas.length) {
-      linhas.push("Paradas:");
-      paradas.forEach((item) =>
-        linhas.push(
-          `• ${chaveHora(item.hora)} - ${item.parada_minutos} min - ${
-            item.motivo_parada || "Sem motivo informado"
-          }`,
-        ),
-      );
-      linhas.push("");
-    }
-
-    const comSaldo = resumoProgramacao.filter((item) => item.saldo > 0.0001);
-    if (comSaldo.length) {
-      linhas.push("Programação com saldo:");
-      comSaldo.forEach((item) => {
-        const ref = item.lote
-          ? ` - Lote ${item.lote}`
-          : setor === "mantas"
-            ? ""
-            : ` - OP ${item.op ?? "—"}`;
-        linhas.push(
-          `• ${item.produto_nome}${ref}: previsto ${fmt(item.previsto)} ${
-            item.unidade
-          }, realizado ${fmt(item.realizado)} ${item.unidade}, saldo ${fmt(item.saldo)} ${
-            item.unidade
-          }`,
-        );
-      });
-      linhas.push("");
-    }
-
-    if (!ocorrencias.length && !paradas.length && !comSaldo.length)
-      linhas.push("Sem ocorrências registradas no turno.");
     setTextoGerado(linhas.join("\n").trim());
   }
 
@@ -659,7 +586,7 @@ function Contagem() {
           </TabsList>
 
           <TabsContent value="hora" className="space-y-4">
-            {isAdmin && setor ? (
+            {setor ? (
               <AjustarHorarioApontamentos
                 registros={registros}
                 setor={setor}
@@ -741,29 +668,17 @@ function Contagem() {
                         <Input
                           inputMode="decimal"
                           value={horasDigitadas}
-                          onChange={(e) =>
-                            setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))
-                          }
+                          onChange={(e) => setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))}
                           placeholder="Ex.: 9:28"
                         />
                       </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Digite o tempo que quiser, como 9:28, 8:45 ou 7,5 horas.
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">Digite o tempo que quiser, como 9:28, 8:45 ou 7,5 horas.</p>
                     <div className="rounded-xl bg-muted p-3 text-center">
-                      <p className="text-[10px] font-bold uppercase text-muted-foreground">
-                        Previsto por hora
-                      </p>
-                      <p className="mt-1 text-xl font-black text-primary">
-                        {fmt(metaHoraSimulada)} {unidade}
-                      </p>
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Previsto por hora</p>
+                      <p className="mt-1 text-xl font-black text-primary">{fmt(metaHoraSimulada)} {unidade}</p>
                     </div>
-                    <Button
-                      className="w-full touch-manipulation"
-                      disabled={salvandoMeta || metaSimulada <= 0 || horasSimuladas <= 0}
-                      onClick={() => void salvarMeta()}
-                    >
+                    <Button className="w-full touch-manipulation" disabled={salvandoMeta || metaSimulada <= 0 || horasSimuladas <= 0} onClick={() => void salvarMeta()}>
                       <Save className="size-4" /> {salvandoMeta ? "Salvando..." : "Salvar meta"}
                     </Button>
                   </>
@@ -781,185 +696,83 @@ function Contagem() {
             {programacaoSuportada && (
               <>
                 {canProgramProduction ? (
-                <Card className="rounded-2xl border-border shadow-sm">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <PackageCheck className="size-5 text-primary" /> Produtos que vão rodar no dia
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label>Produto</Label>
-                      <ProdutoSelect
-                        produtos={produtos}
-                        value={produtoId}
-                        onValueChange={setProdutoId}
-                        carregando={carregandoProgramacao}
-                        placeholder="Selecione"
-                      />
-                    </div>
-                    <div className="space-y-1 sm:col-span-2">
-                      <Label>Quantidade prevista ({unidadeProg})</Label>
-                      <Input
-                        inputMode="decimal"
-                        value={quantidadePrevista}
-                        onChange={(e) => setQuantidadePrevista(e.target.value)}
-                        placeholder="0"
-                      />
-                    </div>
-                    <Button
-                      className="touch-manipulation sm:col-span-2"
-                      disabled={
-                        carregandoProgramacao ||
-                        salvandoProgramacao ||
-                        !produtoId ||
-                        !quantidadePrevista.trim()
-                      }
-                      onClick={() => void salvarProgramacao()}
-                    >
-                      <Save className="size-4" />
-                      {salvandoProgramacao ? "Salvando..." : "Adicionar à programação"}
-                    </Button>
-                  </CardContent>
-                </Card>
+                  <Card className="rounded-2xl border-border shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-base"><PackageCheck className="size-5 text-primary" /> Produtos que vão rodar no dia</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label>Produto</Label>
+                        <ProdutoSelect produtos={produtos} value={produtoId} onValueChange={setProdutoId} carregando={carregandoProgramacao} placeholder="Selecione" />
+                      </div>
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label>Quantidade prevista ({unidadeProg})</Label>
+                        <Input inputMode="decimal" value={quantidadePrevista} onChange={(e) => setQuantidadePrevista(e.target.value)} placeholder="0" />
+                      </div>
+                      <Button className="touch-manipulation sm:col-span-2" disabled={carregandoProgramacao || salvandoProgramacao || !produtoId || !quantidadePrevista.trim()} onClick={() => void salvarProgramacao()}>
+                        <Save className="size-4" /> {salvandoProgramacao ? "Salvando..." : "Adicionar à programação"}
+                      </Button>
+                    </CardContent>
+                  </Card>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Somente administrador ou Programador de Produção pode alterar a programação.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Somente administrador ou Programador de Produção pode alterar a programação.</p>
                 )}
 
                 <Card className="rounded-2xl border-border shadow-sm">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Programação do dia <span className="text-xs font-normal text-muted-foreground">· produção acumulada entre turnos</span></CardTitle>
-                  </CardHeader>
+                  <CardHeader className="pb-2"><CardTitle className="text-base">Programação do dia <span className="text-xs font-normal text-muted-foreground">· produção acumulada entre turnos</span></CardTitle></CardHeader>
                   <CardContent className="space-y-2">
                     {carregandoProgramacao ? (
                       <p className="text-sm text-muted-foreground">Carregando programação...</p>
                     ) : resumoProgramacao.length === 0 ? (
                       <p className="text-sm text-muted-foreground">Nenhum produto programado.</p>
-                    ) : (
-                      resumoProgramacao.map((item) => (
-                        <div
-                          key={item.id}
-                          className="rounded-xl border border-border bg-muted/30 p-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-bold">{item.produto_nome}</p>
-                              {(
-                                <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                                  <span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>
-                                  {canProgramProduction && (
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center gap-1 font-semibold text-primary underline-offset-2 hover:underline"
-                                      onClick={() => void editarReferencia(item.id, setor === "mantas" ? item.lote : item.op)}
-                                    >
-                                      <Pencil className="size-3" /> {setor === "mantas" ? "Editar lote" : "Editar OP"}
-                                    </button>
-                                  )}
-                                </div>
+                    ) : resumoProgramacao.map((item) => (
+                      <div key={item.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-bold">{item.produto_nome}</p>
+                            <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                              <span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>
+                              {canProgramProduction && (
+                                <button type="button" className="inline-flex items-center gap-1 font-semibold text-primary underline-offset-2 hover:underline" onClick={() => void editarReferencia(item.id, setor === "mantas" ? item.lote : item.op)}>
+                                  <Pencil className="size-3" /> {setor === "mantas" ? "Editar lote" : "Editar OP"}
+                                </button>
                               )}
                             </div>
-                            {canProgramProduction && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8 touch-manipulation text-red-600"
-                              onClick={() => void excluirProgramacao(item.id)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                            )}
                           </div>
-                          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                            <Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} />
-                            <Mini
-                              label="Produzido no dia"
-                              valor={`${fmt(item.realizado)} ${item.unidade}`}
-                              destaque
-                            />
-                            <Mini
-                              label="Saldo"
-                              valor={`${fmt(item.saldo)} ${item.unidade}`}
-                              alerta={item.saldo > 0}
-                            />
-                          </div>
+                          {canProgramProduction && (
+                            <Button size="icon" variant="ghost" className="size-8 touch-manipulation text-red-600" onClick={() => void excluirProgramacao(item.id)}><Trash2 className="size-4" /></Button>
+                          )}
                         </div>
-                      ))
-                    )}
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                          <Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} />
+                          <Mini label="Produzido no dia" valor={`${fmt(item.realizado)} ${item.unidade}`} destaque />
+                          <Mini label="Saldo" valor={`${fmt(item.saldo)} ${item.unidade}`} alerta={item.saldo > 0} />
+                        </div>
+                      </div>
+                    ))}
                   </CardContent>
                 </Card>
               </>
             )}
 
             <Card className="rounded-2xl border-border shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <MessageSquare className="size-5 text-primary" /> Ocorrências do turno
-                </CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-5 text-primary" /> Ocorrências do turno</CardTitle></CardHeader>
               <CardContent className="space-y-3">
-                <textarea
-                  value={mensagemOcorrencia}
-                  onChange={(e) => setMensagemOcorrencia(e.target.value)}
-                  maxLength={1500}
-                  rows={4}
-                  placeholder="Digite a ocorrência..."
-                  className="w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                />
-                <Button
-                  className="w-full touch-manipulation"
-                  disabled={salvandoOcorrencia || !mensagemOcorrencia.trim()}
-                  onClick={() => void salvarOcorrencia()}
-                >
-                  <Save className="size-4" />
-                  {salvandoOcorrencia ? "Salvando..." : "Registrar ocorrência"}
-                </Button>
-                {ocorrencias.length > 0 && (
-                  <div className="space-y-2">
-                    {ocorrencias.map((item) => (
-                      <div
-                        key={item.id}
-                        className="rounded-xl bg-amber-100/80 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
-                      >
-                        <strong className="mr-2">{horaMinutoLocal(item.created_at)}</strong>
-                        {item.mensagem}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {setor && turno ? (
+                  <OcorrenciasOperacionaisForm setor={setor} turno={turno} dataLocal={dataAtual} userId={user?.id} ocorrencias={ocorrencias} onChange={(lista) => { setOcorrencias(lista); setTextoGerado(""); }} />
+                ) : null}
               </CardContent>
             </Card>
 
-            <Button
-              className="h-12 w-full touch-manipulation text-base font-bold"
-              onClick={gerarOcorrencias}
-            >
-              <MessageSquare className="size-5" /> Gerar ocorrências
-            </Button>
+            <Button className="h-12 w-full touch-manipulation text-base font-bold" onClick={gerarOcorrencias}><MessageSquare className="size-5" /> Gerar ocorrências</Button>
 
             {textoGerado && (
               <Card className="rounded-2xl border-primary/30">
                 <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                   <CardTitle className="text-base">Resumo gerado</CardTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="touch-manipulation"
-                    onClick={() => void copiarOcorrencias()}
-                  >
-                    <ClipboardCopy className="size-4" /> Copiar
-                  </Button>
+                  <Button variant="outline" size="sm" className="touch-manipulation" onClick={() => void copiarOcorrencias()}><ClipboardCopy className="size-4" /> Copiar</Button>
                 </CardHeader>
-                <CardContent>
-                  <textarea
-                    readOnly
-                    value={textoGerado}
-                    rows={12}
-                    className="w-full resize-y rounded-xl border border-input bg-muted/30 px-3 py-2 font-mono text-xs text-foreground"
-                  />
-                </CardContent>
+                <CardContent><textarea readOnly value={textoGerado} rows={12} className="w-full resize-y rounded-xl border border-input bg-muted/30 px-3 py-2 font-mono text-xs text-foreground" /></CardContent>
               </Card>
             )}
           </TabsContent>
@@ -969,334 +782,53 @@ function Contagem() {
   );
 }
 
-function HoraCard({
-  item,
-  setor,
-  unidade,
-  mostrarMeta,
-}: {
-  item: HoraPlanejada;
-  setor: string | null | undefined;
-  unidade: string;
-  mostrarMeta: boolean;
-}) {
+function HoraCard({ item, setor, unidade, mostrarMeta }: { item: HoraPlanejada; setor: string | null | undefined; unidade: string; mostrarMeta: boolean }) {
   return (
     <article className="overflow-hidden rounded-[1.6rem] border border-border bg-card shadow-sm">
       <div className="p-4 sm:p-5">
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-xl font-black text-foreground">{intervaloHora(item.hora)}</p>
-            <p className="mt-2 text-sm font-semibold text-muted-foreground">
-              {resumoProdutosHora(item, setor)}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-2xl font-black text-primary">{destaqueHora(item, setor)}</p>
-            <p className="mt-1 text-sm font-bold text-muted-foreground">
-              {secundarioHora(item, setor)}
-            </p>
-          </div>
+          <div className="min-w-0"><p className="text-xl font-black text-foreground">{intervaloHora(item.hora)}</p><p className="mt-2 text-sm font-semibold text-muted-foreground">{resumoProdutosHora(item, setor)}</p></div>
+          <div className="shrink-0 text-right"><p className="text-2xl font-black text-primary">{destaqueHora(item, setor)}</p><p className="mt-1 text-sm font-bold text-muted-foreground">{secundarioHora(item, setor)}</p></div>
         </div>
-
-        {mostrarMeta && (
-          <>
-            <div className="my-4 border-t border-border" />
-            <div className="grid grid-cols-3 gap-3">
-              <MetricaHora label="Previsto" valor={`${fmt(item.metaHora)} ${unidade}`} />
-              <MetricaHora
-                label="Acumulado"
-                valor={`${fmt(item.realizadoAcumulado)} ${unidade}`}
-              />
-              <MetricaHora
-                label="Δ acumulado"
-                valor={`${item.saldoAcumulado > 0 ? "+" : ""}${fmt(item.saldoAcumulado)} ${unidade}`}
-                negativo={item.saldoAcumulado < 0}
-              />
-            </div>
-          </>
-        )}
-
-        {item.ocorrencias.length > 0 && (
-          <div className="mt-4 space-y-2">
-            {item.ocorrencias.map((mensagem, index) => (
-              <div
-                key={`${item.hora}-${index}`}
-                className="flex items-start gap-2 rounded-xl bg-amber-100/80 px-3 py-2.5 text-sm font-medium text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
-              >
-                <MessageSquare className="mt-0.5 size-4 shrink-0" />
-                <span>{mensagem}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {mostrarMeta && <><div className="my-4 border-t border-border" /><div className="grid grid-cols-3 gap-3"><MetricaHora label="Previsto" valor={`${fmt(item.metaHora)} ${unidade}`} /><MetricaHora label="Acumulado" valor={`${fmt(item.realizadoAcumulado)} ${unidade}`} /><MetricaHora label="Δ acumulado" valor={`${item.saldoAcumulado > 0 ? "+" : ""}${fmt(item.saldoAcumulado)} ${unidade}`} negativo={item.saldoAcumulado < 0} /></div></>}
+        {item.ocorrencias.length > 0 && <div className="mt-4 space-y-2">{item.ocorrencias.map((mensagem, index) => <div key={`${item.hora}-${index}`} className="flex items-start gap-2 rounded-xl bg-amber-100/80 px-3 py-2.5 text-sm font-medium text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"><MessageSquare className="mt-0.5 size-4 shrink-0" /><span>{mensagem}</span></div>)}</div>}
       </div>
     </article>
   );
 }
 
-function ResumoGrande({
-  label,
-  valor,
-  destaque = false,
-  className = "",
-}: {
-  label: string;
-  valor: string;
-  destaque?: boolean;
-  className?: string;
-}) {
-  return (
-    <Card
-      className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}
-    >
-      <CardContent className="p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p
-          className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}
-        >
-          {valor}
-        </p>
-      </CardContent>
-    </Card>
-  );
+function ResumoGrande({ label, valor, destaque = false, className = "" }: { label: string; valor: string; destaque?: boolean; className?: string }) {
+  return <Card className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}><CardContent className="p-4"><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p><p className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}>{valor}</p></CardContent></Card>;
 }
 
-function MetricaHora({
-  label,
-  valor,
-  negativo = false,
-}: {
-  label: string;
-  valor: string;
-  negativo?: boolean;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p
-        className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}
-      >
-        {valor}
-      </p>
-    </div>
-  );
+function MetricaHora({ label, valor, negativo = false }: { label: string; valor: string; negativo?: boolean }) {
+  return <div className="min-w-0"><p className="text-xs font-semibold text-muted-foreground">{label}</p><p className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}>{valor}</p></div>;
 }
 
-function Mini({
-  label,
-  valor,
-  destaque = false,
-  alerta = false,
-}: {
-  label: string;
-  valor: string;
-  destaque?: boolean;
-  alerta?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-lg p-2 ${
-        alerta
-          ? "bg-amber-100/80 dark:bg-amber-950/50"
-          : destaque
-            ? "bg-primary/10"
-            : "bg-muted"
-      }`}
-    >
-      <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
-      <p
-        className={`font-bold ${
-          alerta
-            ? "text-amber-900 dark:text-amber-100"
-            : destaque
-              ? "text-primary"
-              : ""
-        }`}
-      >
-        {valor}
-      </p>
-    </div>
-  );
+function Mini({ label, valor, destaque = false, alerta = false }: { label: string; valor: string; destaque?: boolean; alerta?: boolean }) {
+  return <div className={`rounded-lg p-2 ${alerta ? "bg-amber-100/80 dark:bg-amber-950/50" : destaque ? "bg-primary/10" : "bg-muted"}`}><p className="text-[10px] uppercase text-muted-foreground">{label}</p><p className={`font-bold ${alerta ? "text-amber-900 dark:text-amber-100" : destaque ? "text-primary" : ""}`}>{valor}</p></div>;
 }
 
-function linhaVazia(produto: string): Linha {
-  return { produto, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0 };
-}
-
-function horaVazia(hora: string): HoraInterna {
-  return {
-    hora,
-    apontamentos: 0,
-    plts: 0,
-    rolos: 0,
-    metragem: 0,
-    area: 0,
-    produtos: new Map(),
-  };
-}
-
-function horaVaziaFinal(hora: string): Hora {
-  return { hora, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0, produtos: [] };
-}
-
-function somarRegistro(linha: Linha, item: Registro) {
-  linha.apontamentos += 1;
-  linha.plts += Number(item.quantidade_plts ?? 0);
-  linha.rolos += Number(item.total_rolos ?? 0);
-  linha.metragem += Number(item.metragem ?? 0);
-  linha.area += Number(item.area_m2 ?? 0);
-}
-
-/** Unidade da Meta do turno: Corte por metragem (m²), Fitas m², Mantas metros. */
-function unidadeMetaTurno(setor: string | null | undefined) {
-  if (setor === "mantas") return "m";
-  return "m²";
-}
-
-/** Unidade da Programação do dia: Corte PLTs, Fitas m², Mantas metros. */
-function unidadeProgramacao(setor: string | null | undefined) {
-  if (setor === "fitas") return "m²";
-  if (setor === "mantas") return "m";
-  return "PLTs";
-}
-
-function valorMetaHora(
-  item: Pick<Hora, "plts" | "metragem" | "area">,
-  setor: string | null | undefined,
-) {
-  if (setor === "fitas") return Number(item.area ?? 0);
-  return Number(item.metragem ?? 0);
-}
-
-function correspondeProgramacaoItem(
-  registro: Registro,
-  item: ProgramacaoItem,
-  setor: string | null | undefined,
-) {
-  if (registro.produto_id !== item.produto_id) return false;
-  if (setor === "mantas") return true;
-  const opItem = normalizar(item.op);
-  if (!opItem) return true;
-  return normalizar(registro.op) === opItem;
-}
-
-function valorRealizadoRegistro(item: Registro, setor: string | null | undefined) {
-  if (setor === "fitas") return Number(item.area_m2 ?? 0);
-  if (setor === "mantas") return Number(item.metragem ?? 0);
-  return Number(item.quantidade_plts ?? 0);
-}
-
-function normalizar(valor: string | null | undefined) {
-  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
-}
-
-function resumoProdutosHora(item: Hora, setor: string | null | undefined) {
-  if (!item.produtos.length) return "Sem produção registrada";
-  return item.produtos
-    .map((produto) => {
-      if (setor === "corte")
-        return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`;
-      if (setor === "mantas") return `${produto.produto}: ${fmt(produto.metragem)} m`;
-      if (setor === "fitas") return `${produto.produto}: ${fmt(produto.area)} m²`;
-      return `${produto.produto}: ${fmt(produto.plts)}`;
-    })
-    .join(" · ");
-}
-
-function destaqueHora(item: Hora, setor: string | null | undefined) {
-  if (setor === "corte") return `${fmt(item.plts)} PLT${item.plts === 1 ? "" : "s"}`;
-  if (setor === "mantas") return `${fmt(item.metragem)} m`;
-  if (setor === "fitas") return `${fmt(item.area)} m²`;
-  return `${fmt(item.plts)} PLTs`;
-}
-
-function secundarioHora(item: Hora, setor: string | null | undefined) {
-  if (setor === "corte") return `${fmt(item.metragem)} m²`;
-  if (setor === "mantas") return `${fmt(item.plts)} PLTs · ${fmt(item.rolos)} rolos`;
-  if (setor === "fitas") return `${item.produtos.length} produto(s)`;
-  return `${fmt(item.rolos)} unidades`;
-}
-
-function intervaloHora(hora: string) {
-  const inicio = Number(hora.slice(0, 2));
-  const fim = (inicio + 1) % 24;
-  return `${String(inicio).padStart(2, "0")}:00–${String(fim).padStart(2, "0")}:00`;
-}
-
-function chaveHora(hora: number) {
-  return `${String(hora).padStart(2, "0")}:00`;
-}
-
-function horaCheiaLocal(valor: string) {
-  const hora = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(valor));
-  return `${hora}:00`;
-}
-
-function horaMinutoLocal(valor: string) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(valor));
-}
-
-function duracaoDoCampo(valor: string) {
-  const limpo = valor.trim().toLowerCase().replace(/\s/g, "").replace("h", ":");
-  if (!limpo) return 0;
-  if (limpo.includes(":")) {
-    const [horasTexto, minutosTexto = "0"] = limpo.split(":", 2);
-    const horas = Number(horasTexto);
-    const minutos = Number(minutosTexto);
-    if (
-      !Number.isFinite(horas) ||
-      !Number.isFinite(minutos) ||
-      horas < 0 ||
-      minutos < 0 ||
-      minutos >= 60
-    )
-      return Number.NaN;
-    return horas + minutos / 60;
-  }
-  return numeroDoCampo(limpo);
-}
-
-function formatarDuracaoHoras(valor: number) {
-  if (!Number.isFinite(valor) || valor <= 0) return "";
-  let horas = Math.floor(valor);
-  let minutos = Math.round((valor - horas) * 60);
-  if (minutos === 60) {
-    horas += 1;
-    minutos = 0;
-  }
-  return `${horas}:${String(minutos).padStart(2, "0")}`;
-}
-
-function normalizarDuracaoDigitada(valor: string) {
-  return valor.replace(/[^0-9:,.hH]/g, "").slice(0, 8);
-}
-
-function numeroDoCampo(valor: string) {
-  const limpo = valor.trim().replace(/\s/g, "");
-  if (!limpo) return 0;
-  if (limpo.includes(",")) return Number(limpo.replace(/\./g, "").replace(",", "."));
-  if (/^\d{1,3}(\.\d{3})+$/.test(limpo)) return Number(limpo.replace(/\./g, ""));
-  return Number(limpo);
-}
-
-function formatarCampoNumero(valor: number) {
-  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-}
-
-function formatarData(valor: string) {
-  const [ano, mes, dia] = valor.split("-");
-  return ano && mes && dia ? `${dia}/${mes}` : "—";
-}
-
-function fmt(valor: number) {
-  return Number(valor || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-}
+function linhaVazia(produto: string): Linha { return { produto, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0 }; }
+function horaVazia(hora: string): HoraInterna { return { hora, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0, produtos: new Map() }; }
+function horaVaziaFinal(hora: string): Hora { return { hora, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0, produtos: [] }; }
+function somarRegistro(linha: Linha, item: Registro) { linha.apontamentos += 1; linha.plts += Number(item.quantidade_plts ?? 0); linha.rolos += Number(item.total_rolos ?? 0); linha.metragem += Number(item.metragem ?? 0); linha.area += Number(item.area_m2 ?? 0); }
+function unidadeMetaTurno(setor: string | null | undefined) { if (setor === "mantas") return "m"; return "m²"; }
+function unidadeProgramacao(setor: string | null | undefined) { if (setor === "fitas") return "m²"; if (setor === "mantas") return "m"; return "PLTs"; }
+function valorMetaHora(item: Pick<Hora, "plts" | "metragem" | "area">, setor: string | null | undefined) { if (setor === "fitas") return Number(item.area ?? 0); return Number(item.metragem ?? 0); }
+function correspondeProgramacaoItem(registro: Registro, item: ProgramacaoItem, setor: string | null | undefined) { if (registro.produto_id !== item.produto_id) return false; if (setor === "mantas") return true; const opItem = normalizar(item.op); if (!opItem) return true; return normalizar(registro.op) === opItem; }
+function valorRealizadoRegistro(item: Registro, setor: string | null | undefined) { if (setor === "fitas") return Number(item.area_m2 ?? 0); if (setor === "mantas") return Number(item.metragem ?? 0); return Number(item.quantidade_plts ?? 0); }
+function normalizar(valor: string | null | undefined) { return (valor ?? "").trim().toLocaleUpperCase("pt-BR"); }
+function resumoProdutosHora(item: Hora, setor: string | null | undefined) { if (!item.produtos.length) return "Sem produção registrada"; return item.produtos.map((produto) => { if (setor === "corte") return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`; if (setor === "mantas") return `${produto.produto}: ${fmt(produto.metragem)} m`; if (setor === "fitas") return `${produto.produto}: ${fmt(produto.area)} m²`; return `${produto.produto}: ${fmt(produto.plts)}`; }).join(" · "); }
+function destaqueHora(item: Hora, setor: string | null | undefined) { if (setor === "corte") return `${fmt(item.plts)} PLT${item.plts === 1 ? "" : "s"}`; if (setor === "mantas") return `${fmt(item.metragem)} m`; if (setor === "fitas") return `${fmt(item.area)} m²`; return `${fmt(item.plts)} PLTs`; }
+function secundarioHora(item: Hora, setor: string | null | undefined) { if (setor === "corte") return `${fmt(item.metragem)} m²`; if (setor === "mantas") return `${fmt(item.plts)} PLTs · ${fmt(item.rolos)} rolos`; if (setor === "fitas") return `${item.produtos.length} produto(s)`; return `${fmt(item.rolos)} unidades`; }
+function intervaloHora(hora: string) { const inicio = Number(hora.slice(0, 2)); const fim = (inicio + 1) % 24; return `${String(inicio).padStart(2, "0")}:00–${String(fim).padStart(2, "0")}:00`; }
+function chaveHora(hora: number) { return `${String(hora).padStart(2, "0")}:00`; }
+function horaCheiaLocal(valor: string) { const hora = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23" }).format(new Date(valor)); return `${hora}:00`; }
+function duracaoDoCampo(valor: string) { const limpo = valor.trim().toLowerCase().replace(/\s/g, "").replace("h", ":"); if (!limpo) return 0; if (limpo.includes(":")) { const [horasTexto, minutosTexto = "0"] = limpo.split(":", 2); const horas = Number(horasTexto); const minutos = Number(minutosTexto); if (!Number.isFinite(horas) || !Number.isFinite(minutos) || horas < 0 || minutos < 0 || minutos >= 60) return Number.NaN; return horas + minutos / 60; } return numeroDoCampo(limpo); }
+function formatarDuracaoHoras(valor: number) { if (!Number.isFinite(valor) || valor <= 0) return ""; let horas = Math.floor(valor); let minutos = Math.round((valor - horas) * 60); if (minutos === 60) { horas += 1; minutos = 0; } return `${horas}:${String(minutos).padStart(2, "0")}`; }
+function normalizarDuracaoDigitada(valor: string) { return valor.replace(/[^0-9:,.hH]/g, "").slice(0, 8); }
+function numeroDoCampo(valor: string) { const limpo = valor.trim().replace(/\s/g, ""); if (!limpo) return 0; if (limpo.includes(",")) return Number(limpo.replace(/\./g, "").replace(",", ".")); if (/^\d{1,3}(\.\d{3})+$/.test(limpo)) return Number(limpo.replace(/\./g, "")); return Number(limpo); }
+function formatarCampoNumero(valor: number) { return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
+function formatarData(valor: string) { const [ano, mes, dia] = valor.split("-"); return ano && mes && dia ? `${dia}/${mes}` : "—"; }
+function fmt(valor: number) { return Number(valor || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
