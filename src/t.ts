@@ -1,3 +1,0 @@
-import { gerarPdfRelatorio } from "./src/lib/relatorio-pdf";
-import { writeFileSync } from "fs";
-writeFileSync("/tmp/r.pdf", gerarPdfRelatorio({setor:"Corte",turno:"T1",data:"2026-09-30",totais:{},apontamentos:[],ocorrencias:[{id:"1",equipamento:"Linha 2",tipo_status:"ocorrencia",mensagem:"Parada para troca de faca por desgaste excessivo na lâmina principal do equipamento durante o turno",created_at:"2026-09-30T10:00:00Z"},{id:"2",equipamento:"Forno 1",tipo_status:"em_manutencao",mensagem:"Em manutenção",created_at:"x"},{id:"3",equipamento:null,tipo_status:null,mensagem:"Antiga",created_at:"y"}]} as any));
