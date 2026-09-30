@@ -66,7 +66,7 @@ export function PwaInstallPrompt() {
     <div className="fixed inset-x-3 bottom-4 z-[100] mx-auto max-w-md rounded-2xl border border-border bg-card p-3 shadow-2xl sm:bottom-6">
       <div className="flex items-center gap-3">
         <img
-          src="/ap-pwa-192-v4.png"
+          src="/ap-pwa-192-v5.png"
           alt="Aponta Produção DRYKO"
           width={48}
           height={48}
