@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Eye,
+  Fingerprint,
   EyeOff,
   LockKeyhole,
   Mail,
@@ -26,6 +27,8 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { entrarComLogin } from "@/lib/autenticacao-login";
 import { solicitarRecuperacaoSenha } from "@/lib/recuperacao-senha";
+import { entrarComBiometria, opcoesLoginBiometria } from "@/lib/biometria";
+import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -47,6 +50,27 @@ function AuthPage() {
   const [recuperacaoAberta, setRecuperacaoAberta] = useState(false);
   const [emailRecuperacao, setEmailRecuperacao] = useState("");
   const [enviandoRecuperacao, setEnviandoRecuperacao] = useState(false);
+  const [suporteBio, setSuporteBio] = useState(false);
+
+  useEffect(() => { setSuporteBio(browserSupportsWebAuthn()); }, []);
+
+  async function entrarBiometria() {
+    if (enviando) return;
+    setEnviando(true);
+    try {
+      const { desafioId, opcoes } = await opcoesLoginBiometria();
+      const resposta = await startAuthentication({ optionsJSON: opcoes as never });
+      const resultado = await entrarComBiometria({ data: { desafioId, resposta } });
+      const { error } = await supabase.auth.setSession({ access_token: resultado.accessToken, refresh_token: resultado.refreshToken });
+      if (error) throw error;
+      void navigate({ to: resultado.deveAlterarSenha ? "/alterar-senha" : resultado.onboardingConcluido ? "/painel" : "/selecionar", replace: true });
+    } catch (erro) {
+      const nome = (erro as { name?: string })?.name;
+      toast.error(nome === "NotAllowedError" ? "Biometria cancelada." : erro instanceof Error ? erro.message : "Não foi possível entrar com biometria.");
+    } finally {
+      setEnviando(false);
+    }
+  }
 
   useEffect(() => {
     void supabase.auth.getSession().then(async ({ data }) => {
@@ -153,6 +177,9 @@ function AuthPage() {
               </div>
               <Button type="submit" size="lg" className="mt-1 h-12 w-full rounded-xl text-base shadow-[0_10px_28px_rgb(237_28_36_/_24%)]" disabled={enviando}>{enviando ? "Verificando..." : "Entrar"} <ArrowRight className="size-5" /></Button>
             </form>
+            {suporteBio && (
+              <Button type="button" variant="outline" size="lg" className="mt-3 h-12 w-full rounded-xl text-base" disabled={enviando} onClick={() => void entrarBiometria()}><Fingerprint className="size-5" /> Entrar com biometria</Button>
+            )}
             <div className="mt-6 flex items-center justify-center gap-2 border-t border-border pt-5 text-center text-xs text-muted-foreground"><ShieldCheck className="size-4 shrink-0 text-primary" />Acesso exclusivo para facilitadores autorizados</div>
           </article>
           <p className="mx-auto mt-4 max-w-[390px] text-center text-xs leading-relaxed text-muted-foreground">Use apenas as credenciais fornecidas pelo administrador. No primeiro acesso, crie sua senha pessoal e cadastre seu e-mail de recuperação.</p>
