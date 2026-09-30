@@ -16,6 +16,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as AuthenticatedAdministracaoRouteImport } from './routes/_authenticated/administracao'
 import { Route as AuthenticatedApontarRouteImport } from './routes/_authenticated/apontar'
+import { Route as AuthenticatedConfiguracoesRouteImport } from './routes/_authenticated/configuracoes'
 import { Route as AuthenticatedContagemRouteImport } from './routes/_authenticated/contagem'
 import { Route as AuthenticatedControleApontamentosRouteImport } from './routes/_authenticated/controle-apontamentos'
 import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authenticated/historico'
@@ -65,6 +66,12 @@ const AuthenticatedApontarRoute = AuthenticatedApontarRouteImport.update({
   path: '/apontar',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedConfiguracoesRoute =
+  AuthenticatedConfiguracoesRouteImport.update({
+    id: '/configuracoes',
+    path: '/configuracoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedContagemRoute = AuthenticatedContagemRouteImport.update({
   id: '/contagem',
   path: '/contagem',
@@ -143,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/administracao': typeof AuthenticatedAdministracaoRoute
   '/apontar': typeof AuthenticatedApontarRoute
+  '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/contagem': typeof AuthenticatedContagemRoute
   '/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
   '/historico': typeof AuthenticatedHistoricoRoute
@@ -164,6 +172,7 @@ export interface FileRoutesByTo {
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/administracao': typeof AuthenticatedAdministracaoRoute
   '/apontar': typeof AuthenticatedApontarRoute
+  '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/contagem': typeof AuthenticatedContagemRoute
   '/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
   '/historico': typeof AuthenticatedHistoricoRoute
@@ -187,6 +196,7 @@ export interface FileRoutesById {
   '/redefinir-senha': typeof RedefinirSenhaRoute
   '/_authenticated/administracao': typeof AuthenticatedAdministracaoRoute
   '/_authenticated/apontar': typeof AuthenticatedApontarRoute
+  '/_authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/_authenticated/contagem': typeof AuthenticatedContagemRoute
   '/_authenticated/controle-apontamentos': typeof AuthenticatedControleApontamentosRoute
   '/_authenticated/historico': typeof AuthenticatedHistoricoRoute
@@ -210,6 +220,7 @@ export interface FileRouteTypes {
     | '/redefinir-senha'
     | '/administracao'
     | '/apontar'
+    | '/configuracoes'
     | '/contagem'
     | '/controle-apontamentos'
     | '/historico'
@@ -231,6 +242,7 @@ export interface FileRouteTypes {
     | '/redefinir-senha'
     | '/administracao'
     | '/apontar'
+    | '/configuracoes'
     | '/contagem'
     | '/controle-apontamentos'
     | '/historico'
@@ -253,6 +265,7 @@ export interface FileRouteTypes {
     | '/redefinir-senha'
     | '/_authenticated/administracao'
     | '/_authenticated/apontar'
+    | '/_authenticated/configuracoes'
     | '/_authenticated/contagem'
     | '/_authenticated/controle-apontamentos'
     | '/_authenticated/historico'
@@ -325,6 +338,13 @@ declare module '@tanstack/react-router' {
       path: '/apontar'
       fullPath: '/apontar'
       preLoaderRoute: typeof AuthenticatedApontarRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/configuracoes': {
+      id: '/_authenticated/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof AuthenticatedConfiguracoesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/contagem': {
@@ -424,6 +444,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdministracaoRoute: typeof AuthenticatedAdministracaoRoute
   AuthenticatedApontarRoute: typeof AuthenticatedApontarRoute
+  AuthenticatedConfiguracoesRoute: typeof AuthenticatedConfiguracoesRoute
   AuthenticatedContagemRoute: typeof AuthenticatedContagemRoute
   AuthenticatedControleApontamentosRoute: typeof AuthenticatedControleApontamentosRoute
   AuthenticatedHistoricoRoute: typeof AuthenticatedHistoricoRoute
@@ -442,6 +463,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdministracaoRoute: AuthenticatedAdministracaoRoute,
   AuthenticatedApontarRoute: AuthenticatedApontarRoute,
+  AuthenticatedConfiguracoesRoute: AuthenticatedConfiguracoesRoute,
   AuthenticatedContagemRoute: AuthenticatedContagemRoute,
   AuthenticatedControleApontamentosRoute:
     AuthenticatedControleApontamentosRoute,
