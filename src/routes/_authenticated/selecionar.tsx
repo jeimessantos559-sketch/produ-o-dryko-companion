@@ -38,20 +38,24 @@ function Selecionar() {
   }, [profile]);
 
   async function salvar() {
-    if (!user || !setor || !turno) return;
+    if (!user || !setor || !turno || salvando) return;
     setSalvando(true);
     const { error } = await supabase
       .from("profiles")
       .update({ setor_atual: setor, turno_atual: turno, onboarding_concluido: true })
       .eq("id", user.id);
-    setSalvando(false);
     if (error) {
+      setSalvando(false);
       toast.error("Não foi possível salvar. Tente novamente.");
       return;
     }
     await refresh();
-    toast.success("Setor e turno salvos.");
-    void navigate({ to: "/painel", replace: true });
+    try {
+      await navigate({ to: "/painel", replace: true });
+    } catch {
+      setSalvando(false);
+      toast.error("Setor e turno salvos, mas não foi possível abrir o painel. Atualize a página.");
+    }
   }
 
   return (
@@ -101,8 +105,12 @@ function Selecionar() {
             </div>
           </div>
 
-          <Button className="h-12 w-full rounded-xl text-base font-bold" disabled={!setor || !turno || salvando} onClick={salvar}>
-            {salvando ? "Salvando..." : profile?.onboarding_concluido ? "Salvar alteração" : "Continuar"}
+          <Button
+            className="h-12 w-full rounded-xl text-base font-bold"
+            disabled={!setor || !turno || salvando}
+            onClick={() => void salvar()}
+          >
+            {salvando ? "Salvando e abrindo painel..." : profile?.onboarding_concluido ? "Salvar alteração" : "Continuar"}
           </Button>
         </div>
       </div>
