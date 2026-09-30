@@ -22,22 +22,20 @@ async function admin() {
 export const opcoesRegistroBiometria = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { generateRegistrationOptions } = await import("@simplewebauthn/server");
+    const { opcoesRegistro } = await import("./webauthn.server");
     const { rpID } = await origemEsperada();
     const db = await admin();
     const { data: perfil } = await db.from("profiles").select("nome, login, ativo").eq("id", context.userId).maybeSingle();
     if (!perfil?.ativo) throw new Error("Usuário inativo.");
     const { data: existentes } = await db.from("webauthn_credenciais").select("credential_id, transports").eq("user_id", context.userId);
 
-    const opcoes = await generateRegistrationOptions({
+    const opcoes = opcoesRegistro({
       rpName: "Aponta Produção DRYKO",
       rpID,
+      userId: context.userId,
       userName: perfil.login || perfil.nome || "usuario",
-      userDisplayName: perfil.nome || perfil.login || "Usuário",
-      userID: new TextEncoder().encode(context.userId),
-      attestationType: "none",
-      excludeCredentials: (existentes ?? []).map((c: any) => ({ id: c.credential_id, transports: c.transports ?? undefined })),
-      authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
+      displayName: perfil.nome || perfil.login || "Usuário",
+      excluir: (existentes ?? []).map((c: any) => ({ id: c.credential_id, transports: c.transports })),
     });
 
     await db.from("webauthn_challenges").delete().eq("user_id", context.userId).eq("tipo", "registro");
@@ -49,8 +47,7 @@ export const confirmarRegistroBiometria = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator(z.object({ resposta: z.any(), aparelho: z.string().max(200).optional() }))
   .handler(async ({ data, context }) => {
-    const { verifyRegistrationResponse } = await import("@simplewebauthn/server");
-    const { isoBase64URL } = await import("@simplewebauthn/server/helpers");
+    const { verificarRegistro } = await import("./webauthn.server");
     const { origin, rpID } = await origemEsperada();
     const db = await admin();
     const { data: desafio } = await db.from("webauthn_challenges")
@@ -59,25 +56,23 @@ export const confirmarRegistroBiometria = createServerFn({ method: "POST" })
     if (!desafio) throw new Error("Solicitação expirada. Tente novamente.");
     await db.from("webauthn_challenges").delete().eq("id", desafio.id);
 
-    const verificacao = await verifyRegistrationResponse({
-      response: data.resposta,
-      expectedChallenge: desafio.challenge,
-      expectedOrigin: origin,
-      expectedRPID: rpID,
-      requireUserVerification: true,
-    });
-    if (!verificacao.verified || !verificacao.registrationInfo) throw new Error("Não foi possível validar a biometria.");
-    const cred = verificacao.registrationInfo.credential;
+    let cred: Awaited<ReturnType<typeof verificarRegistro>>;
+    try {
+      cred = await verificarRegistro(data.resposta, desafio.challenge, origin, rpID);
+    } catch (erro) {
+      console.error("webauthn registro", erro);
+      throw new Error("Não foi possível validar a biometria.");
+    }
     const { error } = await db.from("webauthn_credenciais").insert({
       user_id: context.userId,
-      credential_id: cred.id,
-      public_key: isoBase64URL.fromBuffer(cred.publicKey),
-      counter: cred.counter,
-      transports: cred.transports ?? null,
+      credential_id: cred.credentialId,
+      public_key: cred.publicKey,
+      counter: cred.contador,
+      transports: cred.transports,
       aparelho: data.aparelho ?? null,
     });
     if (error) throw new Error("Não foi possível salvar a biometria.");
-    return { credentialId: cred.id };
+    return { credentialId: cred.credentialId };
   });
 
 export const statusBiometria = createServerFn({ method: "POST" })
@@ -98,10 +93,10 @@ export const removerBiometria = createServerFn({ method: "POST" })
   });
 
 export const opcoesLoginBiometria = createServerFn({ method: "POST" }).handler(async () => {
-  const { generateAuthenticationOptions } = await import("@simplewebauthn/server");
+  const { opcoesLogin } = await import("./webauthn.server");
   const { rpID } = await origemEsperada();
   const db = await admin();
-  const opcoes = await generateAuthenticationOptions({ rpID, userVerification: "required", allowCredentials: [] });
+  const opcoes = opcoesLogin(rpID);
   await db.from("webauthn_challenges").delete().lt("expires_at", new Date().toISOString());
   const { data: desafio, error } = await db.from("webauthn_challenges")
     .insert({ challenge: opcoes.challenge, tipo: "login" }).select("id").single();
@@ -112,8 +107,7 @@ export const opcoesLoginBiometria = createServerFn({ method: "POST" }).handler(a
 export const entrarComBiometria = createServerFn({ method: "POST" })
   .validator(z.object({ desafioId: z.string().uuid(), resposta: z.any() }))
   .handler(async ({ data }) => {
-    const { verifyAuthenticationResponse } = await import("@simplewebauthn/server");
-    const { isoBase64URL } = await import("@simplewebauthn/server/helpers");
+    const { verificarLogin } = await import("./webauthn.server");
     const { origin, rpID } = await origemEsperada();
     const db = await admin();
     const falha = "Biometria não reconhecida. Entre com usuário e senha.";
@@ -128,22 +122,17 @@ export const entrarComBiometria = createServerFn({ method: "POST" })
     const { data: cred } = await db.from("webauthn_credenciais").select("*").eq("credential_id", credId).maybeSingle();
     if (!cred) throw new Error(falha);
 
-    const verificacao = await verifyAuthenticationResponse({
-      response: data.resposta,
-      expectedChallenge: desafio.challenge,
-      expectedOrigin: origin,
-      expectedRPID: rpID,
-      requireUserVerification: true,
-      credential: {
-        id: cred.credential_id,
-        publicKey: isoBase64URL.toBuffer(cred.public_key),
-        counter: Number(cred.counter),
-        transports: cred.transports ?? undefined,
-      },
-    });
-    if (!verificacao.verified) throw new Error(falha);
+    let novoContador: number;
+    try {
+      ({ novoContador } = await verificarLogin(data.resposta, desafio.challenge, origin, rpID, {
+        publicKey: cred.public_key, contador: Number(cred.counter), userId: cred.user_id,
+      }));
+    } catch (erro) {
+      console.error("webauthn login", erro);
+      throw new Error(falha);
+    }
     await db.from("webauthn_credenciais")
-      .update({ counter: verificacao.authenticationInfo.newCounter, last_used_at: new Date().toISOString() })
+      .update({ counter: novoContador, last_used_at: new Date().toISOString() })
       .eq("id", cred.id);
 
     const { data: perfil } = await db.from("profiles")

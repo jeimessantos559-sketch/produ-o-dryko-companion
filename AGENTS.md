@@ -12,4 +12,4 @@
 - Biometria via WebAuthn verificada no servidor (src/lib/biometria.ts); tabelas webauthn_* sem policies, acesso só por service role — evita exposição de credenciais.
 - Fotos de perfil em bucket privado `avatars`; profiles.avatar_url guarda o caminho e a exibição usa link temporário — buckets públicos bloqueados no workspace.
 
-- Server entry installs a minimal Reflect metadata shim (src/lib/reflect-shim.ts) before loading the app — @simplewebauthn/server pulls tsyringe, which crashes the Worker at load without it; bare "reflect-metadata" imports get tree-shaken.
+- WebAuthn verification is hand-written on WebCrypto (src/lib/webauthn.server.ts), never @simplewebauthn/server — its x509/tsyringe deps crashed the Worker at startup, taking down every page.
