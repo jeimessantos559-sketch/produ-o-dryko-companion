@@ -37,7 +37,7 @@ export const opcoesRegistroBiometria = createServerFn({ method: "POST" })
       userID: new TextEncoder().encode(context.userId),
       attestationType: "none",
       excludeCredentials: (existentes ?? []).map((c: any) => ({ id: c.credential_id, transports: c.transports ?? undefined })),
-      authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
+      authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "required" },
     });
 
     await db.from("webauthn_challenges").delete().eq("user_id", context.userId).eq("tipo", "registro");
