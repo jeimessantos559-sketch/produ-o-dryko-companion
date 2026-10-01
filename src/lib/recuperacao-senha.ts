@@ -70,7 +70,7 @@ export const solicitarRecuperacaoSenha = createServerFn({ method: "POST" })
     const emailInterno = usuario.user?.email;
     if (!emailInterno) return respostaGenerica;
 
-    const appUrl = (process.env["APP_URL"] ?? "https://dryko-prod-tracker.lovable.app").replace(/\/$/, "");
+    const appUrl = (process.env["APP_URL"] ?? "https://aponta-dryko.lovable.app").replace(/\/$/, "");
     const { data: link, error } = await supabaseAdmin.auth.admin.generateLink({
       type: "recovery",
       email: emailInterno,

@@ -1,6 +1,7 @@
 {
   "name": "tanstack_start_ts",
   "private": true,
+  "packageManager": "bun@1.2.22",
   "sideEffects": false,
   "type": "module",
   "scripts": {
@@ -9,6 +10,7 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
+    "verify:portability": "node scripts/verificar-portabilidade.mjs",
     "format": "prettier --write ."
   },
   "overrides": {
