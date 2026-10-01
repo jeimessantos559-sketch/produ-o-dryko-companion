@@ -3,6 +3,7 @@ import { CheckCircle2, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { agruparProtheus } from "@/lib/protheus";
 import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -259,53 +260,16 @@ function ControleApontamentos() {
   );
 }
 
-function normalizarChave(valor: string | null | undefined) {
-  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
-}
-
-function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo) {
-  const mapa = new Map<string, GrupoLancamento>();
-  for (const item of itens) {
-    let chave = `item:${item.id}`;
-    if (item.status === "pendente") {
-      const produto = normalizarChave(item.produto_nome);
-      if (setor === "mantas" && item.lote) chave = `manta:${produto}:${normalizarChave(item.lote)}`;
-      else if (setor === "corte" && item.op) chave = `corte:${produto}:${normalizarChave(item.op)}`;
-      else if (setor === "fitas" && item.op) chave = `fitas:${produto}:${normalizarChave(item.op)}`;
+function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo): GrupoLancamento[] {
+  return agruparProtheus(itens, setor, { somentePendentes: true }).map((g) => {
+    const apontadores: Responsavel[] = [];
+    const lancadores: Responsavel[] = [];
+    for (const item of g.itens) {
+      if (!apontadores.some((r) => r.id === item.usuario_id)) apontadores.push({ id: item.usuario_id, nome: item.apontado_por_nome ?? null });
+      if (item.lancado_por && !lancadores.some((r) => r.id === item.lancado_por)) lancadores.push({ id: item.lancado_por, nome: item.lancado_por_nome ?? null, em: item.lancado_em });
     }
-
-    const apontador: Responsavel = { id: item.usuario_id, nome: item.apontado_por_nome ?? null };
-    const lancador: Responsavel | null = item.lancado_por
-      ? { id: item.lancado_por, nome: item.lancado_por_nome ?? null, em: item.lancado_em }
-      : null;
-
-    const atual = mapa.get(chave);
-    if (!atual) {
-      mapa.set(chave, {
-        chave,
-        ids: [item.id],
-        item,
-        quantidadeRegistros: 1,
-        plts: Number(item.quantidade_plts ?? 0),
-        rolos: Number(item.total_rolos ?? 0),
-        metragem: Number(item.metragem ?? 0),
-        area: Number(item.area_m2 ?? 0),
-        apontadores: [apontador],
-        lancadores: lancador ? [lancador] : [],
-      });
-      continue;
-    }
-
-    atual.ids.push(item.id);
-    atual.quantidadeRegistros += 1;
-    atual.plts += Number(item.quantidade_plts ?? 0);
-    atual.rolos += Number(item.total_rolos ?? 0);
-    atual.metragem += Number(item.metragem ?? 0);
-    atual.area += Number(item.area_m2 ?? 0);
-    if (!atual.apontadores.some((responsavel) => responsavel.id === apontador.id)) atual.apontadores.push(apontador);
-    if (lancador && !atual.lancadores.some((responsavel) => responsavel.id === lancador.id)) atual.lancadores.push(lancador);
-  }
-  return [...mapa.values()];
+    return { chave: g.chave, ids: g.ids, item: g.item, quantidadeRegistros: g.registros, plts: g.plts, rolos: g.rolos, metragem: g.metragem, area: g.area, apontadores, lancadores };
+  });
 }
 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
