@@ -95,9 +95,11 @@ export const removerBiometria = createServerFn({ method: "POST" })
 export const opcoesLoginBiometria = createServerFn({ method: "POST" }).handler(async () => {
   const { opcoesLogin } = await import("./webauthn.server");
   const { rpID } = await origemEsperada();
+  const limite = await import("./limite-tentativas.server");
+  await limite.verificarLimite("biometria", null);
+  await limite.limparSegurancaExpirada();
   const db = await admin();
   const opcoes = opcoesLogin(rpID);
-  await db.from("webauthn_challenges").delete().lt("expires_at", new Date().toISOString());
   const { data: desafio, error } = await db.from("webauthn_challenges")
     .insert({ challenge: opcoes.challenge, tipo: "login" }).select("id").single();
   if (error) throw new Error("Biometria indisponível no momento.");
@@ -107,6 +109,20 @@ export const opcoesLoginBiometria = createServerFn({ method: "POST" }).handler(a
 export const entrarComBiometria = createServerFn({ method: "POST" })
   .validator(z.object({ desafioId: z.string().uuid(), resposta: z.any() }))
   .handler(async ({ data }) => {
+    const limite = await import("./limite-tentativas.server");
+    const credIdTentativa = String(data.resposta?.id ?? "").slice(0, 1024) || null;
+    const tentativa = await limite.verificarLimite("biometria", credIdTentativa);
+    try {
+      const r = await loginBiometrico(data);
+      await limite.limparFalhasUsuario(tentativa);
+      return r;
+    } catch (erro) {
+      if (erro instanceof Error && erro.message === "Biometria não reconhecida. Entre com usuário e senha.") await limite.registrarFalha(tentativa);
+      throw erro;
+    }
+  });
+
+async function loginBiometrico(data: { desafioId: string; resposta: any }) {
     const { verificarLogin } = await import("./webauthn.server");
     const { origin, rpID } = await origemEsperada();
     const db = await admin();
@@ -160,4 +176,4 @@ export const entrarComBiometria = createServerFn({ method: "POST" })
       deveAlterarSenha: Boolean(perfil.deve_alterar_senha),
       onboardingConcluido: Boolean(perfil.onboarding_concluido),
     };
-  });
+  }
