@@ -111,9 +111,9 @@ function Configuracoes() {
       }
       const { error } = await supabase.rpc("atualizar_meu_perfil", {
         p_nome: nome.trim(),
-        p_email_recuperacao: emailNovo ?? "",
-        p_avatar_url: avatar ?? "",
-      } as never);
+        p_email_recuperacao: emailNovo,
+        p_avatar_url: avatar,
+      } as unknown as { p_nome: string; p_email_recuperacao: string; p_avatar_url: string });
       if (error) {
         if (error.code === "23505") throw new Error("Este e-mail já está vinculado a outro perfil.");
         if (error.code === "22023") throw new Error("Informe seu nome.");
