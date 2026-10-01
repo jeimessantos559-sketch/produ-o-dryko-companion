@@ -89,16 +89,18 @@ function Configuracoes() {
     if (!nome.trim()) return void toast.error("Informe seu nome.");
     if (email.trim() && !EMAIL_RE.test(email.trim())) return void toast.error("Informe um e-mail válido.");
     setSalvando(true);
+    const avatarAnterior = profile?.avatar_url ?? null;
     let avatarNovo: string | null = null;
     try {
       const emailNovo = email.trim() || null;
       if (emailNovo) {
+        const padrao = emailNovo.replace(/[\\%_]/g, "\\$&");
         const { data: conflito, error: erroConflito } = await supabase.from("profiles")
-          .select("id").eq("email_recuperacao", emailNovo).eq("ativo", true).neq("id", user.id).maybeSingle();
+          .select("id").ilike("email_recuperacao", padrao).eq("ativo", true).neq("id", user.id).maybeSingle();
         if (erroConflito) throw new Error("Não foi possível verificar o e-mail de recuperação.");
         if (conflito) throw new Error("Este e-mail já está vinculado a outro perfil.");
       }
-      let avatar = profile?.avatar_url ?? null;
+      let avatar = avatarAnterior;
       if (arquivo) {
         const ext = arquivo.type === "image/png" ? "png" : arquivo.type === "image/webp" ? "webp" : "jpg";
         const caminho = `${user.id}/avatar-${Date.now()}.${ext}`;
@@ -114,7 +116,7 @@ function Configuracoes() {
         if (error.code === "23505") throw new Error("Este e-mail já está vinculado a outro perfil.");
         throw new Error("Não foi possível salvar o perfil.");
       }
-      if (avatarNovo && avatar && !/^https?:/.test(avatar)) void supabase.storage.from("avatars").remove([avatar]);
+      if (avatarNovo && avatarAnterior && !/^https?:/.test(avatarAnterior) && avatarAnterior !== avatarNovo) void supabase.storage.from("avatars").remove([avatarAnterior]);
       setArquivo(null);
       setPrevia(null);
       await refresh();
