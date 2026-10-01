@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { bloquearSeOffline } from "@/lib/rede";
 
 import { AppShell } from "@/components/dryko/app-shell";
 import { EmDefinicao } from "@/components/dryko/em-definicao";
@@ -336,6 +337,7 @@ function ApontarCorte() {
 
   async function salvar() {
     if (!valido || !user || !profile?.turno_atual || enviando.current) return;
+    if (bloquearSeOffline()) return;
     if (!confirmarExcessoDaMeta(meta, apontado, quantidade)) return;
     enviando.current = true;
     setSalvando(true);
@@ -663,6 +665,7 @@ function ApontarMantas() {
 
   async function salvar() {
     if (!valido || !user || !profile?.turno_atual || !produto || enviando.current) return;
+    if (bloquearSeOffline()) return;
     if (!confirmarExcessoDaMeta(meta, apontado, quantidadePlts)) return;
     enviando.current = true;
     setSalvando(true);
@@ -863,6 +866,7 @@ function ApontarFitas() {
   async function salvar() {
     if (!user || !profile?.turno_atual || !produto || !op.trim() || !dataHoraProducao || area <= 0 || enviando.current)
       return;
+    if (bloquearSeOffline()) return;
     if (!confirmarExcessoDaMeta(meta, apontado, area)) return;
     enviando.current = true;
     setSalvando(true);
