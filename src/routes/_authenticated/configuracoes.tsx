@@ -89,25 +89,38 @@ function Configuracoes() {
     if (!nome.trim()) return void toast.error("Informe seu nome.");
     if (email.trim() && !EMAIL_RE.test(email.trim())) return void toast.error("Informe um e-mail válido.");
     setSalvando(true);
+    let avatarNovo: string | null = null;
     try {
+      const emailNovo = email.trim() || null;
+      if (emailNovo) {
+        const { data: conflito, error: erroConflito } = await supabase.from("profiles")
+          .select("id").eq("email_recuperacao", emailNovo).eq("ativo", true).neq("id", user.id).maybeSingle();
+        if (erroConflito) throw new Error("Não foi possível verificar o e-mail de recuperação.");
+        if (conflito) throw new Error("Este e-mail já está vinculado a outro perfil.");
+      }
       let avatar = profile?.avatar_url ?? null;
       if (arquivo) {
         const ext = arquivo.type === "image/png" ? "png" : arquivo.type === "image/webp" ? "webp" : "jpg";
         const caminho = `${user.id}/avatar-${Date.now()}.${ext}`;
         const { error } = await supabase.storage.from("avatars").upload(caminho, arquivo, { contentType: arquivo.type, upsert: true });
         if (error) throw new Error("Não foi possível enviar a foto.");
-        if (avatar && !/^https?:/.test(avatar)) void supabase.storage.from("avatars").remove([avatar]);
+        avatarNovo = caminho;
         avatar = caminho;
       }
       const { error } = await supabase.from("profiles")
-        .update({ nome: nome.trim(), email_recuperacao: email.trim() || null, avatar_url: avatar })
+        .update({ nome: nome.trim(), email_recuperacao: emailNovo, avatar_url: avatar })
         .eq("id", user.id);
-      if (error) throw new Error("Não foi possível salvar o perfil.");
+      if (error) {
+        if (error.code === "23505") throw new Error("Este e-mail já está vinculado a outro perfil.");
+        throw new Error("Não foi possível salvar o perfil.");
+      }
+      if (avatarNovo && avatar && !/^https?:/.test(avatar)) void supabase.storage.from("avatars").remove([avatar]);
       setArquivo(null);
       setPrevia(null);
       await refresh();
       toast.success("Perfil salvo.");
     } catch (erro) {
+      if (avatarNovo) void supabase.storage.from("avatars").remove([avatarNovo]);
       toast.error(erro instanceof Error ? erro.message : "Não foi possível salvar o perfil.");
     } finally {
       setSalvando(false);
