@@ -206,6 +206,10 @@ function Configuracoes() {
             )}
           </CardContent>
         </Card>
+
+        <p className="text-center text-xs text-muted-foreground">
+          Versão {typeof __APP_COMMIT__ === "string" ? __APP_COMMIT__ : "local"} · build {typeof __APP_BUILD__ === "string" ? __APP_BUILD__ : "—"} UTC
+        </p>
       </div>
     </AppShell>
   );
