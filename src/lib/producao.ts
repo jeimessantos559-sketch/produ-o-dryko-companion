@@ -147,3 +147,13 @@ export function dataOperacional(turno: TurnoOperacional | null | undefined, date
   }
   return hoje;
 }
+
+/** Espelho da função do banco horario_pertence_turno (T2 e T3 se sobrepõem entre 01:00 e 02:00). */
+export function horarioPertenceTurno(turno: TurnoOperacional, horario: string) {
+  const [h = 0, m = 0] = horario.split(":").map(Number);
+  const min = h * 60 + m;
+  const t = (hh: number, mm = 0) => hh * 60 + mm;
+  if (turno === "T1") return min >= t(6) && min < t(15, 38);
+  if (turno === "T2") return min >= t(15, 38) || min < t(2);
+  return min >= t(1) && min < t(6);
+}
