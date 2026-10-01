@@ -57,6 +57,11 @@ export const solicitarRecuperacaoSenha = createServerFn({ method: "POST" })
       mensagem: "Se este e-mail estiver cadastrado, você receberá as instruções para redefinir a senha.",
     };
 
+    const limite = await import("./limite-tentativas.server");
+    // Toda solicitação conta (resposta é sempre genérica para não revelar se o e-mail existe).
+    const tentativa = await limite.verificarLimite("recuperacao", email);
+    await limite.registrarFalha(tentativa);
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: perfil } = await (supabaseAdmin.from("profiles") as any)
       .select("id, ativo, email_recuperacao")

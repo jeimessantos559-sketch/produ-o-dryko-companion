@@ -24,6 +24,20 @@ export const entrarComLogin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const chave = normalizarLogin(data.login);
     if (!chave) throw new Error("Usuário ou senha inválidos.");
+    const limite = await import("./limite-tentativas.server");
+    const tentativa = await limite.verificarLimite("login", chave);
+    try {
+      const resultado = await autenticar(chave, data.senha);
+      await limite.limparFalhasUsuario(tentativa);
+      return resultado;
+    } catch (erro) {
+      if (erro instanceof Error && erro.message === "Usuário ou senha inválidos.") await limite.registrarFalha(tentativa);
+      throw erro;
+    }
+  });
+
+async function autenticar(chave: string, senha: string) {
+    const data = { senha };
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: perfil, error: erroPerfil } = await (supabaseAdmin.from("profiles") as any)
@@ -77,4 +91,4 @@ export const entrarComLogin = createServerFn({ method: "POST" })
       deveAlterarSenha: perfilLogin.deve_alterar_senha,
       onboardingConcluido: perfilLogin.onboarding_concluido,
     };
-  });
+  }

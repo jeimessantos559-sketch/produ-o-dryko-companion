@@ -159,6 +159,27 @@ export type Database = {
           },
         ]
       }
+      auth_tentativas: {
+        Row: {
+          chave: string
+          created_at: string
+          id: string
+          tipo: string
+        }
+        Insert: {
+          chave: string
+          created_at?: string
+          id?: string
+          tipo: string
+        }
+        Update: {
+          chave?: string
+          created_at?: string
+          id?: string
+          tipo?: string
+        }
+        Relationships: []
+      }
       fechamentos_turno: {
         Row: {
           data_local: string
@@ -975,6 +996,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      limpar_seguranca_expirada: { Args: never; Returns: undefined }
       metas_painel: {
         Args: { p_setor: Database["public"]["Enums"]["setor_codigo"] }
         Returns: {

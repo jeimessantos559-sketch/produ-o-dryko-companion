@@ -1,3 +1,4 @@
+import { StatusRedeAtualizacao } from "@/components/dryko/status-rede-atualizacao";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -145,9 +146,6 @@ function RootComponent() {
     document.documentElement.classList.toggle("dark", tema === "dark");
     document.documentElement.style.colorScheme = tema;
 
-    if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    }
 
     const antesDeInstalar = (evento: Event) => {
       evento.preventDefault();
@@ -173,6 +171,7 @@ function RootComponent() {
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <PwaInstallPrompt />
+        <StatusRedeAtualizacao />
         <Toaster position="top-center" richColors />
       </AuthProvider>
     </QueryClientProvider>

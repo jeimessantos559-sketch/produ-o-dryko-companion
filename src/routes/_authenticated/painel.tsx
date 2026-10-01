@@ -12,6 +12,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { agruparProtheus } from "@/lib/protheus";
 import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -356,42 +357,8 @@ function Painel() {
   );
 }
 
-function normalizarChave(valor: string | null | undefined) {
-  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
-}
-
-function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChave: boolean) {
-  const mapa = new Map<string, GrupoProtheus>();
-  for (const item of itens) {
-    const sufixoTurno = incluirTurnoNaChave ? `:${item.data_local}:${item.turno}` : "";
-    const produto = normalizarChave(item.produto_nome);
-    let chave = `item:${item.id}`;
-    if (setor === "mantas" && item.lote) chave = `manta:${produto}:${normalizarChave(item.lote)}${sufixoTurno}`;
-    if (setor === "corte" && item.op) chave = `corte:${produto}:${normalizarChave(item.op)}${sufixoTurno}`;
-    if (setor === "fitas" && item.op) chave = `fitas:${produto}:${normalizarChave(item.op)}${sufixoTurno}`;
-
-    const atual = mapa.get(chave);
-    if (!atual) {
-      mapa.set(chave, {
-        chave,
-        ids: [item.id],
-        item,
-        registros: 1,
-        plts: Number(item.quantidade_plts ?? 0),
-        rolos: Number(item.total_rolos ?? 0),
-        metragem: Number(item.metragem ?? 0),
-        area: Number(item.area_m2 ?? 0),
-      });
-      continue;
-    }
-    atual.ids.push(item.id);
-    atual.registros += 1;
-    atual.plts += Number(item.quantidade_plts ?? 0);
-    atual.rolos += Number(item.total_rolos ?? 0);
-    atual.metragem += Number(item.metragem ?? 0);
-    atual.area += Number(item.area_m2 ?? 0);
-  }
-  return [...mapa.values()];
+function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChave: boolean): GrupoProtheus[] {
+  return agruparProtheus(itens, setor, { incluirTurno: incluirTurnoNaChave }).map(({ itens: _itens, ...g }) => g);
 }
 
 function Indicador({ icon: Icon, label, valor, detalhe, tone, destaque = false }: { icon: typeof Clock3; label: string; valor: string | number; detalhe: string; tone: "amber" | "green" | "slate"; destaque?: boolean }) {

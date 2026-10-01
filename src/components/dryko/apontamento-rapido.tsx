@@ -1,6 +1,7 @@
 import { Calculator, PackageCheck, Target } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { bloquearSeOffline } from "@/lib/rede";
 
 import { HoraProducaoField } from "@/components/dryko/hora-producao-field";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
@@ -362,6 +363,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
   async function salvar() {
     if (!valido || !user || !turno || !produto || salvando) return;
+    if (bloquearSeOffline()) return;
     if (!confirmarMetaCorte()) return;
     setSalvando(true);
 

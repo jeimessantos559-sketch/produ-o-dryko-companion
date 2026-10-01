@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ClipboardCheck, PackagePlus, RefreshCcw, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, ClipboardCheck, PackagePlus, RefreshCcw, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/dryko/app-shell";
@@ -99,6 +99,9 @@ function Administracao() {
         </section>
 
         <div className="grid gap-2 sm:grid-cols-2">
+          <Link to="/indicadores" className="rounded-2xl border bg-white p-3.5 shadow-sm hover:border-primary/40 sm:col-span-2">
+            <div className="flex items-center gap-3"><BarChart3 className="size-5 text-primary" /><div><p className="font-bold">Painel gerencial</p><p className="text-xs text-slate-500">Metas, programação, paradas e Protheus por setor.</p></div></div>
+          </Link>
           <Link to="/usuarios" className="rounded-2xl border bg-white p-3.5 shadow-sm hover:border-primary/40">
             <div className="flex items-center gap-3"><Users className="size-5 text-primary" /><div><p className="font-bold">Usuários e permissões</p><p className="text-xs text-slate-500">Definir quem pode lançar no Protheus.</p></div></div>
           </Link>
