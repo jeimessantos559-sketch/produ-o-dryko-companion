@@ -109,11 +109,14 @@ function Configuracoes() {
         avatarNovo = caminho;
         avatar = caminho;
       }
-      const { error } = await supabase.from("profiles")
-        .update({ nome: nome.trim(), email_recuperacao: emailNovo, avatar_url: avatar })
-        .eq("id", user.id);
+      const { error } = await supabase.rpc("atualizar_meu_perfil", {
+        p_nome: nome.trim(),
+        p_email_recuperacao: emailNovo ?? "",
+        p_avatar_url: avatar ?? "",
+      } as never);
       if (error) {
         if (error.code === "23505") throw new Error("Este e-mail já está vinculado a outro perfil.");
+        if (error.code === "22023") throw new Error("Informe seu nome.");
         throw new Error("Não foi possível salvar o perfil.");
       }
       if (avatarNovo && avatarAnterior && !/^https?:/.test(avatarAnterior) && avatarAnterior !== avatarNovo) void supabase.storage.from("avatars").remove([avatarAnterior]);
