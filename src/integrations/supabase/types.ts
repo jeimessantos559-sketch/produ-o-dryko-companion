@@ -894,6 +894,38 @@ export type Database = {
         }
         Returns: undefined
       }
+      atualizar_meu_perfil: {
+        Args: {
+          p_avatar_url: string
+          p_email_recuperacao: string
+          p_nome: string
+        }
+        Returns: {
+          ativo: boolean
+          avatar_url: string | null
+          created_at: string
+          deve_alterar_senha: boolean
+          email_recuperacao: string | null
+          id: string
+          login: string | null
+          login_key: string | null
+          matricula: string | null
+          nome: string
+          onboarding_concluido: boolean
+          pode_confirmar_protheus: boolean
+          pode_finalizar_metas: boolean
+          pode_gerenciar_produtos: boolean
+          setor_atual: Database["public"]["Enums"]["setor_codigo"] | null
+          turno_atual: Database["public"]["Enums"]["turno_codigo"] | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       concluir_primeiro_acesso: {
         Args: { p_email: string }
         Returns: undefined
