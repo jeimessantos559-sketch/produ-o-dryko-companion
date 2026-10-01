@@ -122,7 +122,7 @@ export const entrarComBiometria = createServerFn({ method: "POST" })
     }
   });
 
-async function loginBiometrico(data: { desafioId: string; resposta: any }) {
+async function loginBiometrico(data: { desafioId: string; resposta?: any }) {
     const { verificarLogin } = await import("./webauthn.server");
     const { origin, rpID } = await origemEsperada();
     const db = await admin();
