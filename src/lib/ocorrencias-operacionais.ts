@@ -233,7 +233,9 @@ export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
     }),
   }));
   const conhecidos = new Set<string>(GRUPOS_OCORRENCIAS.flatMap((g) => [...g.equipamentos]));
-  const outras = ordenadas.filter((o) => !o.equipamento || !conhecidos.has(o.equipamento));
+  const outras = ordenadas
+    .filter((o) => !o.equipamento || !conhecidos.has(o.equipamento))
+    .map((o) => linhaResumoOcorrencia(o));
   return { grupos, outras };
 }
 
@@ -268,7 +270,7 @@ export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true,
   const b = (t: string) => (negrito ? `*${t}*` : t);
   if (setor !== undefined && !usaOcorrenciasEstruturadas(setor)) {
     if (!lista.length) return "Sem ocorrências registradas no turno.";
-    const ordemPreferida = setor && String(setor).toLowerCase() === "mantas" ? [...EQUIPAMENTOS_MANTAS] : [];
+    const ordemPreferida: readonly string[] = setor && String(setor).toLowerCase() === "mantas" ? EQUIPAMENTOS_MANTAS : [];
     const equipamentos = [...new Set(lista.map((o) => o.equipamento).filter((e): e is string => !!e))]
       .sort((a, c) => {
         const ai = ordemPreferida.indexOf(a), ci = ordemPreferida.indexOf(c);
@@ -290,7 +292,9 @@ export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true,
     }
     return linhas.join("\n");
   }
-  const { grupos, outras } = consolidarOcorrencias(lista);
+  const { grupos } = consolidarOcorrencias(lista);
+  const conhecidos = new Set<string>(GRUPOS_OCORRENCIAS.flatMap((g) => [...g.equipamentos]));
+  const outras = lista.filter((o) => !o.equipamento || !conhecidos.has(o.equipamento));
   const linhas: string[] = [];
   grupos.forEach((grupo, i) => {
     if (i > 0) linhas.push("");
