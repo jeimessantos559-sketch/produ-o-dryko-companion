@@ -77,9 +77,12 @@ function Historico() {
     setDataFim(dataAtual);
   }, [profile?.turno_atual]);
 
+  const [limite, setLimite] = useState(PAGINA);
+  useEffect(() => setLimite(PAGINA), [dataFim, dataInicio, setor]);
+
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const [{ data: registros, error }, { data: trilha }, { data: perfis }] = await Promise.all([
+    const [{ data: registros, error }, { data: trilha }, perfis] = await Promise.all([
       supabase
         .from("apontamentos")
         .select("*")
@@ -87,21 +90,21 @@ function Historico() {
         .gte("data_local", dataInicio)
         .lte("data_local", dataFim)
         .order("data_hora_producao", { ascending: false })
-        .limit(500),
+        .limit(limite),
       supabase
         .from("apontamento_auditoria")
         .select("*")
         .eq("setor", setor)
         .order("created_at", { ascending: false })
         .limit(1000),
-      supabase.from("profiles").select("id, nome"),
+      consultarComCache("perfis:nomes", 5 * 60_000, async () => (await supabase.from("profiles").select("id, nome")).data ?? []),
     ]);
     if (error) toast.error("Não foi possível carregar o histórico.");
     setItens((registros ?? []) as Apontamento[]);
     setAuditorias(trilha ?? []);
-    setNomes(Object.fromEntries((perfis ?? []).map((item) => [item.id, item.nome || "Sem nome"])));
+    setNomes(Object.fromEntries(perfis.map((item) => [item.id, item.nome || "Sem nome"])));
     setCarregando(false);
-  }, [dataFim, dataInicio, setor]);
+  }, [dataFim, dataInicio, setor, limite]);
 
   useEffect(() => {
     void carregar();
