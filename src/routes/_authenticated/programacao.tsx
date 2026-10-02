@@ -505,16 +505,16 @@ function Programacao() {
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="programacao" className="space-y-4">
+          <Tabs defaultValue="hora" className="space-y-4">
             <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl p-1">
-              <TabsTrigger value="programacao" className="min-h-10 px-1 text-[11px] sm:text-sm">
-                Programação do dia
-              </TabsTrigger>
               <TabsTrigger value="hora" className="min-h-10 px-1 text-[11px] sm:text-sm">
                 Hora a hora
               </TabsTrigger>
               <TabsTrigger value="ocorrencias" className="min-h-10 px-1 text-[11px] sm:text-sm">
                 Ocorrências
+              </TabsTrigger>
+              <TabsTrigger value="programacao" className="min-h-10 px-1 text-[11px] sm:text-sm">
+                Programação
               </TabsTrigger>
             </TabsList>
 
