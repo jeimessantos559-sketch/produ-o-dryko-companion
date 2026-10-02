@@ -10,9 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { consultarComCache } from "@/lib/cache-consultas";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataHoraProducaoFormatada, dataOperacional, type GrupoCorte } from "@/lib/producao";
+
+const PAGINA = 100;
 
 export const Route = createFileRoute("/_authenticated/historico")({
   head: () => ({
@@ -290,8 +293,8 @@ function Historico() {
           <p className="mt-3 text-xs text-muted-foreground">Ocorrências não possuem vínculo automático com OP ou lote no cadastro atual; por isso não são associadas por aproximação.</p>
         </section>
 
-        {carregando ? (
-          <p className="text-sm text-muted-foreground">Carregando histórico...</p>
+        {carregando && itens.length === 0 ? (
+          <div className="space-y-2" aria-label="Carregando histórico">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div>
         ) : visiveis.length === 0 ? (
           <Card><CardContent className="pt-6 text-sm text-muted-foreground">Nenhum apontamento encontrado no período.</CardContent></Card>
         ) : (
@@ -379,6 +382,11 @@ function Historico() {
               </Card>
             );
           })
+        )}
+        {itens.length >= limite && (
+          <Button variant="outline" className="w-full" disabled={carregando} onClick={() => setLimite((v) => v + PAGINA)}>
+            {carregando ? "Carregando..." : "Carregar mais"}
+          </Button>
         )}
       </div>
     </AppShell>
