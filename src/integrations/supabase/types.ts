@@ -423,7 +423,10 @@ export type Database = {
           created_at: string
           criado_por: string
           data_local: string
+          duracao_min: number | null
           equipamento: string | null
+          hora_fim: string | null
+          hora_inicio: string | null
           id: string
           mensagem: string
           setor: Database["public"]["Enums"]["setor_codigo"]
@@ -435,7 +438,10 @@ export type Database = {
           created_at?: string
           criado_por: string
           data_local: string
+          duracao_min?: number | null
           equipamento?: string | null
+          hora_fim?: string | null
+          hora_inicio?: string | null
           id?: string
           mensagem: string
           setor: Database["public"]["Enums"]["setor_codigo"]
@@ -447,7 +453,10 @@ export type Database = {
           created_at?: string
           criado_por?: string
           data_local?: string
+          duracao_min?: number | null
           equipamento?: string | null
+          hora_fim?: string | null
+          hora_inicio?: string | null
           id?: string
           mensagem?: string
           setor?: Database["public"]["Enums"]["setor_codigo"]
