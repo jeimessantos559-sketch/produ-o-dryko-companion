@@ -193,3 +193,50 @@ describe("ocorrência em andamento", () => {
     expect(textoOcorrencias([fim], false, "mantas")).toContain("Linha 4 — Total parado: 2h00");
   });
 });
+
+import { proximoTurnoOperacional, transferirOcorrencia, rankingParadas, resumoParadas, csvOcorrencias } from "@/lib/ocorrencias-operacionais";
+
+describe("fluxo operacional de ocorrências", () => {
+  const aberta = {
+    id: "x", equipamento: "Linha 1", tipo_status: "ocorrencia", mensagem: "Rolamento do mancal quebrado",
+    created_at: "2026-10-01T18:20:00Z", hora_inicio: "15:20:00", hora_fim: null, duracao_min: null,
+    turno: "T1", data_local: "2026-10-01", setor: "fitas",
+  };
+  it("transferência T1→T2 e T2→T3 no mesmo dia; T3→T1 no dia seguinte", () => {
+    expect(proximoTurnoOperacional("T1", "2026-10-01")).toEqual({ turno: "T2", data: "2026-10-01" });
+    expect(proximoTurnoOperacional("T2", "2026-10-01")).toEqual({ turno: "T3", data: "2026-10-01" });
+    expect(proximoTurnoOperacional("T3", "2026-10-31")).toEqual({ turno: "T1", data: "2026-11-01" });
+  });
+  it("transferência preserva hora inicial, id e origem, sem duplicar", () => {
+    const lista = [aberta];
+    const t1 = transferirOcorrencia(aberta);
+    const t2 = transferirOcorrencia(t1);
+    const nova = lista.map((o) => (o.id === t2.id ? t2 : o));
+    expect(nova).toHaveLength(1);
+    expect(t2).toMatchObject({ id: "x", hora_inicio: "15:20:00", turno: "T3", turno_origem: "T1", data_origem: "2026-10-01", quantidade_transferencias: 2 });
+  });
+  it("ocorrência finalizada não pode ser transferida", () => {
+    expect(() => transferirOcorrencia({ ...aberta, hora_fim: "17:00", duracao_min: 100 })).toThrow();
+  });
+  it("motivo e ação aparecem no texto", () => {
+    const fin = { ...aberta, hora_fim: "17:00:00", duracao_min: 100, motivo_parada: "Mecânica", acao_realizada: "Troca do rolamento" };
+    const txt = textoOcorrencias([fin], false, "mantas");
+    expect(txt).toContain("1h40 parada · 15:20 às 17:00 · Linha 1: Rolamento do mancal quebrado · Motivo: Mecânica · Ação: Troca do rolamento");
+  });
+  it("ranking soma por equipamento, motivo e turno ignorando abertas e Sem ocorrências", () => {
+    const l = [
+      { ...aberta, id: "1", hora_fim: "17:00", duracao_min: 100, motivo_parada: "Mecânica" },
+      { ...aberta, id: "2", hora_fim: "16:00", duracao_min: 40, motivo_parada: "Elétrica", turno: "T2" },
+      { ...aberta, id: "3", equipamento: "Linha 2", hora_fim: "15:50", duracao_min: 30, motivo_parada: "Mecânica" },
+      { ...aberta, id: "4" },
+      { ...aberta, id: "5", tipo_status: "sem_ocorrencias", duracao_min: 999, hora_fim: "10:00" },
+    ];
+    expect(rankingParadas(l, "equipamento")).toEqual([
+      { chave: "Linha 1", minutos: 140, quantidade: 2 }, { chave: "Linha 2", minutos: 30, quantidade: 1 },
+    ]);
+    expect(rankingParadas(l, "motivo")[0]).toEqual({ chave: "Mecânica", minutos: 130, quantidade: 2 });
+    expect(rankingParadas(l, "turno")).toEqual([{ chave: "T1", minutos: 130, quantidade: 2 }, { chave: "T2", minutos: 40, quantidade: 1 }]);
+    expect(resumoParadas(l)).toMatchObject({ totalMin: 170, finalizadas: 3, emAndamento: 1 });
+    expect(csvOcorrencias(l).split("\r\n")).toHaveLength(6);
+  });
+});

@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
+import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-card";
 
 const LazyApontamentoRapido = lazy(() =>
   import("@/components/dryko/apontamento-rapido").then((modulo) => ({
@@ -260,6 +261,9 @@ function Painel() {
       >
         <div className="mx-auto max-w-5xl space-y-3">
           {erro && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800">Não foi possível carregar o painel. Tente novamente.</div>}
+          {profile?.setor_atual && profile.turno_atual && (
+            <OcorrenciasAbertasCard setor={profile.setor_atual} turno={profile.turno_atual} data={dataAtual} />
+          )}
 
           {!loading && (!profile?.setor_atual || !profile.turno_atual) && (
             <Card className="rounded-2xl"><CardContent className="flex items-center justify-between gap-3 p-4"><p className="text-sm">Escolha setor e turno para começar.</p><Button asChild size="sm"><Link to="/selecionar">Escolher</Link></Button></CardContent></Card>

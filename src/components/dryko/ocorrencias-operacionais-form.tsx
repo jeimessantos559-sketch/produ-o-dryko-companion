@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import { FinalizarOcorrencia } from "@/components/dryko/finalizar-ocorrencia";
 import {
   CAMPOS_OCORRENCIA,
-  dadosFinalizacaoOcorrencia,
+  MOTIVOS_PARADA,
+  rotuloMotivo,
   horaAtualSaoPaulo,
   ocorrenciaEmAndamento,
   equipamentosOpcionaisSetor,
@@ -30,6 +32,7 @@ type Props = {
   ocorrencias: OcorrenciaOperacional[];
   onChange: (lista: OcorrenciaOperacional[]) => void;
   permitirExcluir?: boolean;
+  ocultarLista?: boolean;
 };
 
 const CAMPOS = CAMPOS_OCORRENCIA;
@@ -51,6 +54,7 @@ export function OcorrenciasOperacionaisForm({
   ocorrencias,
   onChange,
   permitirExcluir = false,
+  ocultarLista = false,
 }: Props) {
   const [equipamento, setEquipamento] = useState("");
   const [situacao, setSituacao] = useState<TipoStatusOcorrencia | "">("");
@@ -65,8 +69,17 @@ export function OcorrenciasOperacionaisForm({
   const mostraHorario = !estruturado || (!!situacao && situacao !== "sem_ocorrencias");
   const horarioIncompleto = mostraHorario && !horaInicio && !!horaFim;
   const [finalizando, setFinalizando] = useState<string | null>(null);
-  const [horaFinal, setHoraFinal] = useState("");
-  const [salvandoFim, setSalvandoFim] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const [motivoOutro, setMotivoOutro] = useState("");
+  const situacaoReal = !estruturado || situacao === "ocorrencia";
+  // Ocorrência real: hora inicial já vem com a hora atual de São Paulo (editável).
+  useEffect(() => {
+    if (situacaoReal) setHoraInicio((h) => h || horaAtualSaoPaulo());
+  }, [situacaoReal]);
+  const motivoDados = () =>
+    mostraHorario && motivo
+      ? { motivo_parada: motivo, motivo_outro: motivo === "Outro" ? motivoOutro.trim() || null : null }
+      : { motivo_parada: null, motivo_outro: null };
   const duracao = mostraHorario ? calcularDuracaoOcorrencia(horaInicio, horaFim) : null;
   const tempo = () =>
     duracao !== null
@@ -74,7 +87,7 @@ export function OcorrenciasOperacionaisForm({
       : mostraHorario && horaInicio && !horaFim
         ? { hora_inicio: horaInicio, hora_fim: null, duracao_min: null }
         : { hora_inicio: null, hora_fim: null, duracao_min: null };
-  const limparHorario = () => { setHoraInicio(""); setHoraFim(""); };
+  const limparHorario = () => { setHoraInicio(estruturado ? "" : horaAtualSaoPaulo()); setHoraFim(""); setMotivo(""); setMotivoOutro(""); };
   const valido = !horarioIncompleto && (estruturado
     ? !!equipamento && !!situacao && (!precisaDescricao || descricao.trim().length > 0)
     : descricao.trim().length > 0);
@@ -84,7 +97,7 @@ export function OcorrenciasOperacionaisForm({
     setSalvando(true);
     const { data, error } = await (supabase as any)
       .from("ocorrencias_turno")
-      .insert({ setor, turno, data_local: dataLocal, equipamento: opcionais.includes(equipamento) ? equipamento : null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId, ...tempo() })
+      .insert({ setor, turno, data_local: dataLocal, equipamento: opcionais.includes(equipamento) ? equipamento : null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId, ...tempo(), ...motivoDados() })
       .select(CAMPOS)
       .single();
     setSalvando(false);
@@ -108,7 +121,7 @@ export function OcorrenciasOperacionaisForm({
     if (!precisaDescricao) {
       // Status simples substitui o status simples anterior do mesmo equipamento.
       const anteriores = ocorrencias.filter(
-        (o) => o.equipamento === equipamento && o.tipo_status && o.tipo_status !== "ocorrencia",
+        (o) => o.equipamento === equipamento && o.tipo_status && o.tipo_status !== "ocorrencia" && !ocorrenciaEmAndamento(o),
       );
       if (anteriores.length) {
         const { error } = await (supabase as any)
@@ -129,6 +142,7 @@ export function OcorrenciasOperacionaisForm({
         mensagem,
         criado_por: userId,
         ...tempo(),
+        ...motivoDados(),
       })
       .select(CAMPOS)
       .single();
@@ -141,24 +155,6 @@ export function OcorrenciasOperacionaisForm({
     setDescricao("");
     setSituacao("");
     toast.success("Ocorrência registrada.");
-  }
-
-  async function finalizar(item: OcorrenciaOperacional) {
-    const dados = dadosFinalizacaoOcorrencia(item.hora_inicio, horaFinal);
-    if (!dados || salvandoFim) return void toast.error("Informe a hora final.");
-    setSalvandoFim(true);
-    const { data, error } = await (supabase as any)
-      .from("ocorrencias_turno")
-      .update({ ...dados, updated_at: new Date().toISOString() })
-      .eq("id", item.id)
-      .is("hora_fim", null)
-      .select(CAMPOS)
-      .maybeSingle();
-    setSalvandoFim(false);
-    if (error || !data) return void toast.error("Não foi possível finalizar a ocorrência. Atualize a página e tente novamente.");
-    onChange(ocorrencias.map((o) => (o.id === item.id ? (data as OcorrenciaOperacional) : o)));
-    setFinalizando(null);
-    toast.success("Ocorrência finalizada.");
   }
 
   async function excluir(id: string) {
@@ -234,6 +230,20 @@ export function OcorrenciasOperacionaisForm({
       )}
       {mostraHorario && (
         <div className="space-y-1">
+          <Label htmlFor="oc-motivo">Motivo da parada{situacaoReal ? "" : " (opcional)"}</Label>
+          <select id="oc-motivo" className={classeCampo} value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+            <option value="">Não informado</option>
+            {MOTIVOS_PARADA.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          {motivo === "Outro" && (
+            <input className={classeCampo} maxLength={200} value={motivoOutro} onChange={(e) => setMotivoOutro(e.target.value)} placeholder="Qual motivo? (opcional)" aria-label="Outro motivo" />
+          )}
+        </div>
+      )}
+      {mostraHorario && (
+        <div className="space-y-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="oc-ini">Hora inicial</Label>
@@ -258,7 +268,7 @@ export function OcorrenciasOperacionaisForm({
         {salvando ? "Salvando..." : "Registrar"}
       </Button>
 
-      {ocorrencias.length > 0 && (
+      {!ocultarLista && ocorrencias.length > 0 && (
         <div className="space-y-2">
           {ocorrencias.map((item) => {
             const tipo = item.tipo_status ?? "ocorrencia";
@@ -284,20 +294,22 @@ export function OcorrenciasOperacionaisForm({
                   <p className="mt-1 whitespace-pre-wrap text-sm">
                     {tipo === "ocorrencia" ? item.mensagem : rotuloSituacao(tipo)}
                   </p>
+                  {(rotuloMotivo(item) || item.acao_realizada) && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {[rotuloMotivo(item) && `Motivo: ${rotuloMotivo(item)}`, item.acao_realizada && `Ação: ${item.acao_realizada}`].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
                   {ocorrenciaEmAndamento(item) && (finalizando === item.id ? (
-                    <div className="mt-2 space-y-2">
-                      <Label htmlFor={`fim-${item.id}`}>Hora final</Label>
-                      <input id={`fim-${item.id}`} type="time" className={classeCampo} value={horaFinal} onChange={(e) => setHoraFinal(e.target.value)} />
-                      {dadosFinalizacaoOcorrencia(item.hora_inicio, horaFinal) && (
-                        <p className="text-xs text-muted-foreground">Duração: {formatarDuracaoOcorrencia(dadosFinalizacaoOcorrencia(item.hora_inicio, horaFinal)!.duracao_min) || "0 min"}</p>
-                      )}
-                      <div className="grid grid-cols-2 gap-2">
-                        <Button variant="outline" className="h-11" disabled={salvandoFim} onClick={() => setFinalizando(null)}>Cancelar</Button>
-                        <Button className="h-11" disabled={salvandoFim || !horaFinal} onClick={() => void finalizar(item)}>{salvandoFim ? "Salvando..." : "Confirmar"}</Button>
-                      </div>
-                    </div>
+                    <FinalizarOcorrencia
+                      item={item}
+                      onCancelar={() => setFinalizando(null)}
+                      onFinalizada={(atual) => {
+                        onChange(ocorrencias.map((o) => (o.id === atual.id ? atual : o)));
+                        setFinalizando(null);
+                      }}
+                    />
                   ) : (
-                    <Button variant="outline" className="mt-2 h-11 w-full touch-manipulation" onClick={() => { setHoraFinal(horaAtualSaoPaulo()); setFinalizando(item.id); }}>
+                    <Button variant="outline" className="mt-2 h-11 w-full touch-manipulation" onClick={() => setFinalizando(item.id)}>
                       Finalizar ocorrência
                     </Button>
                   ))}

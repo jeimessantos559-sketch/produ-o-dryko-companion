@@ -102,6 +102,9 @@ function Administracao() {
           <Link to="/indicadores" className="rounded-2xl border bg-card p-3.5 shadow-sm hover:border-primary/40 sm:col-span-2">
             <div className="flex items-center gap-3"><BarChart3 className="size-5 text-primary" /><div><p className="font-bold">Painel gerencial</p><p className="text-xs text-muted-foreground">Metas, programação, paradas e Protheus por setor.</p></div></div>
           </Link>
+          <Link to="/paradas" className="rounded-2xl border bg-card p-3.5 shadow-sm hover:border-primary/40 sm:col-span-2">
+            <div className="flex items-center gap-3"><AlertTriangle className="size-5 text-primary" /><div><p className="font-bold">Paradas e ocorrências</p><p className="text-xs text-muted-foreground">Tempo parado por equipamento, motivo e turno; exportar CSV.</p></div></div>
+          </Link>
           <Link to="/usuarios" className="rounded-2xl border bg-card p-3.5 shadow-sm hover:border-primary/40">
             <div className="flex items-center gap-3"><Users className="size-5 text-primary" /><div><p className="font-bold">Usuários e permissões</p><p className="text-xs text-muted-foreground">Definir quem pode lançar no Protheus.</p></div></div>
           </Link>
