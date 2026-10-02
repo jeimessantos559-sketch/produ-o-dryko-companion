@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import {
   CalendarDays,
   Clock3,
@@ -9,6 +9,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
 import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ type AjusteHora = {
 };
 
 type Registro = {
+  id: string;
   produto_id: string;
   produto_nome: string;
   op: string | null;
@@ -101,6 +103,7 @@ function Programacao() {
   const [salvandoHora, setSalvandoHora] = useState<string | null>(null);
   const [edicoesHora, setEdicoesHora] = useState<Record<string, EdicaoHora>>({});
   const cargaAtual = useRef(0);
+  const [recarga, setRecarga] = useState(0);
 
   const produto = produtos.find((item) => item.id === produtoId) ?? null;
 
@@ -135,7 +138,7 @@ function Programacao() {
         .eq("data_local", dataAtual),
       supabase
         .from("apontamentos")
-        .select("turno, produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, data_hora_producao")
+        .select("id, turno, produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, data_hora_producao")
         .eq("setor", setor)
         .eq("data_local", dataAtual),
       (supabase as any)
@@ -196,7 +199,7 @@ function Programacao() {
       .finally(() => {
         if (carga === cargaAtual.current) setCarregando(false);
       });
-  }, [dataAtual, setor, suportado, turno]);
+  }, [dataAtual, setor, suportado, turno, recarga]);
 
   const resumoProgramacao = useMemo(() => {
     return programacao.map((item) => {
@@ -453,11 +456,6 @@ function Programacao() {
               {nomeSetor(setor)} · {nomeTurno(turno)} · {formatarData(dataAtual)}
             </p>
           </div>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/contagem">
-              <Clock3 className="size-4" /> Contagem detalhada
-            </Link>
-          </Button>
         </div>
 
         {carregando ? (
@@ -599,6 +597,13 @@ function Programacao() {
             </TabsContent>
 
             <TabsContent value="hora" className="space-y-4">
+              {setor ? (
+                <AjustarHorarioApontamentos
+                  registros={registros}
+                  setor={setor}
+                  onAjustado={() => setRecarga((v) => v + 1)}
+                />
+              ) : null}
               <Card className="rounded-2xl border-border shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
