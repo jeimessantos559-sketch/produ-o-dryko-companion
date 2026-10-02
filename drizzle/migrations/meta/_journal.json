@@ -36,6 +36,13 @@
       "when": 1790778002138,
       "tag": "0004_configuracoes_permissoes_biometria",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790953041918,
+      "tag": "0005_ocorrencias_fluxo_operacional",
+      "breakpoints": true
     }
   ]
 }

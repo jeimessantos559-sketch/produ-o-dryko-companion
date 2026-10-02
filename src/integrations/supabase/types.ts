@@ -418,50 +418,118 @@ export type Database = {
         }
         Relationships: []
       }
+      ocorrencia_transferencias: {
+        Row: {
+          created_at: string
+          data_de: string
+          data_para: string
+          id: string
+          ocorrencia_id: string
+          setor: Database["public"]["Enums"]["setor_codigo"]
+          turno_de: Database["public"]["Enums"]["turno_codigo"]
+          turno_para: Database["public"]["Enums"]["turno_codigo"]
+          usuario_id: string
+        }
+        Insert: {
+          created_at?: string
+          data_de: string
+          data_para: string
+          id?: string
+          ocorrencia_id: string
+          setor: Database["public"]["Enums"]["setor_codigo"]
+          turno_de: Database["public"]["Enums"]["turno_codigo"]
+          turno_para: Database["public"]["Enums"]["turno_codigo"]
+          usuario_id: string
+        }
+        Update: {
+          created_at?: string
+          data_de?: string
+          data_para?: string
+          id?: string
+          ocorrencia_id?: string
+          setor?: Database["public"]["Enums"]["setor_codigo"]
+          turno_de?: Database["public"]["Enums"]["turno_codigo"]
+          turno_para?: Database["public"]["Enums"]["turno_codigo"]
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ocorrencia_transferencias_ocorrencia_id_fkey"
+            columns: ["ocorrencia_id"]
+            isOneToOne: false
+            referencedRelation: "ocorrencias_turno"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ocorrencias_turno: {
         Row: {
+          acao_realizada: string | null
           created_at: string
           criado_por: string
           data_local: string
+          data_origem: string | null
           duracao_min: number | null
           equipamento: string | null
           hora_fim: string | null
           hora_inicio: string | null
           id: string
           mensagem: string
+          motivo_outro: string | null
+          motivo_parada: string | null
+          quantidade_transferencias: number
           setor: Database["public"]["Enums"]["setor_codigo"]
           tipo_status: string
+          transferida_em: string | null
+          transferida_por: string | null
           turno: Database["public"]["Enums"]["turno_codigo"]
+          turno_origem: Database["public"]["Enums"]["turno_codigo"] | null
           updated_at: string
         }
         Insert: {
+          acao_realizada?: string | null
           created_at?: string
           criado_por: string
           data_local: string
+          data_origem?: string | null
           duracao_min?: number | null
           equipamento?: string | null
           hora_fim?: string | null
           hora_inicio?: string | null
           id?: string
           mensagem: string
+          motivo_outro?: string | null
+          motivo_parada?: string | null
+          quantidade_transferencias?: number
           setor: Database["public"]["Enums"]["setor_codigo"]
           tipo_status?: string
+          transferida_em?: string | null
+          transferida_por?: string | null
           turno: Database["public"]["Enums"]["turno_codigo"]
+          turno_origem?: Database["public"]["Enums"]["turno_codigo"] | null
           updated_at?: string
         }
         Update: {
+          acao_realizada?: string | null
           created_at?: string
           criado_por?: string
           data_local?: string
+          data_origem?: string | null
           duracao_min?: number | null
           equipamento?: string | null
           hora_fim?: string | null
           hora_inicio?: string | null
           id?: string
           mensagem?: string
+          motivo_outro?: string | null
+          motivo_parada?: string | null
+          quantidade_transferencias?: number
           setor?: Database["public"]["Enums"]["setor_codigo"]
           tipo_status?: string
+          transferida_em?: string | null
+          transferida_por?: string | null
           turno?: Database["public"]["Enums"]["turno_codigo"]
+          turno_origem?: Database["public"]["Enums"]["turno_codigo"] | null
           updated_at?: string
         }
         Relationships: []
@@ -1000,6 +1068,38 @@ export type Database = {
         }
         Returns: string
       }
+      finalizar_ocorrencia: {
+        Args: { p_acao: string; p_hora_fim: string; p_id: string }
+        Returns: {
+          acao_realizada: string | null
+          created_at: string
+          criado_por: string
+          data_local: string
+          data_origem: string | null
+          duracao_min: number | null
+          equipamento: string | null
+          hora_fim: string | null
+          hora_inicio: string | null
+          id: string
+          mensagem: string
+          motivo_outro: string | null
+          motivo_parada: string | null
+          quantidade_transferencias: number
+          setor: Database["public"]["Enums"]["setor_codigo"]
+          tipo_status: string
+          transferida_em: string | null
+          transferida_por: string | null
+          turno: Database["public"]["Enums"]["turno_codigo"]
+          turno_origem: Database["public"]["Enums"]["turno_codigo"] | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ocorrencias_turno"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       gerar_relatorio_turno: {
         Args: {
           p_data: string
@@ -1065,6 +1165,13 @@ export type Database = {
         }
         Returns: Json
       }
+      pode_acessar_setor: {
+        Args: {
+          _setor: Database["public"]["Enums"]["setor_codigo"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       pode_confirmar_protheus: { Args: { _user_id: string }; Returns: boolean }
       pode_definir_meta_turno: { Args: { _user_id: string }; Returns: boolean }
       pode_finalizar_meta: { Args: { p_user_id: string }; Returns: boolean }
@@ -1083,6 +1190,38 @@ export type Database = {
           p_usuario_id: string
         }
         Returns: undefined
+      }
+      transferir_ocorrencia: {
+        Args: { p_id: string }
+        Returns: {
+          acao_realizada: string | null
+          created_at: string
+          criado_por: string
+          data_local: string
+          data_origem: string | null
+          duracao_min: number | null
+          equipamento: string | null
+          hora_fim: string | null
+          hora_inicio: string | null
+          id: string
+          mensagem: string
+          motivo_outro: string | null
+          motivo_parada: string | null
+          quantidade_transferencias: number
+          setor: Database["public"]["Enums"]["setor_codigo"]
+          tipo_status: string
+          transferida_em: string | null
+          transferida_por: string | null
+          turno: Database["public"]["Enums"]["turno_codigo"]
+          turno_origem: Database["public"]["Enums"]["turno_codigo"] | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ocorrencias_turno"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
