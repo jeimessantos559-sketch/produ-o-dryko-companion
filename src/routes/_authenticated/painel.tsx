@@ -119,7 +119,7 @@ function Painel() {
   const [modoApontamento, setModoApontamento] = useState<"novo" | "repetir">("novo");
   const [confirmandoChave, setConfirmandoChave] = useState<string | null>(null);
 
-  const carregarPainel = useCallback(async () => {
+  const carregarPainel = useCallback(async (forcar = false) => {
     if (!profile?.setor_atual || !profile.turno_atual) {
       setRecentes([]);
       setResumo(RESUMO_VAZIO);
@@ -128,63 +128,31 @@ function Painel() {
       return;
     }
 
-    setErro(false);
-    const dataAtual = dataOperacional(profile.turno_atual);
-    const rpc = await (supabase.rpc as any)("painel_turno", {
-      p_setor: profile.setor_atual,
-      p_turno: profile.turno_atual,
-      p_data: dataAtual,
-    });
+    const setorAtual = profile.setor_atual;
+    const turnoAtual = profile.turno_atual;
+    const dataAtual = dataOperacional(turnoAtual);
+    const chave = `painel:${setorAtual}:${turnoAtual}:${dataAtual}`;
+    // Mostra o último resultado na hora e revalida em segundo plano.
+    const salvo = lerCache<PainelPayload>(chave);
+    if (salvo && !forcar) aplicarPayload(salvo.valor);
 
-    if (!rpc.error) {
-      aplicarPayload((rpc.data ?? {}) as PainelPayload);
-      return;
-    }
-
-    const [{ data, error }, { data: pendenciasData, error: erroPendencias }] = await Promise.all([
-      supabase
-        .from("apontamentos")
-        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao")
-        .eq("setor", profile.setor_atual)
-        .eq("turno", profile.turno_atual)
-        .eq("data_local", dataAtual)
-        .order("data_hora_producao", { ascending: false })
-        .limit(30),
-      supabase
-        .from("apontamentos")
-        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao, data_local, turno")
-        .eq("setor", profile.setor_atual)
-        .eq("status", "pendente")
-        .order("data_hora_producao", { ascending: false })
-        .limit(60),
-    ]);
-
-    if (error || erroPendencias) {
+    try {
+      const payload = await consultarComCache<PainelPayload>(chave, 15_000, () => buscarPainel(setorAtual, turnoAtual, dataAtual), { forcar });
+      setErro(false);
+      aplicarPayload(payload);
+    } catch {
+      if (salvo) return;
       setErro(true);
       setRecentes([]);
       setResumo(RESUMO_VAZIO);
       setPendencias([]);
-      return;
     }
-
-    const itens = (data ?? []) as Registro[];
-    setRecentes(itens);
-    setPendencias((pendenciasData ?? []) as Pendencia[]);
-    setResumo(
-      itens.reduce(
-        (acc, item) => ({
-          registros: acc.registros + 1,
-          pendentes: acc.pendentes + (item.status === "pendente" ? 1 : 0),
-          lancados: acc.lancados + (item.status === "lancado" ? 1 : 0),
-          plts: acc.plts + Number(item.quantidade_plts ?? 0),
-          rolos: acc.rolos + Number(item.total_rolos ?? 0),
-          metragem: acc.metragem + Number(item.metragem ?? 0),
-          area: acc.area + Number(item.area_m2 ?? 0),
-        }),
-        { ...RESUMO_VAZIO },
-      ),
-    );
   }, [profile?.setor_atual, profile?.turno_atual]);
+
+  const recarregarAposMudanca = useCallback(async () => {
+    invalidarCache("painel:");
+    await carregarPainel(true);
+  }, [carregarPainel]);
 
   function aplicarPayload(payload: PainelPayload) {
     const r = payload.resumo ?? {};
