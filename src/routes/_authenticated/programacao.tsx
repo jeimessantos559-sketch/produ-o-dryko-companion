@@ -1,13 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   CalendarDays,
-  ClipboardCopy,
   Clock3,
-  MessageSquare,
   PackageCheck,
   Save,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -21,13 +18,22 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
-import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
-import { textoOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
-import { CAMPOS_OCORRENCIA } from "@/lib/ocorrencias-operacionais";
 import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
-export const Route = createFileRoute("/_authenticated/programacao")({ component: Programacao });
+export const Route = createFileRoute("/_authenticated/programacao")({
+  head: () => ({
+    meta: [
+      { title: "Programação | Aponta Produção DRYKO" },
+      { name: "description", content: "Planejamento hora a hora e programação diária da produção." },
+      { property: "og:title", content: "Programação | Aponta Produção DRYKO" },
+      { property: "og:description", content: "Planejamento hora a hora e programação diária da produção." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: Programacao,
+});
 
 type ProgramacaoItem = {
   id: string;
@@ -66,8 +72,6 @@ type MetaTurno = {
   horas_produtivas: number;
 };
 
-type Ocorrencia = OcorrenciaOperacional;
-
 type EdicaoHora = {
   meta: string;
   parada: string;
@@ -89,11 +93,9 @@ function Programacao() {
   const [registros, setRegistros] = useState<Registro[]>([]);
   const [registrosDia, setRegistrosDia] = useState<Registro[]>([]);
   const [metaTurno, setMetaTurno] = useState<MetaTurno | null>(null);
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [produtoId, setProdutoId] = useState("");
   const [referencia, setReferencia] = useState("");
   const [quantidade, setQuantidade] = useState("");
-  const [textoGerado, setTextoGerado] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [salvandoHora, setSalvandoHora] = useState<string | null>(null);
@@ -111,7 +113,6 @@ function Programacao() {
       setRegistros([]);
       setRegistrosDia([]);
       setMetaTurno(null);
-      setOcorrencias([]);
       setCarregando(false);
       return;
     }
@@ -144,13 +145,6 @@ function Programacao() {
         .eq("turno", turno)
         .eq("data_local", dataAtual)
         .maybeSingle(),
-      (supabase as any)
-        .from("ocorrencias_turno")
-        .select(CAMPOS_OCORRENCIA)
-        .eq("setor", setor)
-        .eq("turno", turno)
-        .eq("data_local", dataAtual)
-        .order("created_at", { ascending: true }),
     ])
       .then(
         ([
@@ -159,20 +153,17 @@ function Programacao() {
           resultadoHoras,
           resultadoRegistros,
           resultadoMeta,
-          resultadoOcorrencias,
         ]) => {
           if (carga !== cargaAtual.current) return;
           if (
             resultadoProgramacao.error ||
             resultadoHoras.error ||
-            resultadoRegistros.error ||
-            resultadoOcorrencias.error
+            resultadoRegistros.error
           ) {
             throw (
               resultadoProgramacao.error ||
               resultadoHoras.error ||
-              resultadoRegistros.error ||
-              resultadoOcorrencias.error
+              resultadoRegistros.error
             );
           }
 
@@ -184,7 +175,6 @@ function Programacao() {
           setRegistrosDia(todosDia);
           setRegistros(todosDia.filter((item) => item.turno === turno));
           setMetaTurno((resultadoMeta.data as MetaTurno | null) ?? null);
-          setOcorrencias((resultadoOcorrencias.data ?? []) as Ocorrencia[]);
 
           const edicoes: Record<string, EdicaoHora> = {};
           for (const item of horas) {
@@ -307,7 +297,6 @@ function Programacao() {
       return [...semAtual, salvo];
     });
     limparFormulario();
-    setTextoGerado("");
     toast.success("Programação salva.");
   }
 
@@ -327,7 +316,6 @@ function Programacao() {
       return;
     }
     setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)));
-    setTextoGerado("");
     toast.success(valor ? `${nome} atualizado${coluna === "op" ? "a" : ""}.` : `${nome} removid${coluna === "op" ? "a" : "o"}.`);
   }
 
@@ -342,7 +330,6 @@ function Programacao() {
       return;
     }
     setProgramacao((atuais) => atuais.filter((atual) => atual.id !== item.id));
-    setTextoGerado("");
     toast.success("Programação removida.");
   }
 
@@ -408,32 +395,7 @@ function Programacao() {
       ...atuais.filter((item) => item.hora !== salvo.hora),
       salvo,
     ]);
-    setTextoGerado("");
     toast.success(`${hora} atualizado.`);
-  }
-
-  function gerarOcorrencias() {
-    if (!setor || !turno) return;
-    const linhas: string[] = [
-      `OCORRÊNCIAS - ${nomeSetor(setor)} - ${nomeTurno(turno)} - ${formatarData(dataAtual)}`,
-      "",
-    ];
-
-    linhas.push(textoOcorrencias(ocorrencias, true, setor), "");
-
-
-
-    setTextoGerado(linhas.join("\n").trim());
-  }
-
-  async function copiarOcorrencias() {
-    if (!textoGerado) return;
-    try {
-      await navigator.clipboard.writeText(textoGerado);
-      toast.success("Ocorrências copiadas.");
-    } catch {
-      toast.error("Não foi possível copiar automaticamente.");
-    }
   }
 
   const previsaoSelecionada = useMemo(() => {
@@ -506,12 +468,9 @@ function Programacao() {
           </Card>
         ) : (
           <Tabs defaultValue="hora" className="space-y-4">
-            <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl p-1">
+            <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl p-1">
               <TabsTrigger value="hora" className="min-h-10 px-1 text-[11px] sm:text-sm">
                 Hora a hora
-              </TabsTrigger>
-              <TabsTrigger value="ocorrencias" className="min-h-10 px-1 text-[11px] sm:text-sm">
-                Ocorrências
               </TabsTrigger>
               <TabsTrigger value="programacao" className="min-h-10 px-1 text-[11px] sm:text-sm">
                 Programação
@@ -745,70 +704,6 @@ function Programacao() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="ocorrencias" className="space-y-4">
-              <Card className="rounded-2xl border-border shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <MessageSquare className="size-5 text-primary" /> Registrar ocorrência
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    {setor === "corte" || setor === "fitas"
-                      ? "Escolha o equipamento e a situação. Equipamentos sem registro saem como “Sem ocorrências”."
-                      : "Digite a ocorrência do turno em texto livre."}
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  {setor && turno ? (
-                    <OcorrenciasOperacionaisForm
-                      setor={setor}
-                      turno={turno}
-                      dataLocal={dataAtual}
-                      userId={user?.id}
-                      ocorrencias={ocorrencias}
-                      permitirExcluir
-                      onChange={(lista) => {
-                        setOcorrencias(lista);
-                        setTextoGerado("");
-                      }}
-                    />
-                  ) : null}
-                </CardContent>
-              </Card>
-
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200">
-                <div className="flex gap-2">
-                  <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                  <p>
-                    {setor === "corte" || setor === "fitas"
-                      ? "Ao gerar, o sistema cria o resumo no padrão por equipamentos, com “Sem ocorrências” para os equipamentos sem registro."
-                      : "Ao gerar, o sistema cria uma lista simples das ocorrências registradas no turno."}
-                  </p>
-                </div>
-              </div>
-
-              <Button className="h-12 w-full text-base font-bold" onClick={gerarOcorrencias}>
-                <MessageSquare className="size-5" /> Gerar ocorrências
-              </Button>
-
-              {textoGerado && (
-                <Card className="rounded-2xl border-primary/30 shadow-sm">
-                  <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                    <CardTitle className="text-base">Resumo gerado</CardTitle>
-                    <Button variant="outline" size="sm" onClick={() => void copiarOcorrencias()}>
-                      <ClipboardCopy className="size-4" /> Copiar
-                    </Button>
-                  </CardHeader>
-                  <CardContent>
-                    <textarea
-                      readOnly
-                      value={textoGerado}
-                      rows={12}
-                      className="w-full resize-y rounded-xl border border-input bg-muted/30 px-3 py-2 font-mono text-xs text-foreground"
-                    />
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
           </Tabs>
         )}
       </div>
