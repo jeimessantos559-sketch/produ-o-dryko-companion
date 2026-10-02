@@ -151,9 +151,9 @@ function comTempo(o: OcorrenciaOperacional, texto: string) {
 
 function descricaoOcorrencia(o: OcorrenciaOperacional) {
   const mensagem = o.mensagem.trim();
-  return (o.tipo_status ?? "ocorrencia") === "ocorrencia"
-    ? mensagem || "Ocorrência"
-    : mensagem || rotuloSituacao(o.tipo_status);
+  if ((o.tipo_status ?? "ocorrencia") === "ocorrencia") return mensagem || "Ocorrência";
+  const situacao = rotuloSituacao(o.tipo_status);
+  return mensagem ? `${situacao}: ${mensagem}` : situacao;
 }
 
 function linhaResumoOcorrencia(o: OcorrenciaOperacional) {
@@ -287,8 +287,6 @@ export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true,
     if (gerais.length) {
       if (linhas.length) linhas.push("");
       linhas.push(b("Ocorrências gerais"), ...linhasEquipamento(gerais));
-      const totalGeral = gerais.reduce((soma, o) => soma + (o.tipo_status !== "sem_ocorrencias" && !ocorrenciaEmAndamento(o) && (o.duracao_min ?? 0) > 0 ? o.duracao_min ?? 0 : 0), 0);
-      if (totalGeral > 0) linhas.push(b(`Tempo total parado: ${formatarDuracaoOcorrencia(totalGeral)}`));
     }
     return linhas.join("\n");
   }
