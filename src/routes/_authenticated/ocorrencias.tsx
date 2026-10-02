@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClipboardCopy, MessageSquare, TriangleAlert } from "lucide-react";
+import { CalendarSearch, ClipboardCopy, MessageSquare, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -7,6 +7,8 @@ import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
 import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import {
@@ -103,7 +105,15 @@ function Ocorrencias() {
 
   return (
     <AppShell title="Ocorrências" eyebrow={`${nomeSetor(setor).toUpperCase()} · ${turno}`}>
-      <div className="mx-auto max-w-2xl space-y-4">
+      <Tabs defaultValue="atual" className="mx-auto max-w-2xl">
+        <TabsList className="mb-4 grid h-11 w-full grid-cols-2">
+          <TabsTrigger value="atual">Turno atual</TabsTrigger>
+          <TabsTrigger value="anteriores">Consultar anteriores</TabsTrigger>
+        </TabsList>
+        <TabsContent value="anteriores">
+          <ConsultaAnteriores setor={setor} dataAtual={dataAtual} />
+        </TabsContent>
+        <TabsContent value="atual" className="space-y-4">
         <Card className="rounded-2xl border-border shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -168,7 +178,8 @@ function Ocorrencias() {
             </CardContent>
           </Card>
         )}
-      </div>
+        </TabsContent>
+      </Tabs>
     </AppShell>
   );
 }
@@ -176,4 +187,101 @@ function Ocorrencias() {
 function formatarData(valor: string) {
   const [ano, mes, dia] = valor.split("-");
   return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
+}
+
+function diaAnterior(valor: string) {
+  const d = new Date(`${valor}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+const TURNOS = ["T1", "T2", "T3"] as const;
+
+function ConsultaAnteriores({ setor, dataAtual }: { setor: string; dataAtual: string }) {
+  const [data, setData] = useState(() => diaAnterior(dataAtual));
+  const [lista, setLista] = useState<OcorrenciaOperacional[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const carga = useRef(0);
+
+  useEffect(() => {
+    const atual = ++carga.current;
+    if (!data || data > dataAtual) {
+      setLista([]);
+      return;
+    }
+    setCarregando(true);
+    void (supabase as any)
+      .from("ocorrencias_turno")
+      .select(CAMPOS_OCORRENCIA)
+      .eq("setor", setor)
+      .eq("data_local", data)
+      .order("created_at", { ascending: true })
+      .then(({ data: linhas, error }: { data: unknown[] | null; error: unknown }) => {
+        if (atual !== carga.current) return;
+        if (error) {
+          toast.error("Não foi possível consultar as ocorrências.");
+          setLista([]);
+          return;
+        }
+        setLista((linhas ?? []) as OcorrenciaOperacional[]);
+      })
+      .finally(() => {
+        if (atual === carga.current) setCarregando(false);
+      });
+  }, [data, dataAtual, setor]);
+
+  return (
+    <div className="space-y-4">
+      <Card className="rounded-2xl border-border shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarSearch className="size-5 text-primary" /> Consultar dias anteriores
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">Somente leitura. Mostra T1, T2 e T3 do setor {nomeSetor(setor)}.</p>
+        </CardHeader>
+        <CardContent>
+          <label className="text-sm font-medium" htmlFor="data-consulta">Data</label>
+          <Input
+            id="data-consulta"
+            type="date"
+            className="mt-1 h-11"
+            value={data}
+            max={dataAtual}
+            onChange={(e) => {
+              const v = e.target.value;
+              setData(v && v > dataAtual ? dataAtual : v);
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      {carregando ? (
+        <p className="text-sm text-muted-foreground">Carregando ocorrências...</p>
+      ) : lista.length === 0 ? (
+        <Card className="rounded-2xl">
+          <CardContent className="p-5 text-sm text-muted-foreground">Nenhuma ocorrência registrada nesta data.</CardContent>
+        </Card>
+      ) : (
+        TURNOS.map((t) => {
+          const doTurno = lista.filter((o) => (o as { turno?: string }).turno === t);
+          return (
+            <Card key={t} className="rounded-2xl border-border shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">{nomeTurno(t)} · {formatarData(data)}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {doTurno.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma ocorrência neste turno.</p>
+                ) : (
+                  <pre className="whitespace-pre-wrap break-words rounded-xl border border-input bg-muted/30 px-3 py-2 font-sans text-sm text-foreground">
+                    {textoOcorrencias(doTurno, false, setor)}
+                  </pre>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
+    </div>
+  );
 }
