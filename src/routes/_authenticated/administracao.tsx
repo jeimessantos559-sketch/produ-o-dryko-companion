@@ -7,7 +7,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 
-export const Route = createFileRoute("/_authenticated/administracao")({ component: Administracao });
+export const Route = createFileRoute("/_authenticated/administracao")({
+  head: () => ({
+    meta: [
+      { title: "Administração | Aponta Produção DRYKO" },
+      { name: "description", content: "Visão administrativa da produção, acessos e indicadores." },
+      { property: "og:title", content: "Administração | Aponta Produção DRYKO" },
+      { property: "og:description", content: "Visão administrativa da produção, acessos e indicadores." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: Administracao,
+});
 
 type ResumoAdmin = {
   usuarios: number;
@@ -103,7 +115,7 @@ function Administracao() {
             <div className="flex items-center gap-3"><BarChart3 className="size-5 text-primary" /><div><p className="font-bold">Painel gerencial</p><p className="text-xs text-muted-foreground">Metas, programação, paradas e Protheus por setor.</p></div></div>
           </Link>
           <Link to="/paradas" className="rounded-2xl border bg-card p-3.5 shadow-sm hover:border-primary/40 sm:col-span-2">
-            <div className="flex items-center gap-3"><AlertTriangle className="size-5 text-primary" /><div><p className="font-bold">Paradas e ocorrências</p><p className="text-xs text-muted-foreground">Tempo parado por equipamento, motivo e turno; exportar CSV.</p></div></div>
+            <div className="flex items-center gap-3"><AlertTriangle className="size-5 text-primary" /><div><p className="font-bold">Pareto de paradas</p><p className="text-xs text-muted-foreground">Tempo parado por equipamento, motivo e turno; exportar CSV.</p></div></div>
           </Link>
           <Link to="/usuarios" className="rounded-2xl border bg-card p-3.5 shadow-sm hover:border-primary/40">
             <div className="flex items-center gap-3"><Users className="size-5 text-primary" /><div><p className="font-bold">Usuários e permissões</p><p className="text-xs text-muted-foreground">Definir quem pode lançar no Protheus.</p></div></div>

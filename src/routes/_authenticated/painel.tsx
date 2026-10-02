@@ -36,7 +36,19 @@ const LazyApontamentoRapido = lazy(() =>
   })),
 );
 
-export const Route = createFileRoute("/_authenticated/painel")({ component: Painel });
+export const Route = createFileRoute("/_authenticated/painel")({
+  head: () => ({
+    meta: [
+      { title: "Painel do turno | Aponta Produção DRYKO" },
+      { name: "description", content: "Resumo e apontamentos do turno de produção." },
+      { property: "og:title", content: "Painel do turno | Aponta Produção DRYKO" },
+      { property: "og:description", content: "Resumo e apontamentos do turno de produção." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: Painel,
+});
 
 type Resumo = {
   registros: number;
@@ -197,6 +209,7 @@ function Painel() {
   const setor = profile?.setor_atual ?? "";
   const setorFitas = setor === "fitas";
   const setorMantas = setor === "mantas";
+  const setorCorte = setor === "corte";
   const setorNome = setor ? nomeSetor(setor) : "Setor";
   const turnoNome = nomeTurno(profile?.turno_atual);
 
@@ -273,7 +286,7 @@ function Painel() {
             <Indicador icon={Clock3} label="Pendentes" valor={resumo.pendentes} detalhe="para lançar" tone="amber" />
             <Indicador icon={PackageCheck} label="Lançados" valor={resumo.lancados} detalhe="no Protheus" tone="green" />
             <Indicador icon={Boxes} label={setorFitas ? "Apontamentos" : "PLTs fechados"} valor={setorFitas ? resumo.registros : resumo.plts} detalhe="neste turno" tone="slate" />
-            <Indicador icon={Gauge} label={setorFitas || setorMantas ? "Metragem Protheus" : "Unidades produzidas"} valor={setorFitas ? formatarNumero(resumo.area) : setorMantas ? formatarNumero(resumo.metragem) : resumo.rolos.toLocaleString("pt-BR")} detalhe={setorFitas ? "m²" : setorMantas ? "m" : "unidades"} tone="slate" destaque={setorFitas || setorMantas} />
+            <Indicador icon={Gauge} label={setorCorte ? "Metragem produzida" : "Metragem Protheus"} valor={setorFitas ? formatarNumero(resumo.area) : formatarNumero(resumo.metragem)} detalhe={setorFitas || setorCorte ? "m²" : "m"} tone="slate" destaque />
           </div>
 
           {isAutorizado && gruposProtheus.length > 0 && (
@@ -383,7 +396,7 @@ function tituloGrupo(grupo: GrupoProtheus, setor: string) {
 function resumoRegistro(item: Registro, setor: string) {
   if (setor === "fitas") return `${formatarNumero(Number(item.area_m2 ?? 0))} m² para Protheus`;
   if (setor === "mantas") return `${formatarNumero(Number(item.metragem ?? 0))} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
-  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} unidades`;
+  return `${item.total_rolos ?? 0} unidades · ${formatarNumero(Number(item.metragem ?? 0))} m²`;
 }
 
 function resumoGrupo(grupo: GrupoProtheus, setor: string) {
