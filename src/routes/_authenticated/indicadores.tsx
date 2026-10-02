@@ -10,6 +10,7 @@ import {
   aderencias, realizadoNaUnidade, tempoMedioConfirmacaoMin, UNIDADE_PRINCIPAL,
   type Aderencia, type ApontamentoIndicador, type SetorGerencial,
 } from "@/lib/indicadores";
+import { CAMPOS_OCORRENCIA, resumoParadas, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 import { dataSaoPaulo } from "@/lib/producao";
 
 export const Route = createFileRoute("/_authenticated/indicadores")({
@@ -54,24 +55,25 @@ function desdeDias(dias: number) {
 
 async function carregar(setor: SetorGerencial, dias: number): Promise<Dados> {
   const desde = desdeDias(dias);
+  const ate = dataSaoPaulo();
   const limiteAntigo = new Date(Date.now() - 24 * 3_600_000).toISOString();
-  const [aps, metas, prog, ocorr, horas, antigas] = await Promise.all([
-    supabase.from("apontamentos").select("status, created_at, lancado_em, quantidade_plts, metragem, area_m2").eq("setor", setor).gte("data_local", desde).limit(5000),
-    supabase.from("metas_turno").select("quantidade_meta, unidade").eq("setor", setor).gte("data_local", desde),
-    supabase.from("programacao_producao").select("quantidade_prevista, unidade").eq("setor", setor).gte("data_local", desde),
-    supabase.from("ocorrencias_turno").select("id", { count: "exact", head: true }).eq("setor", setor).gte("data_local", desde),
-    supabase.from("programacao_hora").select("parada_minutos").eq("setor", setor).gte("data_local", desde),
-    supabase.from("apontamentos").select("id", { count: "exact", head: true }).eq("setor", setor).eq("status", "pendente").lt("created_at", limiteAntigo),
+  const [aps, metas, prog, ocorr, antigas] = await Promise.all([
+    supabase.from("apontamentos").select("status, created_at, lancado_em, quantidade_plts, metragem, area_m2").eq("setor", setor).gte("data_local", desde).lte("data_local", ate).limit(5000),
+    supabase.from("metas_turno").select("quantidade_meta, unidade").eq("setor", setor).gte("data_local", desde).lte("data_local", ate),
+    supabase.from("programacao_producao").select("quantidade_prevista, unidade").eq("setor", setor).gte("data_local", desde).lte("data_local", ate),
+    (supabase as any).from("ocorrencias_turno").select(CAMPOS_OCORRENCIA).eq("setor", setor).gte("data_local", desde).lte("data_local", ate).limit(5000),
+    supabase.from("apontamentos").select("id", { count: "exact", head: true }).eq("setor", setor).gte("data_local", desde).lte("data_local", ate).eq("status", "pendente").lt("created_at", limiteAntigo),
   ]);
   const lista = (aps.data ?? []) as ApontamentoIndicador[];
+  const paradas = resumoParadas((ocorr.data ?? []) as OcorrenciaOperacional[]);
   return {
     registros: lista.length,
     realizado: realizadoNaUnidade(setor, UNIDADE_PRINCIPAL[setor], lista) ?? 0,
-    plts: setor === "corte" ? realizadoNaUnidade(setor, "PLTs", lista) : null,
+    plts: setor === "fitas" ? null : realizadoNaUnidade(setor, "PLTs", lista),
     meta: aderencias(setor, (metas.data ?? []).map((m) => ({ quantidade: Number(m.quantidade_meta), unidade: m.unidade })), lista),
     programacao: aderencias(setor, (prog.data ?? []).map((p) => ({ quantidade: Number(p.quantidade_prevista), unidade: p.unidade })), lista),
-    ocorrencias: ocorr.count ?? 0,
-    paradaMin: (horas.data ?? []).reduce((t, h) => t + Number(h.parada_minutos ?? 0), 0),
+    ocorrencias: (ocorr.data ?? []).length,
+    paradaMin: paradas.totalMin,
     pendentesAntigas: antigas.count ?? 0,
     tempoMedioMin: tempoMedioConfirmacaoMin(lista),
   };
@@ -104,7 +106,7 @@ function Indicadores() {
   const unidade = UNIDADE_PRINCIPAL[setor];
 
   return (
-    <AppShell title="Painel gerencial" eyebrow="INDICADORES POR SETOR">
+    <AppShell title="Painel gerencial" eyebrow={dias === 1 ? "DIA OPERACIONAL · T1 + T2 + T3" : `ÚLTIMOS ${dias} DIAS · POR SETOR`}>
       <div className="mx-auto max-w-4xl space-y-3">
         <Link to="/administracao" className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Administração</Link>
 
@@ -120,7 +122,7 @@ function Indicadores() {
           {PERIODOS.map((p) => (
             <button key={p} type="button" onClick={() => setDias(p)}
               className={`h-9 flex-1 rounded-xl border text-xs font-semibold ${dias === p ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground"}`}>
-              {p === 1 ? "Hoje" : `${p} dias`}
+              {p === 1 ? "Hoje · 3 turnos" : `${p} dias`}
             </button>
           ))}
         </div>
@@ -133,15 +135,16 @@ function Indicadores() {
           <>
             <div className="grid grid-cols-2 gap-2.5">
               <Bloco icon={BarChart3} label={`Produção (${unidade})`} valor={dados.registros ? fmt(dados.realizado) : "—"} detalhe={`${dados.registros} apontamento(s)`} />
-              {dados.plts !== null && <Bloco icon={BarChart3} label="PLTs fechados" valor={dados.registros ? fmt(dados.plts, 0) : "—"} detalhe="Somente Corte" />}
+              {dados.plts !== null && <Bloco icon={BarChart3} label="PLTs fechados" valor={dados.registros ? fmt(dados.plts, 0) : "—"} detalhe={setor === "corte" ? "Corte" : "Mantas"} />}
               <Bloco icon={AlertTriangle} label="Pendências Protheus +24h" valor={dados.pendentesAntigas} detalhe="Aguardando lançamento" />
               <Bloco icon={Clock3} label="Tempo até Protheus" valor={dados.tempoMedioMin === null ? "—" : duracao(dados.tempoMedioMin)} detalhe={dados.tempoMedioMin === null ? "Sem lançamentos no período" : "Média apontamento → confirmação"} />
-              <Bloco icon={PauseCircle} label="Paradas registradas" valor={dados.paradaMin ? `${fmt(dados.paradaMin, 0)} min` : "—"} detalhe={`${dados.ocorrencias} ocorrência(s)`} />
+              <Bloco icon={PauseCircle} label="Tempo parado" valor={dados.paradaMin ? duracao(dados.paradaMin) : "—"} detalhe={`${dados.ocorrencias} ocorrência(s) · somente finalizadas`} />
             </div>
 
             <Aderencias titulo="Aderência à meta do turno" itens={dados.meta} vazio="Nenhuma meta de turno definida neste período." />
             <Aderencias titulo="Aderência à programação" itens={dados.programacao} vazio="Nenhuma programação cadastrada neste período." />
             <p className="text-xs text-muted-foreground">Metas e programações só são comparadas com a produção na mesma unidade ({setor === "corte" ? "m² ou PLTs" : unidade}).</p>
+            {dias === 1 && <p className="text-xs text-muted-foreground">O consolidado diário reúne T1, T2 e T3 do setor selecionado, sem misturar unidades entre setores.</p>}
           </>
         )}
       </div>

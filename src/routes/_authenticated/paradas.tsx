@@ -144,14 +144,23 @@ function Paradas() {
             </div>
 
             <section className="rounded-2xl border bg-card p-3 shadow-sm">
+              <div className="mb-3">
+                <h2 className="font-extrabold text-foreground">Pareto de paradas</h2>
+                <p className="text-xs text-muted-foreground">Ranking do maior para o menor tempo parado.</p>
+              </div>
               {ranking.length === 0 ? (
                 <p className="p-2 text-sm text-muted-foreground">Nenhuma parada finalizada com tempo registrado neste período.</p>
               ) : (
                 <div className="divide-y divide-border">
                   {ranking.map((r) => (
-                    <div key={r.chave} className="flex items-center justify-between gap-2 py-2 text-sm">
-                      <span className="min-w-0 truncate font-medium text-foreground">{r.chave}</span>
-                      <span className="shrink-0 text-muted-foreground"><strong className="text-destructive">{formatarDuracaoOcorrencia(r.minutos)}</strong> · {r.quantidade} ocorr.</span>
+                    <div key={r.chave} className="py-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-medium text-foreground">{r.chave}</span>
+                        <span className="shrink-0 text-muted-foreground"><strong className="text-destructive">{formatarDuracaoOcorrencia(r.minutos)}</strong> · {r.quantidade} ocorr.</span>
+                      </div>
+                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted" aria-label={`${r.chave}: ${formatarDuracaoOcorrencia(r.minutos)}`}>
+                        <div className="h-full rounded-full bg-destructive" style={{ width: `${ranking[0] ? (r.minutos / ranking[0].minutos) * 100 : 0}%` }} />
+                      </div>
                     </div>
                   ))}
                 </div>
