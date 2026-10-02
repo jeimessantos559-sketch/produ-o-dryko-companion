@@ -310,6 +310,11 @@ function Relatorios() {
             })}
           </div>
         )}
+        {relatorios.length >= limite && (
+          <Button variant="outline" className="w-full" disabled={carregando} onClick={() => setLimite((v) => v + 50)}>
+            {carregando ? "Carregando..." : "Carregar mais"}
+          </Button>
+        )}
       </div>
     </AppShell>
   );
