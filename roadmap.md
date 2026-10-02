@@ -5,3 +5,4 @@
 - [x] Corrigir os indicadores e a lista do Painel do Corte, sem alterar Fitas.
 - [x] Reaproveitar e completar Pareto, histórico de OP/lote e consolidado diário gerencial.
 - [x] Validar TypeScript, testes, build e preview mobile/dark sem publicar.
+- [x] Otimizar velocidade no celular (cache curto, histórico paginado, PWA, foto compactada, índice de lote) sem publicar.

@@ -18,3 +18,4 @@
 - Service worker waits for the user's "Atualizar" (SKIP_WAITING message) — never reload silently mid-form. No offline queue for apontamentos until conflict rules exist; saves are blocked offline.
 - CI (.github/workflows/ci.yml) runs verify:portability, tests and build without production secrets; lint is non-blocking until historical debt is fixed.
 - Ocorrências abertas (hora_inicio sem hora_fim) são finalizadas/transferidas só pelas RPCs finalizar_ocorrencia/transferir_ocorrencia (lock + auditoria em ocorrencia_transferencias); regras puras espelhadas em src/lib/ocorrencias-operacionais.ts — evita corrida entre aparelhos e duplicação.
+- Repeated client reads go through src/lib/cache-consultas.ts (short TTL + in-flight dedupe, explicit invalidation after mutations) — avoids duplicate fetches without hiding fresh operational data.
