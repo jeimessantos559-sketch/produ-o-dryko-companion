@@ -256,3 +256,28 @@ describe("fluxo operacional de ocorrências", () => {
     expect(csvOcorrencias(l).split("\r\n")).toHaveLength(6);
   });
 });
+
+import { ocorrenciasParaHerdar, turnoAnteriorOperacional } from "@/lib/ocorrencias-operacionais";
+
+describe("herança de ocorrências entre turnos", () => {
+  const base = { equipamento: "Linha 1", tipo_status: "ocorrencia", mensagem: "x", created_at: "2026-10-01T10:00:00Z", hora_inicio: "15:00:00", hora_fim: null as string | null, duracao_min: null as number | null };
+  it("turno anterior é o inverso do próximo", () => {
+    expect(turnoAnteriorOperacional("T2", "2026-10-01")).toEqual({ turno: "T1", data: "2026-10-01" });
+    expect(turnoAnteriorOperacional("T3", "2026-10-01")).toEqual({ turno: "T2", data: "2026-10-01" });
+    expect(turnoAnteriorOperacional("T1", "2026-11-01")).toEqual({ turno: "T3", data: "2026-10-31" });
+  });
+  it("só abertas do turno imediatamente anterior, sem duplicar; finalizada fica", () => {
+    const aberta = { ...base, id: "a", turno: "T1", data_local: "2026-10-01" };
+    const lista = [
+      aberta, aberta,
+      { ...base, id: "f", turno: "T1", data_local: "2026-10-01", hora_fim: "16:00:00", duracao_min: 60 },
+      { ...base, id: "velha", turno: "T3", data_local: "2026-09-30" },
+    ];
+    expect(ocorrenciasParaHerdar(lista, "T2", "2026-10-01").map((o) => o.id)).toEqual(["a"]);
+  });
+  it("T3 aberta é herdada pelo T1 do dia seguinte", () => {
+    const l = [{ ...base, id: "n", turno: "T3", data_local: "2026-10-31" }];
+    expect(ocorrenciasParaHerdar(l, "T1", "2026-11-01")).toHaveLength(1);
+    expect(ocorrenciasParaHerdar(l, "T1", "2026-10-31")).toHaveLength(0);
+  });
+});

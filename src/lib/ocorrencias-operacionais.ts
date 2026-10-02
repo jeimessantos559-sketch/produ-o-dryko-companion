@@ -75,6 +75,29 @@ export function proximoTurnoOperacional(turno: TurnoCod, data: string): { turno:
   return { turno: "T1", data: d.toISOString().slice(0, 10) };
 }
 
+/** Turno imediatamente anterior: inverso de proximoTurnoOperacional. */
+export function turnoAnteriorOperacional(turno: TurnoCod, data: string): { turno: TurnoCod; data: string } {
+  if (turno === "T3") return { turno: "T2", data };
+  if (turno === "T2") return { turno: "T1", data };
+  const d = new Date(`${data}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return { turno: "T3", data: d.toISOString().slice(0, 10) };
+}
+
+/** Ocorrências que o turno atual deve herdar: só abertas do turno imediatamente anterior, sem repetir id. */
+export function ocorrenciasParaHerdar<T extends OcorrenciaOperacional & { turno: string; data_local: string }>(
+  lista: T[], turnoAtual: TurnoCod, dataAtual: string,
+): T[] {
+  const vistos = new Set<string>();
+  return lista.filter((o) => {
+    if (vistos.has(o.id) || !ocorrenciaEmAndamento(o)) return false;
+    const destino = proximoTurnoOperacional(o.turno as TurnoCod, o.data_local);
+    if (destino.turno !== turnoAtual || destino.data !== dataAtual) return false;
+    vistos.add(o.id);
+    return true;
+  });
+}
+
 /** Espelho puro da transferência: mesma ocorrência, hora inicial preservada, origem só na primeira vez. */
 export function transferirOcorrencia<T extends OcorrenciaOperacional & { turno: string; data_local: string }>(o: T): T {
   if (!ocorrenciaEmAndamento(o)) throw new Error("Só ocorrências em andamento podem ser transferidas.");
