@@ -102,9 +102,11 @@ function Configuracoes() {
       }
       let avatar = avatarAnterior;
       if (arquivo) {
-        const ext = arquivo.type === "image/png" ? "png" : arquivo.type === "image/webp" ? "webp" : "jpg";
+        const { compactarImagem } = await import("@/lib/imagem-compacta");
+        const envio = await compactarImagem(arquivo);
+        const ext = envio.type === "image/png" ? "png" : envio.type === "image/webp" ? "webp" : "jpg";
         const caminho = `${user.id}/avatar-${Date.now()}.${ext}`;
-        const { error } = await supabase.storage.from("avatars").upload(caminho, arquivo, { contentType: arquivo.type, upsert: true });
+        const { error } = await supabase.storage.from("avatars").upload(caminho, envio, { contentType: envio.type, upsert: true });
         if (error) throw new Error("Não foi possível enviar a foto.");
         avatarNovo = caminho;
         avatar = caminho;

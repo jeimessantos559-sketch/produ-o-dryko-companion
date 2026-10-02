@@ -10,9 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { consultarComCache } from "@/lib/cache-consultas";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataHoraProducaoFormatada, dataOperacional, type GrupoCorte } from "@/lib/producao";
+
+const PAGINA = 100;
 
 export const Route = createFileRoute("/_authenticated/historico")({
   head: () => ({
@@ -77,9 +80,12 @@ function Historico() {
     setDataFim(dataAtual);
   }, [profile?.turno_atual]);
 
+  const [limite, setLimite] = useState(PAGINA);
+  useEffect(() => setLimite(PAGINA), [dataFim, dataInicio, setor]);
+
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const [{ data: registros, error }, { data: trilha }, { data: perfis }] = await Promise.all([
+    const [{ data: registros, error }, { data: trilha }, perfis] = await Promise.all([
       supabase
         .from("apontamentos")
         .select("*")
@@ -87,21 +93,21 @@ function Historico() {
         .gte("data_local", dataInicio)
         .lte("data_local", dataFim)
         .order("data_hora_producao", { ascending: false })
-        .limit(500),
+        .limit(limite),
       supabase
         .from("apontamento_auditoria")
         .select("*")
         .eq("setor", setor)
         .order("created_at", { ascending: false })
         .limit(1000),
-      supabase.from("profiles").select("id, nome"),
+      consultarComCache("perfis:nomes", 5 * 60_000, async () => (await supabase.from("profiles").select("id, nome")).data ?? []),
     ]);
     if (error) toast.error("Não foi possível carregar o histórico.");
     setItens((registros ?? []) as Apontamento[]);
     setAuditorias(trilha ?? []);
-    setNomes(Object.fromEntries((perfis ?? []).map((item) => [item.id, item.nome || "Sem nome"])));
+    setNomes(Object.fromEntries(perfis.map((item) => [item.id, item.nome || "Sem nome"])));
     setCarregando(false);
-  }, [dataFim, dataInicio, setor]);
+  }, [dataFim, dataInicio, setor, limite]);
 
   useEffect(() => {
     void carregar();
@@ -287,8 +293,8 @@ function Historico() {
           <p className="mt-3 text-xs text-muted-foreground">Ocorrências não possuem vínculo automático com OP ou lote no cadastro atual; por isso não são associadas por aproximação.</p>
         </section>
 
-        {carregando ? (
-          <p className="text-sm text-muted-foreground">Carregando histórico...</p>
+        {carregando && itens.length === 0 ? (
+          <div className="space-y-2" aria-label="Carregando histórico">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div>
         ) : visiveis.length === 0 ? (
           <Card><CardContent className="pt-6 text-sm text-muted-foreground">Nenhum apontamento encontrado no período.</CardContent></Card>
         ) : (
@@ -376,6 +382,11 @@ function Historico() {
               </Card>
             );
           })
+        )}
+        {itens.length >= limite && (
+          <Button variant="outline" className="w-full" disabled={carregando} onClick={() => setLimite((v) => v + PAGINA)}>
+            {carregando ? "Carregando..." : "Carregar mais"}
+          </Button>
         )}
       </div>
     </AppShell>

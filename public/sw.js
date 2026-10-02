@@ -35,8 +35,27 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Arquivos com hash em /assets/ nunca mudam: cache primeiro, sem rede.
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(
+      caches.match(request).then(
+        (cached) =>
+          cached ||
+          fetch(request).then((response) => {
+            if (response && response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE).then((cache) => cache.put(request, clone));
+            }
+            return response;
+          }),
+      ),
+    );
+    return;
+  }
+
   const cacheavel = ["style", "script", "font", "image"].includes(request.destination);
   if (!cacheavel) return;
+
 
   event.respondWith(
     caches.match(request).then((cached) => {
