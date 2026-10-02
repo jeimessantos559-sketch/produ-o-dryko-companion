@@ -134,3 +134,28 @@ describe("indicadores gerenciais", () => {
     expect(tempoMedioConfirmacaoMin([ap({})])).toBeNull();
   });
 });
+
+import { calcularDuracaoOcorrencia, formatarDuracaoOcorrencia, totalParadoPorEquipamento, textoOcorrencias } from "@/lib/ocorrencias-operacionais";
+
+describe("horários das ocorrências", () => {
+  it("calcula duração, inclusive após meia-noite", () => {
+    expect(calcularDuracaoOcorrencia("23:00", "01:00")).toBe(120);
+    expect(calcularDuracaoOcorrencia("15:00", "17:00")).toBe(120);
+    expect(calcularDuracaoOcorrencia("08:15:00", "09:00:00")).toBe(45);
+    expect(calcularDuracaoOcorrencia("10:00", "10:00")).toBe(0);
+    expect(calcularDuracaoOcorrencia(null, "10:00")).toBeNull();
+    expect(calcularDuracaoOcorrencia("10:00", "")).toBeNull();
+  });
+  it("formata duração", () => {
+    expect([120, 90, 45, 0, null].map(formatarDuracaoOcorrencia)).toEqual(["2h00", "1h30", "45min", "", ""]);
+  });
+  it("soma por equipamento sem contar sem_ocorrencias", () => {
+    const o = (tipo: string, dur: number | null, eq = "Máquina de corte 3") =>
+      ({ id: tipo + dur, equipamento: eq, tipo_status: tipo, mensagem: "x", created_at: "2026-10-01T10:00:00Z", duracao_min: dur });
+    const t = totalParadoPorEquipamento([o("ocorrencia", 120), o("em_manutencao", 80), o("sem_ocorrencias", 60), o("sem_producao", 0)]);
+    expect(t.get("Máquina de corte 3")).toBe(200);
+    const txt = textoOcorrencias([{ ...o("ocorrencia", 120), mensagem: "Quebrou o disco", hora_inicio: "23:00:00", hora_fim: "01:00:00" }], false, "corte");
+    expect(txt).toContain("Máquina de corte 3 — Total parado: 2h00");
+    expect(txt).toContain("2h00 parada · 23:00 às 01:00 · Quebrou o disco");
+  });
+});
