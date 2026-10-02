@@ -54,6 +54,7 @@ function Historico() {
   const [turno, setTurno] = useState("");
   const [status, setStatus] = useState("");
   const [referencia, setReferencia] = useState("");
+  const [referenciaAberta, setReferenciaAberta] = useState<string | null>(null);
   const [produto, setProduto] = useState("");
   const [facilitador, setFacilitador] = useState("");
   const [itens, setItens] = useState<Apontamento[]>([]);
@@ -137,9 +138,10 @@ function Historico() {
   }, [baseVisiveis, setor]);
   const visiveis = useMemo(() => {
     const termo = referencia.trim().toLocaleLowerCase("pt-BR");
+    if (referenciaAberta) return baseVisiveis.filter((item) => referenciaApontamento(item, setor) === referenciaAberta);
     if (!termo) return baseVisiveis;
     return baseVisiveis.filter((item) => referenciaApontamento(item, setor).toLocaleLowerCase("pt-BR").includes(termo));
-  }, [baseVisiveis, referencia, setor]);
+  }, [baseVisiveis, referencia, referenciaAberta, setor]);
 
   function abrirEdicao(item: Apontamento) {
     const grupos = Array.isArray(item.grupos)
@@ -251,7 +253,7 @@ function Historico() {
                 <option value="">Todas</option><option value="pendente">Pendente</option><option value="lancado">Lançado</option>
               </select>
             </Campo>
-            <Campo label={setor === "mantas" ? "Lote" : "OP"}><Input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder={setor === "mantas" ? "Buscar lote" : "Buscar OP"} /></Campo>
+            <Campo label={setor === "mantas" ? "Lote" : "OP"}><Input value={referencia} onChange={(e) => { setReferencia(e.target.value); setReferenciaAberta(null); }} placeholder={setor === "mantas" ? "Buscar lote" : "Buscar OP"} /></Campo>
             <Campo label="Produto">
               <select className="h-10 w-full rounded-md border bg-background px-3" value={produto} onChange={(e) => setProduto(e.target.value)}>
                 <option value="">Todos</option>{produtos.map((item) => <option key={item}>{item}</option>)}
@@ -275,7 +277,7 @@ function Historico() {
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {grupos.map((grupo) => (
-                <Button key={grupo.referencia} type="button" variant={referencia === grupo.referencia ? "secondary" : "outline"} className="h-auto min-h-14 justify-between px-3 py-2 text-left" onClick={() => setReferencia(referencia === grupo.referencia ? "" : grupo.referencia)}>
+                <Button key={grupo.referencia} type="button" variant={referenciaAberta === grupo.referencia ? "secondary" : "outline"} className="h-auto min-h-14 justify-between px-3 py-2 text-left" onClick={() => { const proxima = referenciaAberta === grupo.referencia ? null : grupo.referencia; setReferenciaAberta(proxima); setReferencia(proxima ?? ""); }}>
                   <span className="min-w-0"><span className="block truncate font-bold">{setor === "mantas" ? "Lote" : "OP"} {grupo.referencia}</span><span className="block text-xs font-normal text-muted-foreground">{grupo.registros} apontamento(s) · {[...grupo.turnos].sort().join(", ")} · {grupo.pendentes} pendente(s)</span></span>
                   <ChevronRight className="size-4 shrink-0" />
                 </Button>
