@@ -155,8 +155,8 @@ describe("horários das ocorrências", () => {
     const t = totalParadoPorEquipamento([o("ocorrencia", 120), o("em_manutencao", 80), o("sem_ocorrencias", 60), o("sem_producao", 0)]);
     expect(t.get("Máquina de corte 3")).toBe(200);
     const txt = textoOcorrencias([{ ...o("ocorrencia", 120), mensagem: "Quebrou o disco", hora_inicio: "23:00:00", hora_fim: "01:00:00" }], false, "corte");
-    expect(txt).toContain("Máquina de corte 3 — Total parado: 2h00");
-    expect(txt).toContain("2h00 parada · 23:00 às 01:00 · Quebrou o disco");
+    expect(txt).toContain("• Quebrou o disco — 23:00 às 01:00 — 2h00");
+    expect(txt).toContain("Tempo total parado: 2h00");
   });
 });
 
@@ -167,8 +167,8 @@ describe("ocorrências de Mantas", () => {
       { ...base, id: "1", equipamento: "Linha 4", mensagem: "Correia", duracao_min: 90, hora_inicio: "15:00", hora_fim: "16:30" },
       { ...base, id: "2", equipamento: null, mensagem: "Geral" },
     ], false, "mantas");
-    expect(txt).toContain("Linha 4: Correia");
-    expect(txt).toContain("Linha 4 — Total parado: 1h30");
+    expect(txt).toContain("Linha 4\n• Correia — 15:00 às 16:30 — 1h30\nTempo total parado: 1h30");
+    expect(txt).toContain("Ocorrências gerais\n• Geral");
     expect(txt).not.toContain("Linha 5");
   });
 });
@@ -181,7 +181,7 @@ describe("ocorrência em andamento", () => {
     const o = { ...base, hora_inicio: "15:20:00", hora_fim: null, duracao_min: null };
     expect(ocorrenciaEmAndamento(o)).toBe(true);
     const txt = textoOcorrencias([o], false, "mantas");
-    expect(txt).toContain("Em andamento desde 15:20 · Linha 4: Correia");
+    expect(txt).toContain("• Correia — desde 15:20 — Em andamento");
     expect(txt).not.toContain("Total parado");
     expect(totalParadoPorEquipamento([{ ...o, duracao_min: 50 }]).size).toBe(0);
   });
@@ -190,7 +190,7 @@ describe("ocorrência em andamento", () => {
     expect(dadosFinalizacaoOcorrencia("23:00:00", "01:00")).toEqual({ hora_fim: "01:00", duracao_min: 120 });
     expect(dadosFinalizacaoOcorrencia(null, "01:00")).toBeNull();
     const fim = { ...base, hora_inicio: "23:00:00", ...dadosFinalizacaoOcorrencia("23:00:00", "01:00")! };
-    expect(textoOcorrencias([fim], false, "mantas")).toContain("Linha 4 — Total parado: 2h00");
+    expect(textoOcorrencias([fim], false, "mantas")).toContain("Tempo total parado: 2h00");
   });
 });
 
@@ -221,7 +221,23 @@ describe("fluxo operacional de ocorrências", () => {
   it("motivo e ação aparecem no texto", () => {
     const fin = { ...aberta, hora_fim: "17:00:00", duracao_min: 100, motivo_parada: "Mecânica", acao_realizada: "Troca do rolamento" };
     const txt = textoOcorrencias([fin], false, "mantas");
-    expect(txt).toContain("1h40 parada · 15:20 às 17:00 · Linha 1: Rolamento do mancal quebrado · Motivo: Mecânica · Ação: Troca do rolamento");
+    expect(txt).toContain("• Rolamento do mancal quebrado — 15:20 às 17:00 — 1h40 — Motivo: Mecânica — Ação: Troca do rolamento");
+  });
+  it("agrupa, ordena por hora e soma 30+40+30 na Linha 1", () => {
+    const lista = [
+      { ...aberta, id: "3", mensagem: "Água da banheira baixou", created_at: "2026-10-01T08:00:00Z", hora_inicio: "18:00", hora_fim: "18:30", duracao_min: 30 },
+      { ...aberta, id: "1", mensagem: "Quebra do mancal", created_at: "2026-10-01T20:00:00Z", hora_inicio: "16:00", hora_fim: "16:30", duracao_min: 30 },
+      { ...aberta, id: "2", mensagem: "Limpeza do cilindro", created_at: "2026-10-01T09:00:00Z", hora_inicio: "17:00", hora_fim: "17:40", duracao_min: 40 },
+    ];
+    const txt = textoOcorrencias(lista, false, "fitas");
+    expect(txt.indexOf("Quebra do mancal")).toBeLessThan(txt.indexOf("Limpeza do cilindro"));
+    expect(txt.indexOf("Limpeza do cilindro")).toBeLessThan(txt.indexOf("Água da banheira baixou"));
+    expect(txt).toContain("Tempo total parado: 1h40");
+  });
+  it("Sem ocorrências não cria total parado", () => {
+    const txt = textoOcorrencias([{ ...aberta, tipo_status: "sem_ocorrencias", mensagem: "", hora_inicio: null }], false, "fitas");
+    expect(txt).toContain("Linha 1\nSem ocorrências");
+    expect(txt).not.toContain("Tempo total parado:");
   });
   it("ranking soma por equipamento, motivo e turno ignorando abertas e Sem ocorrências", () => {
     const l = [

@@ -149,6 +149,51 @@ function comTempo(o: OcorrenciaOperacional, texto: string) {
   return extras.length ? `${base} · ${extras.join(" · ")}` : base;
 }
 
+function descricaoOcorrencia(o: OcorrenciaOperacional) {
+  const mensagem = o.mensagem.trim();
+  if ((o.tipo_status ?? "ocorrencia") === "ocorrencia") return mensagem || "Ocorrência";
+  const situacao = rotuloSituacao(o.tipo_status);
+  return mensagem ? `${situacao}: ${mensagem}` : situacao;
+}
+
+function linhaResumoOcorrencia(o: OcorrenciaOperacional) {
+  if (o.tipo_status === "sem_ocorrencias") return SEM_OCORRENCIAS;
+  const partes = [`• ${descricaoOcorrencia(o)}`];
+  if (ocorrenciaEmAndamento(o)) {
+    partes.push(`desde ${hhmm(o.hora_inicio)}`, "Em andamento");
+  } else {
+    if (o.hora_inicio && o.hora_fim) partes.push(`${hhmm(o.hora_inicio)} às ${hhmm(o.hora_fim)}`);
+    const duracao = formatarDuracaoOcorrencia(o.duracao_min ?? calcularDuracaoOcorrencia(o.hora_inicio, o.hora_fim));
+    if (duracao) partes.push(duracao);
+  }
+  const motivo = rotuloMotivo(o);
+  if (motivo) partes.push(`Motivo: ${motivo}`);
+  if (o.acao_realizada?.trim()) partes.push(`Ação: ${o.acao_realizada.trim()}`);
+  return partes.join(" — ");
+}
+
+function chaveCronologica(o: OcorrenciaOperacional) {
+  const hora = minutosDoDia(o.hora_inicio);
+  if (hora !== null) {
+    const inicioTurno = o.turno === "T2" ? 15 * 60 + 38 : o.turno === "T3" ? 60 : 0;
+    return { semHora: 0, valor: (hora - inicioTurno + 1440) % 1440, desempate: o.created_at };
+  }
+  const criada = new Date(o.created_at).getTime();
+  return { semHora: 1, valor: Number.isNaN(criada) ? Number.MAX_SAFE_INTEGER : criada, desempate: o.created_at };
+}
+
+function ordenarOcorrencias(lista: readonly OcorrenciaOperacional[]) {
+  return [...lista].sort((a, b) => {
+    const ka = chaveCronologica(a), kb = chaveCronologica(b);
+    return ka.semHora - kb.semHora || ka.valor - kb.valor || ka.desempate.localeCompare(kb.desempate);
+  });
+}
+
+function linhasEquipamento(lista: readonly OcorrenciaOperacional[]) {
+  const reais = ordenarOcorrencias(lista.filter((o) => o.tipo_status !== "sem_ocorrencias"));
+  return reais.length ? reais.map(linhaResumoOcorrencia) : [SEM_OCORRENCIAS];
+}
+
 /** Soma de duracao_min por equipamento, ignorando "sem_ocorrencias". */
 export function totalParadoPorEquipamento(lista: OcorrenciaOperacional[]) {
   const total = new Map<string, number>();
@@ -164,26 +209,24 @@ export type GrupoResumo = { titulo: string; itens: EquipamentoResumo[] };
 
 /** Consolida ocorrências na ordem fixa. Sem registro = "Sem ocorrências". */
 export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
-  const ordenadas = [...lista].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const ordenadas = ordenarOcorrencias(lista);
   const totais = totalParadoPorEquipamento(ordenadas);
   const grupos: GrupoResumo[] = GRUPOS_OCORRENCIAS.map((grupo) => ({
     titulo: grupo.titulo,
     itens: grupo.equipamentos.map((equipamento) => {
       const doEquip = ordenadas.filter((o) => o.equipamento === equipamento);
-      const reais = doEquip.filter((o) => (o.tipo_status ?? "ocorrencia") === "ocorrencia");
+      const reais = doEquip.filter((o) => o.tipo_status !== "sem_ocorrencias");
       if (reais.length) {
-        const tempos = doEquip.filter((o) => o.tipo_status !== "sem_ocorrencias" && (o.tipo_status ?? "ocorrencia") !== "ocorrencia" && prefixoTempoOcorrencia(o));
         return {
           equipamento,
-          linhas: [...tempos.map((o) => comTempo(o, rotuloSituacao(o.tipo_status))), ...reais.map((o) => comTempo(o, o.mensagem))],
+          linhas: reais.map(linhaResumoOcorrencia),
           comProblema: true,
           totalMin: totais.get(equipamento) ?? 0,
         };
       }
       const ultimo = doEquip[doEquip.length - 1];
       if (ultimo) {
-        const txt = rotuloSituacao(ultimo.tipo_status);
-        const linha = ultimo.tipo_status === "sem_ocorrencias" ? txt : comTempo(ultimo, txt);
+        const linha = linhaResumoOcorrencia(ultimo);
         return { equipamento, linhas: [linha], comProblema: ultimo.tipo_status !== "sem_ocorrencias", totalMin: totais.get(equipamento) ?? 0 };
       }
       return { equipamento, linhas: [SEM_OCORRENCIAS], comProblema: false };
@@ -192,7 +235,7 @@ export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
   const conhecidos = new Set<string>(GRUPOS_OCORRENCIAS.flatMap((g) => [...g.equipamentos]));
   const outras = ordenadas
     .filter((o) => !o.equipamento || !conhecidos.has(o.equipamento))
-    .map((o) => comTempo(o, o.equipamento ? `${o.equipamento}: ${o.mensagem}` : o.mensagem));
+    .map((o) => linhaResumoOcorrencia(o));
   return { grupos, outras };
 }
 
@@ -217,17 +260,8 @@ export function usaOcorrenciasEstruturadas(setor: unknown) {
 
 /** Lista simples: somente ocorrências realmente registradas. */
 export function linhasOcorrenciasLivres(lista: OcorrenciaOperacional[]) {
-  return [...lista]
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((o) => {
-      const tipo = o.tipo_status ?? "ocorrencia";
-      const msg = tipo === "ocorrencia" ? o.mensagem : o.mensagem || rotuloSituacao(tipo);
-      const d = new Date(o.created_at);
-      const h = Number.isNaN(d.getTime())
-        ? ""
-        : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(d) + " - ";
-      return h + comTempo(o, o.equipamento ? `${o.equipamento}: ${msg}` : msg);
-    })
+  return ordenarOcorrencias(lista)
+    .map(linhaResumoOcorrencia)
     .filter((l) => l.trim().length > 0);
 }
 
@@ -235,24 +269,55 @@ export function linhasOcorrenciasLivres(lista: OcorrenciaOperacional[]) {
 export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true, setor?: unknown) {
   const b = (t: string) => (negrito ? `*${t}*` : t);
   if (setor !== undefined && !usaOcorrenciasEstruturadas(setor)) {
-    const livres = linhasOcorrenciasLivres(lista);
-    if (!livres.length) return "Sem ocorrências registradas no turno.";
-    const totais = linhasTotalParado(lista);
-    return totais.length ? [...livres, "", b("Total parado por equipamento"), ...totais].join("\n") : livres.join("\n");
+    if (!lista.length) return "Sem ocorrências registradas no turno.";
+    const ordemPreferida: readonly string[] = setor && String(setor).toLowerCase() === "mantas" ? EQUIPAMENTOS_MANTAS : [];
+    const equipamentos = [...new Set(lista.map((o) => o.equipamento).filter((e): e is string => !!e))]
+      .sort((a, c) => {
+        const ai = ordemPreferida.indexOf(a), ci = ordemPreferida.indexOf(c);
+        if (ai >= 0 || ci >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (ci < 0 ? Number.MAX_SAFE_INTEGER : ci);
+        return a.localeCompare(c, "pt-BR");
+      });
+    const linhas: string[] = [];
+    for (const equipamento of equipamentos) {
+      if (linhas.length) linhas.push("");
+      const doEquipamento = lista.filter((o) => o.equipamento === equipamento);
+      linhas.push(b(equipamento), ...linhasEquipamento(doEquipamento));
+      const total = formatarDuracaoOcorrencia(totalParadoPorEquipamento(doEquipamento).get(equipamento));
+      if (total) linhas.push(b(`Tempo total parado: ${total}`));
+    }
+    const gerais = lista.filter((o) => !o.equipamento);
+    if (gerais.length) {
+      if (linhas.length) linhas.push("");
+      linhas.push(b("Ocorrências gerais"), ...linhasEquipamento(gerais));
+    }
+    return linhas.join("\n");
   }
-  const { grupos, outras } = consolidarOcorrencias(lista);
+  const { grupos } = consolidarOcorrencias(lista);
+  const conhecidos = new Set<string>(GRUPOS_OCORRENCIAS.flatMap((g) => [...g.equipamentos]));
+  const outras = lista.filter((o) => !o.equipamento || !conhecidos.has(o.equipamento));
   const linhas: string[] = [];
   grupos.forEach((grupo, i) => {
     if (i > 0) linhas.push("");
     linhas.push(b(grupo.titulo));
     for (const item of grupo.itens) {
       const total = formatarDuracaoOcorrencia(item.totalMin);
-      linhas.push(b(total ? `${item.equipamento} — Total parado: ${total}` : item.equipamento));
+      if (linhas.at(-1) !== b(grupo.titulo)) linhas.push("");
+      linhas.push(b(item.equipamento));
       linhas.push(...item.linhas);
+      if (total) linhas.push(b(`Tempo total parado: ${total}`));
     }
   });
   if (outras.length) {
-    linhas.push("", b("Outras ocorrências"), ...outras);
+    const equipamentos = [...new Set(outras.map((o) => o.equipamento).filter((e): e is string => !!e))];
+    linhas.push("", b("Outras ocorrências"));
+    for (const equipamento of equipamentos) {
+      const doEquipamento = outras.filter((o) => o.equipamento === equipamento);
+      linhas.push("", b(equipamento), ...linhasEquipamento(doEquipamento));
+      const total = formatarDuracaoOcorrencia(totalParadoPorEquipamento(doEquipamento).get(equipamento));
+      if (total) linhas.push(b(`Tempo total parado: ${total}`));
+    }
+    const gerais = outras.filter((o) => !o.equipamento);
+    if (gerais.length) linhas.push("", b("Ocorrências gerais"), ...linhasEquipamento(gerais));
   }
   return linhas.join("\n");
 }
