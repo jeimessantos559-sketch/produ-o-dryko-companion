@@ -17,9 +17,7 @@ import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { consolidarOcorrencias, linhasOcorrenciasLivres, usaOcorrenciasEstruturadas, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 import { CAMPOS_OCORRENCIA, formatarDuracaoOcorrencia, linhasTotalParado } from "@/lib/ocorrencias-operacionais";
-import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
-import { FinalizarOcorrencia, transferirOcorrenciaServidor } from "@/components/dryko/finalizar-ocorrencia";
-import { hhmm, ocorrenciaEmAndamento, proximoTurnoOperacional, type TurnoCod } from "@/lib/ocorrencias-operacionais";
+import { ocorrenciaEmAndamento } from "@/lib/ocorrencias-operacionais";
 import { realizadoNaUnidade, type SetorGerencial } from "@/lib/indicadores";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
@@ -44,8 +42,6 @@ function PassagemTurno() {
   const [gerando, setGerando] = useState(false);
   const [justificativa, setJustificativa] = useState("");
   const [programadosAbertos, setProgramadosAbertos] = useState<number | null>(null);
-  const [finalizandoId, setFinalizandoId] = useState<string | null>(null);
-  const [transferindo, setTransferindo] = useState(false);
 
   useEffect(() => {
     if (profile?.turno_atual) setData(dataOperacional(profile.turno_atual));
@@ -270,24 +266,7 @@ function PassagemTurno() {
 
   const fechado = fechamento?.status === "fechado";
   const abertas = ocorrencias.filter((o) => ocorrenciaEmAndamento(o));
-  const destino = profile?.turno_atual ? proximoTurnoOperacional(profile.turno_atual as TurnoCod, data) : null;
 
-  async function transferir(ids: string[]) {
-    if (transferindo || ids.length === 0) return;
-    setTransferindo(true);
-    let ok = 0;
-    for (const id of ids) {
-      try { await transferirOcorrenciaServidor(id); ok += 1; } catch (erro) {
-        toast.error(erro instanceof Error ? erro.message : "Não foi possível transferir.");
-      }
-    }
-    setTransferindo(false);
-    if (ok) {
-      setOcorrencias((l) => l.filter((o) => !ids.includes(o.id) || !ocorrenciaEmAndamento(o)));
-      toast.success(`${ok} ocorrência(s) transferida(s) para o ${destino?.turno ?? "próximo turno"}.`);
-      await carregar();
-    }
-  }
   return (
     <AppShell title="Fechamento do turno" eyebrow={profile?.setor_atual ? nomeSetor(profile.setor_atual) : undefined}>
       <div className="mx-auto max-w-5xl space-y-4">
@@ -376,24 +355,6 @@ function PassagemTurno() {
               </CardContent>
             </Card>
 
-            {!fechado && profile?.setor_atual && profile.turno_atual && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Registrar ocorrência operacional</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <OcorrenciasOperacionaisForm
-                    setor={profile.setor_atual}
-                    turno={profile.turno_atual}
-                    dataLocal={data}
-                    userId={user?.id}
-                    ocorrencias={ocorrencias}
-                    onChange={setOcorrencias}
-                  />
-                </CardContent>
-              </Card>
-            )}
-
             <OcorrenciasRevisao lista={ocorrencias} setor={profile?.setor_atual} />
 
             {!fechado && (abertas.length > 0 || totais.pendentes > 0 || (programadosAbertos ?? 0) > 0) && (
@@ -410,32 +371,11 @@ function PassagemTurno() {
                   {abertas.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-muted-foreground">
-                        Finalize ou transfira cada ocorrência em andamento. A transferência mantém a mesma ocorrência e a hora inicial original
-                        {destino ? ` (vai para ${destino.turno} de ${destino.data.split("-").reverse().join("/")})` : ""}.
+                        Há ocorrência(s) em andamento. Finalize ou transfira cada uma na tela de Ocorrências antes de fechar o turno.
                       </p>
-                      {abertas.map((o) => (
-                        <div key={o.id} className="rounded-xl border border-border bg-muted/40 p-3">
-                          <p className="font-semibold text-foreground">{o.equipamento ?? "Ocorrência geral"} · desde {hhmm(o.hora_inicio)}</p>
-                          {o.tipo_status === "ocorrencia" && <p className="text-xs text-muted-foreground">{o.mensagem}</p>}
-                          {finalizandoId === o.id ? (
-                            <FinalizarOcorrencia
-                              item={o}
-                              onCancelar={() => setFinalizandoId(null)}
-                              onFinalizada={(a) => { setOcorrencias((l) => l.map((x) => (x.id === a.id ? a : x))); setFinalizandoId(null); }}
-                            />
-                          ) : (
-                            <div className="mt-2 grid grid-cols-2 gap-2">
-                              <Button className="h-11" onClick={() => setFinalizandoId(o.id)}>Finalizar agora</Button>
-                              <Button className="h-11" variant="outline" disabled={transferindo} onClick={() => void transferir([o.id])}>Transferir</Button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {abertas.length > 1 && (
-                        <Button variant="outline" className="h-11 w-full" disabled={transferindo} onClick={() => void transferir(abertas.map((o) => o.id))}>
-                          {transferindo ? "Transferindo..." : "Transferir todas para o próximo turno"}
-                        </Button>
-                      )}
+                      <Button asChild variant="outline" className="h-11 w-full">
+                        <Link to="/ocorrencias">Abrir Ocorrências</Link>
+                      </Button>
                     </div>
                   )}
                 </CardContent>
