@@ -42,10 +42,56 @@ export type OcorrenciaOperacional = {
   hora_inicio?: string | null;
   hora_fim?: string | null;
   duracao_min?: number | null;
+  motivo_parada?: string | null;
+  motivo_outro?: string | null;
+  acao_realizada?: string | null;
+  turno_origem?: string | null;
+  data_origem?: string | null;
+  quantidade_transferencias?: number | null;
+  setor?: string;
+  turno?: string;
+  data_local?: string;
+  criado_por?: string;
 };
 
+export const MOTIVOS_PARADA = [
+  "Mecânica", "Elétrica", "Matéria-prima", "Qualidade", "Operacional",
+  "Setup", "Manutenção", "Limpeza", "Falta de pessoal", "Outro",
+] as const;
+
+export function rotuloMotivo(o: Pick<OcorrenciaOperacional, "motivo_parada" | "motivo_outro">) {
+  if (!o.motivo_parada) return "";
+  return o.motivo_parada === "Outro" && o.motivo_outro?.trim() ? `Outro (${o.motivo_outro.trim()})` : o.motivo_parada;
+}
+
+export type TurnoCod = "T1" | "T2" | "T3";
+
+/** Próximo turno: T1→T2 e T2→T3 no mesmo dia operacional; T3→T1 do dia seguinte (espelho de transferir_ocorrencia). */
+export function proximoTurnoOperacional(turno: TurnoCod, data: string): { turno: TurnoCod; data: string } {
+  if (turno === "T1") return { turno: "T2", data };
+  if (turno === "T2") return { turno: "T3", data };
+  const d = new Date(`${data}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return { turno: "T1", data: d.toISOString().slice(0, 10) };
+}
+
+/** Espelho puro da transferência: mesma ocorrência, hora inicial preservada, origem só na primeira vez. */
+export function transferirOcorrencia<T extends OcorrenciaOperacional & { turno: string; data_local: string }>(o: T): T {
+  if (!ocorrenciaEmAndamento(o)) throw new Error("Só ocorrências em andamento podem ser transferidas.");
+  const destino = proximoTurnoOperacional(o.turno as TurnoCod, o.data_local);
+  return {
+    ...o,
+    turno_origem: o.turno_origem ?? o.turno,
+    data_origem: o.data_origem ?? o.data_local,
+    turno: destino.turno,
+    data_local: destino.data,
+    quantidade_transferencias: (o.quantidade_transferencias ?? 0) + 1,
+  };
+}
+
 /** Colunas de ocorrencias_turno usadas em todas as telas. */
-export const CAMPOS_OCORRENCIA = "id, equipamento, tipo_status, mensagem, created_at, hora_inicio, hora_fim, duracao_min";
+export const CAMPOS_OCORRENCIA =
+  "id, setor, turno, data_local, criado_por, equipamento, tipo_status, mensagem, created_at, hora_inicio, hora_fim, duracao_min, motivo_parada, motivo_outro, acao_realizada, turno_origem, data_origem, quantidade_transferencias";
 
 function minutosDoDia(h: string | null | undefined) {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(h ?? "").trim());
@@ -98,7 +144,9 @@ export function prefixoTempoOcorrencia(o: Pick<OcorrenciaOperacional, "hora_inic
 
 function comTempo(o: OcorrenciaOperacional, texto: string) {
   const p = prefixoTempoOcorrencia(o);
-  return p ? (texto ? `${p} · ${texto}` : p) : texto;
+  const extras = [rotuloMotivo(o) && `Motivo: ${rotuloMotivo(o)}`, o.acao_realizada?.trim() && `Ação: ${o.acao_realizada.trim()}`].filter(Boolean);
+  const base = p ? (texto ? `${p} · ${texto}` : p) : texto;
+  return extras.length ? `${base} · ${extras.join(" · ")}` : base;
 }
 
 /** Soma de duracao_min por equipamento, ignorando "sem_ocorrencias". */
@@ -223,5 +271,55 @@ export function ocorrenciasDoResumo(valor: unknown): OcorrenciaOperacional[] | n
       hora_inicio: typeof v["hora_inicio"] === "string" ? v["hora_inicio"] : null,
       hora_fim: typeof v["hora_fim"] === "string" ? v["hora_fim"] : null,
       duracao_min: typeof v["duracao_min"] === "number" ? v["duracao_min"] : null,
+      motivo_parada: typeof v["motivo_parada"] === "string" ? v["motivo_parada"] : null,
+      motivo_outro: typeof v["motivo_outro"] === "string" ? v["motivo_outro"] : null,
+      acao_realizada: typeof v["acao_realizada"] === "string" ? v["acao_realizada"] : null,
     }));
+}
+
+/* ---------- Gerencial: paradas ---------- */
+
+export type LinhaRanking = { chave: string; minutos: number; quantidade: number };
+
+/** Ranking de paradas finalizadas (duracao_min válida). Ignora "Sem ocorrências" e abertas. */
+export function rankingParadas(lista: readonly OcorrenciaOperacional[], por: "equipamento" | "motivo" | "turno"): LinhaRanking[] {
+  const mapa = new Map<string, LinhaRanking>();
+  for (const o of lista) {
+    if (o.tipo_status === "sem_ocorrencias" || ocorrenciaEmAndamento(o)) continue;
+    if (typeof o.duracao_min !== "number" || o.duracao_min <= 0) continue;
+    const chave = por === "equipamento" ? o.equipamento || "Ocorrência geral" : por === "motivo" ? o.motivo_parada || "Sem motivo" : o.turno || "—";
+    const atual = mapa.get(chave) ?? { chave, minutos: 0, quantidade: 0 };
+    atual.minutos += o.duracao_min;
+    atual.quantidade += 1;
+    mapa.set(chave, atual);
+  }
+  return [...mapa.values()].sort((a, b) => b.minutos - a.minutos || a.chave.localeCompare(b.chave));
+}
+
+export function resumoParadas(lista: readonly OcorrenciaOperacional[]) {
+  const ranking = rankingParadas(lista, "equipamento");
+  return {
+    totalMin: ranking.reduce((t, r) => t + r.minutos, 0),
+    finalizadas: ranking.reduce((t, r) => t + r.quantidade, 0),
+    emAndamento: lista.filter((o) => ocorrenciaEmAndamento(o)).length,
+    maiorEquipamento: ranking[0] ?? null,
+  };
+}
+
+const csvCampo = (v: unknown) => {
+  const t = v === null || v === undefined ? "" : String(v);
+  return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+
+/** CSV (separador ;, compatível com Excel pt-BR). */
+export function csvOcorrencias(lista: readonly OcorrenciaOperacional[], nomes: Record<string, string> = {}) {
+  const cab = ["Data operacional", "Setor", "Turno atual", "Turno origem", "Equipamento", "Situação", "Motivo", "Descrição",
+    "Hora início", "Hora fim", "Duração (min)", "Duração", "Ação realizada", "Registrado por", "Transferências"];
+  const linhas = lista.map((o) => [
+    o.data_local ?? "", o.setor ?? "", o.turno ?? "", o.turno_origem ?? "", o.equipamento ?? "Ocorrência geral",
+    ocorrenciaEmAndamento(o) ? "Em andamento" : rotuloSituacao(o.tipo_status), rotuloMotivo(o), o.mensagem,
+    hhmm(o.hora_inicio), hhmm(o.hora_fim), o.duracao_min ?? "", formatarDuracaoOcorrencia(o.duracao_min),
+    o.acao_realizada ?? "", (o.criado_por && nomes[o.criado_por]) || "", o.quantidade_transferencias ?? 0,
+  ]);
+  return [cab, ...linhas].map((l) => l.map(csvCampo).join(";")).join("\r\n");
 }
