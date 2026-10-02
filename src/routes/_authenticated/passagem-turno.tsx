@@ -17,9 +17,7 @@ import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { consolidarOcorrencias, linhasOcorrenciasLivres, usaOcorrenciasEstruturadas, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
 import { CAMPOS_OCORRENCIA, formatarDuracaoOcorrencia, linhasTotalParado } from "@/lib/ocorrencias-operacionais";
-import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
-import { FinalizarOcorrencia, transferirOcorrenciaServidor } from "@/components/dryko/finalizar-ocorrencia";
-import { hhmm, ocorrenciaEmAndamento, proximoTurnoOperacional, type TurnoCod } from "@/lib/ocorrencias-operacionais";
+import { ocorrenciaEmAndamento } from "@/lib/ocorrencias-operacionais";
 import { realizadoNaUnidade, type SetorGerencial } from "@/lib/indicadores";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
@@ -44,8 +42,6 @@ function PassagemTurno() {
   const [gerando, setGerando] = useState(false);
   const [justificativa, setJustificativa] = useState("");
   const [programadosAbertos, setProgramadosAbertos] = useState<number | null>(null);
-  const [finalizandoId, setFinalizandoId] = useState<string | null>(null);
-  const [transferindo, setTransferindo] = useState(false);
 
   useEffect(() => {
     if (profile?.turno_atual) setData(dataOperacional(profile.turno_atual));
