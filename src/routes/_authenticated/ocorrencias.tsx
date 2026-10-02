@@ -13,7 +13,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import {
   CAMPOS_OCORRENCIA,
+  ocorrenciasParaHerdar,
   textoOcorrencias,
+  turnoAnteriorOperacional,
   type OcorrenciaOperacional,
 } from "@/lib/ocorrencias-operacionais";
 import { dataOperacional } from "@/lib/producao";
@@ -50,13 +52,14 @@ function Ocorrencias() {
       return;
     }
     setCarregando(true);
-    void (supabase as any)
+    void herdarAbertasDoTurnoAnterior(setor, turno, dataAtual)
+      .then(() => (supabase as any)
       .from("ocorrencias_turno")
       .select(CAMPOS_OCORRENCIA)
       .eq("setor", setor)
       .eq("turno", turno)
       .eq("data_local", dataAtual)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: true }))
       .then(({ data, error }: { data: unknown[] | null; error: { message?: string } | null }) => {
         if (carga !== cargaAtual.current) return;
         if (error) {
@@ -182,6 +185,32 @@ function Ocorrencias() {
       </Tabs>
     </AppShell>
   );
+}
+
+/**
+ * Herda para o turno atual as ocorrências ainda abertas do turno imediatamente anterior,
+ * pela RPC transferir_ocorrencia (lock + auditoria). Idempotente: se outro aparelho já
+ * transferiu ou alguém finalizou, a RPC recusa e apenas seguimos para recarregar.
+ */
+async function herdarAbertasDoTurnoAnterior(setor: string, turno: string, dataAtual: string) {
+  const anterior = turnoAnteriorOperacional(turno as "T1" | "T2" | "T3", dataAtual);
+  const { data, error } = await (supabase as any)
+    .from("ocorrencias_turno")
+    .select(CAMPOS_OCORRENCIA)
+    .eq("setor", setor)
+    .eq("turno", anterior.turno)
+    .eq("data_local", anterior.data)
+    .not("hora_inicio", "is", null)
+    .is("hora_fim", null);
+  if (error || !data) return;
+  const herdar = ocorrenciasParaHerdar(data as (OcorrenciaOperacional & { turno: string; data_local: string })[], turno as "T1" | "T2" | "T3", dataAtual);
+  for (const o of herdar) {
+    try {
+      await (supabase.rpc as any)("transferir_ocorrencia", { p_id: o.id });
+    } catch {
+      // Corrida entre aparelhos: ignorar e recarregar.
+    }
+  }
 }
 
 function formatarData(valor: string) {

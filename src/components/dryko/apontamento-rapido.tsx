@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { preencherLoteProgramacaoMantas, preencherReferenciaProgramacao } from "@/lib/programacao-lote";
-import { areaFitas, dataHoraProducaoPadrao, dataOperacional, metragemCorte, rolosManta } from "@/lib/producao";
+import { HORARIOS_TURNO, areaFitas, dataHoraProducaoPadrao, dataOperacional, metragemCorte, rolosManta } from "@/lib/producao";
 import {
   invalidarCacheProdutos,
   obterProdutosAtivos,
@@ -452,8 +452,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       onOpenChange(false);
       await onSaved?.();
     } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : "";
-      toast.error(mensagemErroApontamento(mensagem));
+      toast.error(mensagemErroApontamento(extrairMensagemErro(erro), turno));
     } finally {
       setSalvando(false);
     }
@@ -736,12 +735,25 @@ function nomeSetorRapido(setor: string) {
   return setor;
 }
 
-function mensagemErroApontamento(mensagem: string) {
+function extrairMensagemErro(erro: unknown): string {
+  if (erro instanceof Error) return erro.message;
+  if (erro && typeof erro === "object" && "message" in erro) {
+    const m = (erro as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return typeof erro === "string" ? erro : "";
+}
+
+const NOME_TURNO: Record<string, string> = { T1: "1º turno", T2: "2º turno", T3: "3º turno" };
+
+function mensagemErroApontamento(mensagem: string, turno?: string | null) {
   const normalizada = mensagem.toLocaleLowerCase("pt-BR");
   if (normalizada.includes("turno") && normalizada.includes("fechado"))
     return "Este turno está fechado. Peça a reabertura ao administrador.";
   if (normalizada.includes("horario") && normalizada.includes("turno"))
-    return "A hora real informada não pertence ao turno selecionado.";
+    return turno && turno in HORARIOS_TURNO
+      ? `A hora atual não pertence ao ${NOME_TURNO[turno]} (${HORARIOS_TURNO[turno as keyof typeof HORARIOS_TURNO]}). Altere o turno em “Setor e turno” se estiver testando fora do seu turno.`
+      : "A hora real informada não pertence ao turno selecionado.";
   if (normalizada.includes("futuro"))
     return "A hora real da produção não pode estar no futuro.";
   return mensagem || "Não foi possível salvar o apontamento. Revise os dados e tente novamente.";
