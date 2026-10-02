@@ -286,7 +286,7 @@ function Painel() {
             <Indicador icon={Clock3} label="Pendentes" valor={resumo.pendentes} detalhe="para lançar" tone="amber" />
             <Indicador icon={PackageCheck} label="Lançados" valor={resumo.lancados} detalhe="no Protheus" tone="green" />
             <Indicador icon={Boxes} label={setorFitas ? "Apontamentos" : "PLTs fechados"} valor={setorFitas ? resumo.registros : resumo.plts} detalhe="neste turno" tone="slate" />
-            <Indicador icon={Gauge} label={setorCorte ? "Metragem produzida" : "Metragem Protheus"} valor={setorFitas ? formatarNumero(resumo.area) : formatarNumero(resumo.metragem)} detalhe={setorFitas || setorCorte ? "m²" : "m"} tone="slate" destaque />
+            <Indicador icon={Gauge} label={setorCorte ? "Metragem produzida" : "Metragem Protheus"} valor={setorFitas ? formatarNumero(resumo.area) : formatarNumero(resumo.metragem)} detalhe={setorFitas || setorCorte ? "m²" : "m"} tone="slate" />
           </div>
 
           {isAutorizado && gruposProtheus.length > 0 && (
