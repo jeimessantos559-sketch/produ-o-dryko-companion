@@ -7,6 +7,7 @@ import { AppShell } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
+import { consultarComCache } from "@/lib/cache-consultas";
 import { useAuth } from "@/lib/auth";
 import {
   CAMPOS_OCORRENCIA,
@@ -78,7 +79,7 @@ function Paradas() {
 
   async function exportarCsv() {
     if (!lista?.length) return void toast.info("Não há ocorrências no período.");
-    const { data: perfis } = await supabase.from("profiles").select("id, nome");
+    const perfis = await consultarComCache("perfis:nomes", 5 * 60_000, async () => (await supabase.from("profiles").select("id, nome")).data ?? []);
     const nomes = Object.fromEntries((perfis ?? []).map((p) => [p.id, p.nome]));
     const blob = new Blob(["\ufeff" + csvOcorrencias(lista, nomes)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);

@@ -125,6 +125,7 @@ function Configuracoes() {
       setArquivo(null);
       setPrevia(null);
       await refresh();
+      (await import("@/lib/cache-consultas")).invalidarCache("perfis:");
       toast.success("Perfil salvo.");
     } catch (erro) {
       if (avatarNovo) void supabase.storage.from("avatars").remove([avatarNovo]);
