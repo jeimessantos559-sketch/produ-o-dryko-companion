@@ -71,7 +71,24 @@ export function formatarDuracaoOcorrencia(minutos: number | null | undefined) {
 export const hhmm = (h: string | null | undefined) => (h ? String(h).slice(0, 5) : "");
 
 /** Prefixo "2h00 parada · 23:00 às 01:00" (vazio se sem horário). */
+/** Início informado sem fim = ocorrência em andamento (não soma no total parado). */
+export function ocorrenciaEmAndamento(o: Pick<OcorrenciaOperacional, "hora_inicio" | "hora_fim">) {
+  return !!o.hora_inicio && !o.hora_fim;
+}
+
+/** Campos a gravar ao finalizar (só hora_fim e duracao_min); null se horário inválido. */
+export function dadosFinalizacaoOcorrencia(inicio: string | null | undefined, fim: string) {
+  const duracao_min = calcularDuracaoOcorrencia(inicio, fim);
+  return duracao_min === null ? null : { hora_fim: fim, duracao_min };
+}
+
+/** Hora atual HH:MM em America/Sao_Paulo. */
+export function horaAtualSaoPaulo(agora = new Date()) {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(agora);
+}
+
 export function prefixoTempoOcorrencia(o: Pick<OcorrenciaOperacional, "hora_inicio" | "hora_fim" | "duracao_min">) {
+  if (ocorrenciaEmAndamento(o)) return `Em andamento desde ${hhmm(o.hora_inicio)}`;
   const partes: string[] = [];
   const dur = formatarDuracaoOcorrencia(o.duracao_min);
   if (dur) partes.push(`${dur} parada`);
@@ -88,7 +105,7 @@ function comTempo(o: OcorrenciaOperacional, texto: string) {
 export function totalParadoPorEquipamento(lista: OcorrenciaOperacional[]) {
   const total = new Map<string, number>();
   for (const o of lista) {
-    if (!o.equipamento || o.tipo_status === "sem_ocorrencias" || !o.duracao_min || o.duracao_min <= 0) continue;
+    if (!o.equipamento || o.tipo_status === "sem_ocorrencias" || ocorrenciaEmAndamento(o) || !o.duracao_min || o.duracao_min <= 0) continue;
     total.set(o.equipamento, (total.get(o.equipamento) ?? 0) + o.duracao_min);
   }
   return total;

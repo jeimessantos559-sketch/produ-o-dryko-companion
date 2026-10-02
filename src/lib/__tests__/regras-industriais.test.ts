@@ -172,3 +172,24 @@ describe("ocorrências de Mantas", () => {
     expect(txt).not.toContain("Linha 5");
   });
 });
+
+import { dadosFinalizacaoOcorrencia, ocorrenciaEmAndamento } from "@/lib/ocorrencias-operacionais";
+
+describe("ocorrência em andamento", () => {
+  const base = { id: "a", equipamento: "Linha 4", tipo_status: "ocorrencia", mensagem: "Correia", created_at: "2026-10-01T10:00:00Z" };
+  it("registra só com início e mostra Em andamento sem somar", () => {
+    const o = { ...base, hora_inicio: "15:20:00", hora_fim: null, duracao_min: null };
+    expect(ocorrenciaEmAndamento(o)).toBe(true);
+    const txt = textoOcorrencias([o], false, "mantas");
+    expect(txt).toContain("Em andamento desde 15:20 · Linha 4: Correia");
+    expect(txt).not.toContain("Total parado");
+    expect(totalParadoPorEquipamento([{ ...o, duracao_min: 50 }]).size).toBe(0);
+  });
+  it("finaliza calculando a duração", () => {
+    expect(dadosFinalizacaoOcorrencia("15:20:00", "17:00")).toEqual({ hora_fim: "17:00", duracao_min: 100 });
+    expect(dadosFinalizacaoOcorrencia("23:00:00", "01:00")).toEqual({ hora_fim: "01:00", duracao_min: 120 });
+    expect(dadosFinalizacaoOcorrencia(null, "01:00")).toBeNull();
+    const fim = { ...base, hora_inicio: "23:00:00", ...dadosFinalizacaoOcorrencia("23:00:00", "01:00")! };
+    expect(textoOcorrencias([fim], false, "mantas")).toContain("Linha 4 — Total parado: 2h00");
+  });
+});
