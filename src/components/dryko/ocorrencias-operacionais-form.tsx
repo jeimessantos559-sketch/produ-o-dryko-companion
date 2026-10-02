@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import {
   CAMPOS_OCORRENCIA,
+  dadosFinalizacaoOcorrencia,
+  horaAtualSaoPaulo,
+  ocorrenciaEmAndamento,
   equipamentosOpcionaisSetor,
   calcularDuracaoOcorrencia,
   formatarDuracaoOcorrencia,
@@ -60,10 +63,17 @@ export function OcorrenciasOperacionaisForm({
   const opcionais = estruturado ? [] : equipamentosOpcionaisSetor(setor);
   const precisaDescricao = !estruturado || situacao === "ocorrencia";
   const mostraHorario = !estruturado || (!!situacao && situacao !== "sem_ocorrencias");
-  const horarioIncompleto = mostraHorario && !!horaInicio !== !!horaFim;
+  const horarioIncompleto = mostraHorario && !horaInicio && !!horaFim;
+  const [finalizando, setFinalizando] = useState<string | null>(null);
+  const [horaFinal, setHoraFinal] = useState("");
+  const [salvandoFim, setSalvandoFim] = useState(false);
   const duracao = mostraHorario ? calcularDuracaoOcorrencia(horaInicio, horaFim) : null;
   const tempo = () =>
-    duracao === null ? { hora_inicio: null, hora_fim: null, duracao_min: null } : { hora_inicio: horaInicio, hora_fim: horaFim, duracao_min: duracao };
+    duracao !== null
+      ? { hora_inicio: horaInicio, hora_fim: horaFim, duracao_min: duracao }
+      : mostraHorario && horaInicio && !horaFim
+        ? { hora_inicio: horaInicio, hora_fim: null, duracao_min: null }
+        : { hora_inicio: null, hora_fim: null, duracao_min: null };
   const limparHorario = () => { setHoraInicio(""); setHoraFim(""); };
   const valido = !horarioIncompleto && (estruturado
     ? !!equipamento && !!situacao && (!precisaDescricao || descricao.trim().length > 0)
@@ -131,6 +141,24 @@ export function OcorrenciasOperacionaisForm({
     setDescricao("");
     setSituacao("");
     toast.success("Ocorrência registrada.");
+  }
+
+  async function finalizar(item: OcorrenciaOperacional) {
+    const dados = dadosFinalizacaoOcorrencia(item.hora_inicio, horaFinal);
+    if (!dados || salvandoFim) return void toast.error("Informe a hora final.");
+    setSalvandoFim(true);
+    const { data, error } = await (supabase as any)
+      .from("ocorrencias_turno")
+      .update({ ...dados, updated_at: new Date().toISOString() })
+      .eq("id", item.id)
+      .is("hora_fim", null)
+      .select(CAMPOS)
+      .maybeSingle();
+    setSalvandoFim(false);
+    if (error || !data) return void toast.error("Não foi possível finalizar a ocorrência. Atualize a página e tente novamente.");
+    onChange(ocorrencias.map((o) => (o.id === item.id ? (data as OcorrenciaOperacional) : o)));
+    setFinalizando(null);
+    toast.success("Ocorrência finalizada.");
   }
 
   async function excluir(id: string) {
@@ -217,11 +245,11 @@ export function OcorrenciasOperacionaisForm({
             </div>
           </div>
           {horarioIncompleto ? (
-            <p className="text-xs font-semibold text-destructive">Preencha a hora inicial e a final.</p>
+            <p className="text-xs font-semibold text-destructive">Preencha a hora inicial.</p>
           ) : duracao !== null ? (
             <p className="text-xs text-muted-foreground">Duração: {formatarDuracaoOcorrencia(duracao) || "0 min"}</p>
           ) : (
-            <p className="text-xs text-muted-foreground">Horários opcionais.</p>
+            <p className="text-xs text-muted-foreground">{horaInicio ? "A hora final pode ser registrada depois." : "Horários opcionais. A hora final pode ser registrada depois."}</p>
           )}
         </div>
       )}
@@ -240,7 +268,12 @@ export function OcorrenciasOperacionaisForm({
                   <p className="text-xs font-bold text-primary">
                     {hora(item.created_at)} · {item.equipamento ?? "Ocorrência geral"}
                   </p>
-                  {(item.hora_inicio && item.hora_fim) || formatarDuracaoOcorrencia(item.duracao_min) ? (
+                  {ocorrenciaEmAndamento(item) ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                      <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 font-bold text-amber-700 dark:text-amber-300">Em andamento</span>
+                      <span className="text-muted-foreground">desde {hhmm(item.hora_inicio)}</span>
+                    </p>
+                  ) : (item.hora_inicio && item.hora_fim) || formatarDuracaoOcorrencia(item.duracao_min) ? (
                     <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
                       {formatarDuracaoOcorrencia(item.duracao_min) && (
                         <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 font-bold text-destructive">{formatarDuracaoOcorrencia(item.duracao_min)} parada</span>
@@ -251,6 +284,23 @@ export function OcorrenciasOperacionaisForm({
                   <p className="mt-1 whitespace-pre-wrap text-sm">
                     {tipo === "ocorrencia" ? item.mensagem : rotuloSituacao(tipo)}
                   </p>
+                  {ocorrenciaEmAndamento(item) && (finalizando === item.id ? (
+                    <div className="mt-2 space-y-2">
+                      <Label htmlFor={`fim-${item.id}`}>Hora final</Label>
+                      <input id={`fim-${item.id}`} type="time" className={classeCampo} value={horaFinal} onChange={(e) => setHoraFinal(e.target.value)} />
+                      {dadosFinalizacaoOcorrencia(item.hora_inicio, horaFinal) && (
+                        <p className="text-xs text-muted-foreground">Duração: {formatarDuracaoOcorrencia(dadosFinalizacaoOcorrencia(item.hora_inicio, horaFinal)!.duracao_min) || "0 min"}</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" className="h-11" disabled={salvandoFim} onClick={() => setFinalizando(null)}>Cancelar</Button>
+                        <Button className="h-11" disabled={salvandoFim || !horaFinal} onClick={() => void finalizar(item)}>{salvandoFim ? "Salvando..." : "Confirmar"}</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="outline" className="mt-2 h-11 w-full touch-manipulation" onClick={() => { setHoraFinal(horaAtualSaoPaulo()); setFinalizando(item.id); }}>
+                      Finalizar ocorrência
+                    </Button>
+                  ))}
                 </div>
                 {permitirExcluir && (
                   <Button
