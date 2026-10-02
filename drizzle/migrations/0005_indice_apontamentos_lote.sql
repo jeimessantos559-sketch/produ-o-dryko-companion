@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS apontamentos_setor_lote_idx ON public.apontamentos USING btree (setor, lote, data_local DESC) WHERE lote IS NOT NULL;

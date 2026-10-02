@@ -36,6 +36,13 @@
       "when": 1790778002138,
       "tag": "0004_configuracoes_permissoes_biometria",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790973018311,
+      "tag": "0005_indice_apontamentos_lote",
+      "breakpoints": true
     }
   ]
 }
