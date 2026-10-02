@@ -32,6 +32,7 @@ type Props = {
   ocorrencias: OcorrenciaOperacional[];
   onChange: (lista: OcorrenciaOperacional[]) => void;
   permitirExcluir?: boolean;
+  ocultarLista?: boolean;
 };
 
 const CAMPOS = CAMPOS_OCORRENCIA;
@@ -53,6 +54,7 @@ export function OcorrenciasOperacionaisForm({
   ocorrencias,
   onChange,
   permitirExcluir = false,
+  ocultarLista = false,
 }: Props) {
   const [equipamento, setEquipamento] = useState("");
   const [situacao, setSituacao] = useState<TipoStatusOcorrencia | "">("");
@@ -266,7 +268,7 @@ export function OcorrenciasOperacionaisForm({
         {salvando ? "Salvando..." : "Registrar"}
       </Button>
 
-      {ocorrencias.length > 0 && (
+      {!ocultarLista && ocorrencias.length > 0 && (
         <div className="space-y-2">
           {ocorrencias.map((item) => {
             const tipo = item.tipo_status ?? "ocorrencia";
