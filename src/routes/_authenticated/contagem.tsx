@@ -23,6 +23,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
 import { textoOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
+import { CAMPOS_OCORRENCIA } from "@/lib/ocorrencias-operacionais";
 import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
 import {
   dataOperacional,
@@ -187,7 +188,7 @@ function Contagem() {
         .eq("data_local", dataAtual),
       (supabase as any)
         .from("ocorrencias_turno")
-        .select("id, equipamento, tipo_status, mensagem, created_at")
+        .select(CAMPOS_OCORRENCIA)
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)

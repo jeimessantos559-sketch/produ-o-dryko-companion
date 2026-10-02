@@ -16,6 +16,7 @@ import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { consolidarOcorrencias, linhasOcorrenciasLivres, usaOcorrenciasEstruturadas, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
+import { CAMPOS_OCORRENCIA, formatarDuracaoOcorrencia } from "@/lib/ocorrencias-operacionais";
 import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
@@ -75,7 +76,7 @@ function PassagemTurno() {
         supabase.from("profiles").select("id, nome"),
         (supabase as any)
           .from("ocorrencias_turno")
-          .select("id, equipamento, tipo_status, mensagem, created_at")
+          .select(CAMPOS_OCORRENCIA)
           .eq("setor", profile.setor_atual)
           .eq("turno", profile.turno_atual)
           .eq("data_local", data)
@@ -430,7 +431,7 @@ function OcorrenciasRevisao({ lista, setor }: { lista: OcorrenciaOperacional[]; 
             <div className="divide-y rounded-md border">
               {grupo.itens.map((item) => (
                 <div key={item.equipamento} className="flex flex-wrap justify-between gap-2 p-2 text-sm">
-                  <span className="font-medium">{item.equipamento}</span>
+                  <span className="font-medium">{item.equipamento}{formatarDuracaoOcorrencia(item.totalMin) && <span className="text-destructive"> — Total parado: {formatarDuracaoOcorrencia(item.totalMin)}</span>}</span>
                   <span className={item.comProblema ? "font-semibold text-destructive" : "text-muted-foreground"}>
                     {item.linhas.join(" · ")}
                   </span>

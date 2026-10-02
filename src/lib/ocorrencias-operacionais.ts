@@ -39,26 +39,87 @@ export type OcorrenciaOperacional = {
   tipo_status: string | null;
   mensagem: string;
   created_at: string;
+  hora_inicio?: string | null;
+  hora_fim?: string | null;
+  duracao_min?: number | null;
 };
 
-export type EquipamentoResumo = { equipamento: string; linhas: string[]; comProblema: boolean };
+/** Colunas de ocorrencias_turno usadas em todas as telas. */
+export const CAMPOS_OCORRENCIA = "id, equipamento, tipo_status, mensagem, created_at, hora_inicio, hora_fim, duracao_min";
+
+function minutosDoDia(h: string | null | undefined) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(h ?? "").trim());
+  if (!m) return null;
+  const hh = Number(m[1]), mm = Number(m[2]);
+  return hh > 23 || mm > 59 ? null : hh * 60 + mm;
+}
+
+/** Duração em minutos; fim menor que início = atravessou a meia-noite. Incompleto = null. */
+export function calcularDuracaoOcorrencia(inicio: string | null | undefined, fim: string | null | undefined) {
+  const a = minutosDoDia(inicio), b = minutosDoDia(fim);
+  if (a === null || b === null) return null;
+  return b >= a ? b - a : 1440 - a + b;
+}
+
+/** 120 => "2h00", 90 => "1h30", 45 => "45min", 0/null => "". */
+export function formatarDuracaoOcorrencia(minutos: number | null | undefined) {
+  if (!minutos || minutos <= 0) return "";
+  if (minutos < 60) return `${minutos}min`;
+  return `${Math.floor(minutos / 60)}h${String(minutos % 60).padStart(2, "0")}`;
+}
+
+export const hhmm = (h: string | null | undefined) => (h ? String(h).slice(0, 5) : "");
+
+/** Prefixo "2h00 parada · 23:00 às 01:00" (vazio se sem horário). */
+export function prefixoTempoOcorrencia(o: Pick<OcorrenciaOperacional, "hora_inicio" | "hora_fim" | "duracao_min">) {
+  const partes: string[] = [];
+  const dur = formatarDuracaoOcorrencia(o.duracao_min);
+  if (dur) partes.push(`${dur} parada`);
+  if (o.hora_inicio && o.hora_fim) partes.push(`${hhmm(o.hora_inicio)} às ${hhmm(o.hora_fim)}`);
+  return partes.join(" · ");
+}
+
+function comTempo(o: OcorrenciaOperacional, texto: string) {
+  const p = prefixoTempoOcorrencia(o);
+  return p ? (texto ? `${p} · ${texto}` : p) : texto;
+}
+
+/** Soma de duracao_min por equipamento, ignorando "sem_ocorrencias". */
+export function totalParadoPorEquipamento(lista: OcorrenciaOperacional[]) {
+  const total = new Map<string, number>();
+  for (const o of lista) {
+    if (!o.equipamento || o.tipo_status === "sem_ocorrencias" || !o.duracao_min || o.duracao_min <= 0) continue;
+    total.set(o.equipamento, (total.get(o.equipamento) ?? 0) + o.duracao_min);
+  }
+  return total;
+}
+
+export type EquipamentoResumo = { equipamento: string; linhas: string[]; comProblema: boolean; totalMin?: number };
 export type GrupoResumo = { titulo: string; itens: EquipamentoResumo[] };
 
 /** Consolida ocorrências na ordem fixa. Sem registro = "Sem ocorrências". */
 export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
   const ordenadas = [...lista].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const totais = totalParadoPorEquipamento(ordenadas);
   const grupos: GrupoResumo[] = GRUPOS_OCORRENCIAS.map((grupo) => ({
     titulo: grupo.titulo,
     itens: grupo.equipamentos.map((equipamento) => {
       const doEquip = ordenadas.filter((o) => o.equipamento === equipamento);
       const reais = doEquip.filter((o) => (o.tipo_status ?? "ocorrencia") === "ocorrencia");
       if (reais.length) {
-        return { equipamento, linhas: reais.map((o) => o.mensagem), comProblema: true };
+        const tempos = doEquip.filter((o) => o.tipo_status !== "sem_ocorrencias" && (o.tipo_status ?? "ocorrencia") !== "ocorrencia" && prefixoTempoOcorrencia(o));
+        return {
+          equipamento,
+          linhas: [...tempos.map((o) => comTempo(o, rotuloSituacao(o.tipo_status))), ...reais.map((o) => comTempo(o, o.mensagem))],
+          comProblema: true,
+          totalMin: totais.get(equipamento) ?? 0,
+        };
       }
       const ultimo = doEquip[doEquip.length - 1];
       if (ultimo) {
         const txt = rotuloSituacao(ultimo.tipo_status);
-        return { equipamento, linhas: [txt], comProblema: ultimo.tipo_status !== "sem_ocorrencias" };
+        const linha = ultimo.tipo_status === "sem_ocorrencias" ? txt : comTempo(ultimo, txt);
+        return { equipamento, linhas: [linha], comProblema: ultimo.tipo_status !== "sem_ocorrencias", totalMin: totais.get(equipamento) ?? 0 };
       }
       return { equipamento, linhas: [SEM_OCORRENCIAS], comProblema: false };
     }),
@@ -66,7 +127,7 @@ export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
   const conhecidos = new Set<string>(GRUPOS_OCORRENCIAS.flatMap((g) => [...g.equipamentos]));
   const outras = ordenadas
     .filter((o) => !o.equipamento || !conhecidos.has(o.equipamento))
-    .map((o) => (o.equipamento ? `${o.equipamento}: ${o.mensagem}` : o.mensagem));
+    .map((o) => comTempo(o, o.equipamento ? `${o.equipamento}: ${o.mensagem}` : o.mensagem));
   return { grupos, outras };
 }
 
@@ -87,7 +148,7 @@ export function linhasOcorrenciasLivres(lista: OcorrenciaOperacional[]) {
       const h = Number.isNaN(d.getTime())
         ? ""
         : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(d) + " - ";
-      return h + (o.equipamento ? `${o.equipamento}: ${msg}` : msg);
+      return h + comTempo(o, o.equipamento ? `${o.equipamento}: ${msg}` : msg);
     })
     .filter((l) => l.trim().length > 0);
 }
@@ -105,7 +166,8 @@ export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true,
     if (i > 0) linhas.push("");
     linhas.push(b(grupo.titulo));
     for (const item of grupo.itens) {
-      linhas.push(b(item.equipamento));
+      const total = formatarDuracaoOcorrencia(item.totalMin);
+      linhas.push(b(total ? `${item.equipamento} — Total parado: ${total}` : item.equipamento));
       linhas.push(...item.linhas);
     }
   });
@@ -126,5 +188,8 @@ export function ocorrenciasDoResumo(valor: unknown): OcorrenciaOperacional[] | n
       tipo_status: typeof v["tipo_status"] === "string" ? v["tipo_status"] : null,
       mensagem: String(v["mensagem"] ?? ""),
       created_at: String(v["created_at"] ?? ""),
+      hora_inicio: typeof v["hora_inicio"] === "string" ? v["hora_inicio"] : null,
+      hora_fim: typeof v["hora_fim"] === "string" ? v["hora_fim"] : null,
+      duracao_min: typeof v["duracao_min"] === "number" ? v["duracao_min"] : null,
     }));
 }

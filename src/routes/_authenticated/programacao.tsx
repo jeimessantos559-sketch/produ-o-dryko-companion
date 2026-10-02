@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
 import { textoOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
+import { CAMPOS_OCORRENCIA } from "@/lib/ocorrencias-operacionais";
 import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
@@ -145,7 +146,7 @@ function Programacao() {
         .maybeSingle(),
       (supabase as any)
         .from("ocorrencias_turno")
-        .select("id, equipamento, tipo_status, mensagem, created_at")
+        .select(CAMPOS_OCORRENCIA)
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
