@@ -16,7 +16,7 @@ import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { consolidarOcorrencias, linhasOcorrenciasLivres, usaOcorrenciasEstruturadas, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
-import { CAMPOS_OCORRENCIA, formatarDuracaoOcorrencia } from "@/lib/ocorrencias-operacionais";
+import { CAMPOS_OCORRENCIA, formatarDuracaoOcorrencia, linhasTotalParado } from "@/lib/ocorrencias-operacionais";
 import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
@@ -418,7 +418,7 @@ function PassagemTurno() {
 
 function OcorrenciasRevisao({ lista, setor }: { lista: OcorrenciaOperacional[]; setor?: string | null | undefined }) {
   const estruturado = usaOcorrenciasEstruturadas(setor);
-  const { grupos, outras } = estruturado ? consolidarOcorrencias(lista) : { grupos: [], outras: linhasOcorrenciasLivres(lista) };
+  const { grupos, outras } = estruturado ? consolidarOcorrencias(lista) : { grupos: [], outras: [...linhasOcorrenciasLivres(lista), ...linhasTotalParado(lista)] };
   return (
     <Card>
       <CardHeader>

@@ -131,6 +131,19 @@ export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
   return { grupos, outras };
 }
 
+/** Equipamentos opcionais de Mantas (relatório livre, sem preenchimento automático). */
+export const EQUIPAMENTOS_MANTAS = ["Linha 4", "Linha 5", "Rebobinadeira manual L4", "Rebobinadeira automática L5", "Forno"] as const;
+
+export function equipamentosOpcionaisSetor(setor: unknown): readonly string[] {
+  const s = String(setor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return s === "mantas" ? EQUIPAMENTOS_MANTAS : [];
+}
+
+/** Linhas "Equipamento — Total parado: 3h20" para ocorrências livres com equipamento. */
+export function linhasTotalParado(lista: OcorrenciaOperacional[]) {
+  return [...totalParadoPorEquipamento(lista)].map(([eq, min]) => `${eq} — Total parado: ${formatarDuracaoOcorrencia(min)}`);
+}
+
 /** Somente Corte e Fitas usam o padrão estruturado por equipamento. */
 export function usaOcorrenciasEstruturadas(setor: unknown) {
   const s = String(setor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
@@ -158,7 +171,9 @@ export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true,
   const b = (t: string) => (negrito ? `*${t}*` : t);
   if (setor !== undefined && !usaOcorrenciasEstruturadas(setor)) {
     const livres = linhasOcorrenciasLivres(lista);
-    return livres.length ? livres.join("\n") : "Sem ocorrências registradas no turno.";
+    if (!livres.length) return "Sem ocorrências registradas no turno.";
+    const totais = linhasTotalParado(lista);
+    return totais.length ? [...livres, "", b("Total parado por equipamento"), ...totais].join("\n") : livres.join("\n");
   }
   const { grupos, outras } = consolidarOcorrencias(lista);
   const linhas: string[] = [];

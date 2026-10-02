@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import {
   CAMPOS_OCORRENCIA,
+  equipamentosOpcionaisSetor,
   calcularDuracaoOcorrencia,
   formatarDuracaoOcorrencia,
   hhmm,
@@ -56,6 +57,7 @@ export function OcorrenciasOperacionaisForm({
   const [horaFim, setHoraFim] = useState("");
 
   const estruturado = usaOcorrenciasEstruturadas(setor);
+  const opcionais = estruturado ? [] : equipamentosOpcionaisSetor(setor);
   const precisaDescricao = !estruturado || situacao === "ocorrencia";
   const mostraHorario = !estruturado || (!!situacao && situacao !== "sem_ocorrencias");
   const horarioIncompleto = mostraHorario && !!horaInicio !== !!horaFim;
@@ -72,7 +74,7 @@ export function OcorrenciasOperacionaisForm({
     setSalvando(true);
     const { data, error } = await (supabase as any)
       .from("ocorrencias_turno")
-      .insert({ setor, turno, data_local: dataLocal, equipamento: null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId, ...tempo() })
+      .insert({ setor, turno, data_local: dataLocal, equipamento: opcionais.includes(equipamento) ? equipamento : null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId, ...tempo() })
       .select(CAMPOS)
       .single();
     setSalvando(false);
@@ -81,6 +83,7 @@ export function OcorrenciasOperacionaisForm({
       return;
     }
     onChange([...ocorrencias, data as OcorrenciaOperacional]);
+    setEquipamento("");
     setDescricao("");
     limparHorario();
     toast.success("Ocorrência registrada.");
@@ -175,6 +178,17 @@ export function OcorrenciasOperacionaisForm({
           </select>
         </div>
       </div>
+      )}
+      {opcionais.length > 0 && (
+        <div className="space-y-1">
+          <Label htmlFor="oc-equip-opc">Equipamento (opcional)</Label>
+          <select id="oc-equip-opc" className={classeCampo} value={equipamento} onChange={(e) => setEquipamento(e.target.value)}>
+            <option value="">Ocorrência geral</option>
+            {opcionais.map((eq) => (
+              <option key={eq} value={eq}>{eq}</option>
+            ))}
+          </select>
+        </div>
       )}
       {precisaDescricao && (
         <div className="space-y-1">

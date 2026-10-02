@@ -159,3 +159,16 @@ describe("horários das ocorrências", () => {
     expect(txt).toContain("2h00 parada · 23:00 às 01:00 · Quebrou o disco");
   });
 });
+
+describe("ocorrências de Mantas", () => {
+  it("livre, com equipamento opcional e total parado", () => {
+    const base = { tipo_status: "ocorrencia", created_at: "2026-10-01T10:00:00Z" };
+    const txt = textoOcorrencias([
+      { ...base, id: "1", equipamento: "Linha 4", mensagem: "Correia", duracao_min: 90, hora_inicio: "15:00", hora_fim: "16:30" },
+      { ...base, id: "2", equipamento: null, mensagem: "Geral" },
+    ], false, "mantas");
+    expect(txt).toContain("Linha 4: Correia");
+    expect(txt).toContain("Linha 4 — Total parado: 1h30");
+    expect(txt).not.toContain("Linha 5");
+  });
+});
