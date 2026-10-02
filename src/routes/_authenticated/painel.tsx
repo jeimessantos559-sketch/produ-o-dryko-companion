@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
 import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-card";
+import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
 
 const LazyApontamentoRapido = lazy(() =>
   import("@/components/dryko/apontamento-rapido").then((modulo) => ({
@@ -227,7 +228,7 @@ function Painel() {
       return;
     }
     toast.success(`${data ?? grupo.ids.length} apontamento(s) lançado(s) no Protheus.`);
-    await carregarPainel();
+    await recarregarAposMudanca();
   }
 
   return (
@@ -316,7 +317,7 @@ function Painel() {
             open
             onOpenChange={setApontarAberto}
             repeatLatest={modoApontamento === "repetir"}
-            onSaved={carregarPainel}
+            onSaved={recarregarAposMudanca}
           />
         </Suspense>
       )}
@@ -340,6 +341,37 @@ function Painel() {
       </Dialog>
     </>
   );
+}
+
+const COLUNAS = "id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao";
+
+async function buscarPainel(setor: string, turno: string, data: string): Promise<PainelPayload> {
+  const rpc = await (supabase.rpc as any)("painel_turno", { p_setor: setor, p_turno: turno, p_data: data });
+  if (!rpc.error) return (rpc.data ?? {}) as PainelPayload;
+
+  const [{ data: itensData, error }, { data: pendenciasData, error: erroPendencias }] = await Promise.all([
+    supabase.from("apontamentos").select(COLUNAS)
+      .eq("setor", setor as never).eq("turno", turno as never).eq("data_local", data)
+      .order("data_hora_producao", { ascending: false }).limit(30),
+    supabase.from("apontamentos").select(`${COLUNAS}, data_local, turno`)
+      .eq("setor", setor as never).eq("status", "pendente")
+      .order("data_hora_producao", { ascending: false }).limit(60),
+  ]);
+  if (error || erroPendencias) throw error ?? erroPendencias;
+  const itens = (itensData ?? []) as Registro[];
+  const resumo = itens.reduce(
+    (acc, item) => ({
+      registros: acc.registros + 1,
+      pendentes: acc.pendentes + (item.status === "pendente" ? 1 : 0),
+      lancados: acc.lancados + (item.status === "lancado" ? 1 : 0),
+      plts: acc.plts + Number(item.quantidade_plts ?? 0),
+      rolos: acc.rolos + Number(item.total_rolos ?? 0),
+      metragem: acc.metragem + Number(item.metragem ?? 0),
+      area: acc.area + Number(item.area_m2 ?? 0),
+    }),
+    { ...RESUMO_VAZIO },
+  );
+  return { resumo, recentes: itens, pendencias: (pendenciasData ?? []) as Pendencia[] };
 }
 
 function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChave: boolean): GrupoProtheus[] {
