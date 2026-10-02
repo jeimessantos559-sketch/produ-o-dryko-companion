@@ -7,7 +7,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 
-export const Route = createFileRoute("/_authenticated/administracao")({ component: Administracao });
+export const Route = createFileRoute("/_authenticated/administracao")({
+  head: () => ({
+    meta: [
+      { title: "Administração | Aponta Produção DRYKO" },
+      { name: "description", content: "Visão administrativa da produção, acessos e indicadores." },
+      { property: "og:title", content: "Administração | Aponta Produção DRYKO" },
+      { property: "og:description", content: "Visão administrativa da produção, acessos e indicadores." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: Administracao,
+});
 
 type ResumoAdmin = {
   usuarios: number;
