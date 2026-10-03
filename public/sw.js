@@ -1,4 +1,4 @@
-const CACHE = "dryko-pwa-v5";
+const CACHE = "dryko-pwa-v7";
 const ASSETS = [
   "/manifest.webmanifest?v=5",
   "/ap-pwa-192-v5.png",
@@ -9,9 +9,7 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)),
-  );
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
 });
 
 // Nova versão espera o usuário tocar em "Atualizar" (sem recarga silenciosa).
@@ -35,27 +33,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Arquivos com hash em /assets/ nunca mudam: cache primeiro, sem rede.
-  if (url.pathname.startsWith("/assets/")) {
-    event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((response) => {
-            if (response && response.ok) {
-              const clone = response.clone();
-              caches.open(CACHE).then((cache) => cache.put(request, clone));
-            }
-            return response;
-          }),
-      ),
-    );
-    return;
-  }
-
-  const cacheavel = ["style", "script", "font", "image"].includes(request.destination);
+  // O navegador já mantém os bundles com hash em cache. Não guardar JavaScript
+  // no service worker evita carregar uma versão antiga após uma atualização.
+  const cacheavel = ["style", "font", "image"].includes(request.destination);
   if (!cacheavel) return;
-
 
   event.respondWith(
     caches.match(request).then((cached) => {
