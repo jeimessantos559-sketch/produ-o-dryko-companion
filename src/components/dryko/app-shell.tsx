@@ -1,5 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  BarChart3,
   Bell,
   CalendarDays,
   Copy,
@@ -14,8 +15,9 @@ import {
   Settings2,
   ShieldCheck,
   TriangleAlert,
+  WifiOff,
 } from "lucide-react";
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { DrykoLogo } from "@/components/dryko/logo";
@@ -76,7 +78,13 @@ type PendenciaRapida = {
   turno: "T1" | "T2" | "T3";
 };
 
-function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSetorTurno: () => void }) {
+function Navegacao({
+  onNavigate,
+  onSetorTurno,
+}: {
+  onNavigate?: () => void;
+  onSetorTurno: () => void;
+}) {
   const { isAdmin, isAutorizado, roles, profile, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -87,7 +95,10 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
     ...(!isAdmin && isAutorizado
       ? [{ to: "/controle-apontamentos", label: "Controle Protheus", icon: ShieldCheck } as const]
       : []),
-    ...(isAdmin ? [{ to: "/administracao", label: "Administração", icon: ShieldCheck } as const] : []),
+    ...(isAdmin
+      ? [{ to: "/administracao", label: "Administração", icon: ShieldCheck } as const]
+      : []),
+    ...(isAdmin ? [{ to: "/indicadores", label: "Indicadores", icon: BarChart3 } as const] : []),
   ];
 
   async function sair() {
@@ -109,7 +120,10 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
             <DrykoLogo size="sm" />
           </div>
           <div className="min-w-0 md:mt-2">
-            <p data-heading className="truncate text-xl font-extrabold text-sidebar-foreground md:text-base md:font-bold">
+            <p
+              data-heading
+              className="truncate text-xl font-extrabold text-sidebar-foreground md:text-base md:font-bold"
+            >
               Aponta Produção
             </p>
             <p className="mt-0.5 text-xs font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/55 md:normal-case md:font-normal md:tracking-normal">
@@ -171,10 +185,18 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
       <div className="border-t border-sidebar-border px-5 py-4 md:p-3">
         <div className="flex items-center gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-foreground md:hidden">
-            {avatarUrl ? <img src={avatarUrl} alt="" className="size-full rounded-full object-cover" /> : <span className="text-base font-bold">{(profile?.nome || "U").trim().charAt(0).toUpperCase()}</span>}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="size-full rounded-full object-cover" />
+            ) : (
+              <span className="text-base font-bold">
+                {(profile?.nome || "U").trim().charAt(0).toUpperCase()}
+              </span>
+            )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-bold md:text-sm md:font-semibold">{profile?.nome || "Usuário"}</p>
+            <p className="truncate text-[15px] font-bold md:text-sm md:font-semibold">
+              {profile?.nome || "Usuário"}
+            </p>
             <p className="truncate text-xs text-sidebar-foreground/65">
               {roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}
               {profile?.setor_atual ? ` · ${nomeSetor(profile.setor_atual)}` : ""}
@@ -197,6 +219,9 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
         >
           <LogOut className="size-5 md:size-4" /> Sair
         </Button>
+        <p className="mt-2 text-center text-[10px] text-sidebar-foreground/45">
+          Versão {__APP_VERSION__}
+        </p>
       </div>
     </div>
   );
@@ -218,12 +243,24 @@ export function AppShell({
   const [carregandoNotificacoes, setCarregandoNotificacoes] = useState(false);
   const [pendenciasInternas, setPendenciasInternas] = useState<PendenciaRapida[]>([]);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
+  const [online, setOnline] = useState(true);
   const { profile, isAutorizado } = useAuth();
   const contexto = profile?.setor_atual
     ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}`
     : "Escolher setor e turno";
   const abrirNovo = onApontar ?? (() => setModalRapido("novo"));
   const abrirRepetir = onRepeat ?? (() => setModalRapido("repetir"));
+
+  useEffect(() => {
+    const atualizar = () => setOnline(navigator.onLine);
+    atualizar();
+    window.addEventListener("online", atualizar);
+    window.addEventListener("offline", atualizar);
+    return () => {
+      window.removeEventListener("online", atualizar);
+      window.removeEventListener("offline", atualizar);
+    };
+  }, []);
 
   async function carregarNotificacoesInternas() {
     if (!profile?.setor_atual || !profile.turno_atual) {
@@ -339,7 +376,6 @@ export function AppShell({
                 )}
               </Button>
 
-
               <Button
                 type="button"
                 variant="outline"
@@ -361,6 +397,15 @@ export function AppShell({
               </Button>
             </div>
           </header>
+          {!online && (
+            <div
+              className="sticky top-[57px] z-20 flex items-center justify-center gap-2 border-b border-amber-300 bg-amber-100 px-3 py-2 text-center text-xs font-semibold text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+              role="status"
+            >
+              <WifiOff className="size-4 shrink-0" /> Sem conexão. Aguarde a internet voltar antes
+              de salvar ou lançar no Protheus.
+            </div>
+          )}
           <main className="mx-auto w-full max-w-[1480px] flex-1 px-2.5 pb-12 pt-3 sm:px-5 sm:pt-4">
             {children}
           </main>
@@ -416,7 +461,10 @@ export function AppShell({
                 </div>
                 <div className="space-y-2">
                   {pendenciasInternas.map((item) => (
-                    <article key={item.id} className="rounded-xl border border-border bg-muted/40 p-3">
+                    <article
+                      key={item.id}
+                      className="rounded-xl border border-border bg-muted/40 p-3"
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-bold text-foreground">
@@ -454,10 +502,7 @@ export function AppShell({
                 Fechar
               </Button>
               <Button asChild>
-                <Link
-                  to="/controle-apontamentos"
-                  onClick={() => setNotificacoesInternas(false)}
-                >
+                <Link to="/controle-apontamentos" onClick={() => setNotificacoesInternas(false)}>
                   Controle Protheus
                 </Link>
               </Button>

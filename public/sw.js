@@ -1,4 +1,4 @@
-const CACHE = "dryko-pwa-v5";
+const CACHE = "dryko-pwa-v6";
 const ASSETS = [
   "/manifest.webmanifest?v=5",
   "/ap-pwa-192-v5.png",
@@ -10,8 +10,12 @@ const ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()),
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {

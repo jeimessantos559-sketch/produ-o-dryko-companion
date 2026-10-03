@@ -1,10 +1,4 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
@@ -158,6 +152,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      auth_rate_limits: {
+        Row: {
+          acao: string
+          bloqueado_ate: string | null
+          chave: string
+          janela_inicio: string
+          tentativas: number
+          updated_at: string
+        }
+        Insert: {
+          acao: string
+          bloqueado_ate?: string | null
+          chave: string
+          janela_inicio?: string
+          tentativas?: number
+          updated_at?: string
+        }
+        Update: {
+          acao?: string
+          bloqueado_ate?: string | null
+          chave?: string
+          janela_inicio?: string
+          tentativas?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       fechamentos_turno: {
         Row: {
@@ -968,6 +989,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      limpar_tentativas_auth: {
+        Args: { p_acao: string; p_chave: string }
+        Returns: undefined
+      }
       horario_pertence_turno: {
         Args: {
           p_horario: string
@@ -1006,6 +1031,16 @@ export type Database = {
       pode_definir_meta_turno: { Args: { _user_id: string }; Returns: boolean }
       pode_finalizar_meta: { Args: { p_user_id: string }; Returns: boolean }
       pode_gerenciar_produtos: { Args: { _user_id: string }; Returns: boolean }
+      registrar_tentativa_auth: {
+        Args: {
+          p_acao: string
+          p_bloqueio_segundos: number
+          p_chave: string
+          p_janela_segundos: number
+          p_max_tentativas: number
+        }
+        Returns: boolean
+      }
       reabrir_turno: {
         Args: { p_fechamento_id: string; p_justificativa: string }
         Returns: undefined
@@ -1024,23 +1059,12 @@ export type Database = {
     }
     Enums: {
       apontamento_status: "pendente" | "lancado"
-      app_role:
-        | "facilitador"
-        | "autorizado_protheus"
-        | "administrador"
-        | "programador_producao"
+      app_role: "facilitador" | "autorizado_protheus" | "administrador" | "programador_producao"
       envio_status: "aguardando" | "enviando" | "enviado" | "falhou"
       fechamento_status: "fechado" | "reaberto"
       meta_status: "ativa" | "finalizada"
       setor_codigo:
-        | "corte"
-        | "fitas"
-        | "mantas"
-        | "asfox"
-        | "misturadores"
-        | "liquidos"
-        | "pos"
-        | "avulsos"
+        "corte" | "fitas" | "mantas" | "asfox" | "misturadores" | "liquidos" | "pos" | "avulsos"
       turno_codigo: "T1" | "T2" | "T3"
     }
     CompositeTypes: {
@@ -1072,10 +1096,8 @@ export type Tables<
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] & DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -1084,8 +1106,7 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -1109,16 +1130,15 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
+  schema: keyof DatabaseWithoutInternals
+}
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
@@ -1134,8 +1154,7 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
   EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -1151,31 +1170,25 @@ export type Enums<
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
+    keyof DefaultSchema["CompositeTypes"] | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never) = never,
-> = DefaultSchemaCompositeTypeNameOrOptions extends {
+> = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : DefaultSchemaCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][DefaultSchemaCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
   public: {
     Enums: {
       apontamento_status: ["pendente", "lancado"],
-      app_role: [
-        "facilitador",
-        "autorizado_protheus",
-        "administrador",
-        "programador_producao",
-      ],
+      app_role: ["facilitador", "autorizado_protheus", "administrador", "programador_producao"],
       envio_status: ["aguardando", "enviando", "enviado", "falhou"],
       fechamento_status: ["fechado", "reaberto"],
       meta_status: ["ativa", "finalizada"],

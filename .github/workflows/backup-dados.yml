@@ -1,0 +1,67 @@
+name: Backup criptografado dos dados
+
+on:
+  schedule:
+    - cron: "30 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Banco e Storage
+    if: vars.BACKUP_ENABLED == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      BACKUP_ROOT: ${{ runner.temp }}/aponta-dryko-backup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.22
+      - run: bun install --frozen-lockfile
+
+      - name: Validar configuração segura
+        shell: bash
+        run: |
+          test -n "$SUPABASE_DATABASE_URL"
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_SERVICE_ROLE_KEY"
+          test "${#BACKUP_ENCRYPTION_KEY}" -ge 32
+
+      - name: Instalar cliente PostgreSQL
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Exportar banco e arquivos
+        shell: bash
+        run: |
+          mkdir -p "$BACKUP_ROOT/storage"
+          pg_dump --format=custom --no-owner --no-acl "$SUPABASE_DATABASE_URL" --file "$BACKUP_ROOT/aponta-dryko.dump"
+          pg_restore --list "$BACKUP_ROOT/aponta-dryko.dump" > "$BACKUP_ROOT/conteudo-banco.txt"
+          node scripts/exportar-storage-backup.mjs "$BACKUP_ROOT/storage"
+
+      - name: Compactar e criptografar
+        shell: bash
+        run: |
+          tar -C "$BACKUP_ROOT" -czf "$BACKUP_ROOT/aponta-dryko.tar.gz" aponta-dryko.dump conteudo-banco.txt storage
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 250000 -in "$BACKUP_ROOT/aponta-dryko.tar.gz" -out "$BACKUP_ROOT/aponta-dryko.tar.gz.enc" -pass env:BACKUP_ENCRYPTION_KEY
+          sha256sum "$BACKUP_ROOT/aponta-dryko.tar.gz.enc" > "$BACKUP_ROOT/aponta-dryko.tar.gz.enc.sha256"
+
+      - name: Guardar cópia criptografada
+        uses: actions/upload-artifact@v4
+        with:
+          name: aponta-dryko-backup-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/aponta-dryko-backup/aponta-dryko.tar.gz.enc
+            ${{ runner.temp }}/aponta-dryko-backup/aponta-dryko.tar.gz.enc.sha256
+          retention-days: 14
+          if-no-files-found: error

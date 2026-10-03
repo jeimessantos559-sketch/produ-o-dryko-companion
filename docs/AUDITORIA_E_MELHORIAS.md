@@ -1,5 +1,18 @@
 # Auditoria de portabilidade e melhorias recomendadas
 
+## Avanços implementados em 03/10/2026
+
+- correção segura do perfil e do avatar, incluindo compatibilidade de permissões no banco;
+- CI no GitHub com instalação pelo lockfile, portabilidade, lint crítico, testes, build e varredura de segredos;
+- workflow diário de backup do PostgreSQL e dos buckets `avatars` e `problemas`, com criptografia e retenção de 14 dias, pronto para ativação;
+- testes automatizados de data operacional, sequência de horas, PLT picado, fórmulas e agrupamento do Protheus;
+- limite persistente de tentativas para senha, biometria e recuperação de acesso;
+- identificação da versão instalada, aviso de internet indisponível e atualização controlada do PWA;
+- recuperação de envio de relatório que tenha ficado travado no estado `enviando`;
+- painel administrativo de indicadores por setor, sem misturar unidades produtivas.
+
+Para ativar o backup, cadastre os segredos `SUPABASE_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `BACKUP_ENCRYPTION_KEY` no GitHub e defina a variável `BACKUP_ENABLED=true`. A fila offline de apontamentos permanece desativada até serem formalizadas as regras de conflito com fechamento de turno, horário e produto desativado.
+
 ## Resultado da auditoria do repositório
 
 O repositório contém o aplicativo completo — frontend, funções de servidor, PWA, componentes, rotas, catálogo, relatórios, integrações e migrações do banco. A auditoria de portabilidade encontrou e tratou estes pontos:

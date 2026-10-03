@@ -18,6 +18,11 @@ const arquivosObrigatorios = [
   "docs/GUIA_MIGRACAO_E_BACKUP.md",
   "drizzle/migrations/0000_etapa1_base_usuarios_setores_turnos.sql",
   "drizzle/migrations/0019_configuracoes_avatar_webauthn.sql",
+  "drizzle/migrations/0020_corrige_perfil_editavel.sql",
+  "drizzle/migrations/0021_seguranca_autenticacao.sql",
+  ".github/workflows/quality.yml",
+  ".github/workflows/backup-dados.yml",
+  "scripts/exportar-storage-backup.mjs",
 ];
 arquivosObrigatorios.forEach(exigirArquivo);
 
@@ -51,7 +56,7 @@ const migracoes = existsSync(diretorioMigracoes)
       .filter((nome) => nome.endsWith(".sql"))
       .sort()
   : [];
-for (let indice = 0; indice <= 19; indice += 1) {
+for (let indice = 0; indice <= 21; indice += 1) {
   const prefixo = String(indice).padStart(4, "0");
   if (!migracoes.some((nome) => nome.startsWith(`${prefixo}_`)))
     erros.push(`Migracao ${prefixo} ausente`);

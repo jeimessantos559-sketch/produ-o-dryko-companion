@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
+import { chaveAgrupamentoProtheus } from "@/lib/agrupamento-protheus";
 import { useAuth } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
 
@@ -116,7 +117,7 @@ function Painel() {
 
     setErro(false);
     const dataAtual = dataOperacional(profile.turno_atual);
-    const rpc = await (supabase.rpc as any)("painel_turno", {
+    const rpc = await supabase.rpc("painel_turno", {
       p_setor: profile.setor_atual,
       p_turno: profile.turno_atual,
       p_data: dataAtual,
@@ -130,7 +131,9 @@ function Painel() {
     const [{ data, error }, { data: pendenciasData, error: erroPendencias }] = await Promise.all([
       supabase
         .from("apontamentos")
-        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao")
+        .select(
+          "id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao",
+        )
         .eq("setor", profile.setor_atual)
         .eq("turno", profile.turno_atual)
         .eq("data_local", dataAtual)
@@ -138,7 +141,9 @@ function Painel() {
         .limit(30),
       supabase
         .from("apontamentos")
-        .select("id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao, data_local, turno")
+        .select(
+          "id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao, data_local, turno",
+        )
         .eq("setor", profile.setor_atual)
         .eq("status", "pendente")
         .order("data_hora_producao", { ascending: false })
@@ -199,11 +204,17 @@ function Painel() {
   const turnoNome = nomeTurno(profile?.turno_atual);
 
   const pendenciasAnteriores = useMemo(
-    () => pendencias.filter((item) => item.data_local !== dataAtual || item.turno !== profile?.turno_atual),
+    () =>
+      pendencias.filter(
+        (item) => item.data_local !== dataAtual || item.turno !== profile?.turno_atual,
+      ),
     [dataAtual, pendencias, profile?.turno_atual],
   );
   const pendenciasAtuais = useMemo(
-    () => pendencias.filter((item) => item.data_local === dataAtual && item.turno === profile?.turno_atual),
+    () =>
+      pendencias.filter(
+        (item) => item.data_local === dataAtual && item.turno === profile?.turno_atual,
+      ),
     [dataAtual, pendencias, profile?.turno_atual],
   );
 
@@ -237,7 +248,9 @@ function Painel() {
   async function confirmarGrupo(grupo: GrupoProtheus) {
     if (!isAutorizado || confirmandoChave) return;
     setConfirmandoChave(grupo.chave);
-    const { data, error } = await supabase.rpc("confirmar_apontamentos_protheus", { p_ids: grupo.ids });
+    const { data, error } = await supabase.rpc("confirmar_apontamentos_protheus", {
+      p_ids: grupo.ids,
+    });
     setConfirmandoChave(null);
     if (error) {
       toast.error(error.message || "Não foi possível lançar no Protheus.");
@@ -258,33 +271,95 @@ function Painel() {
         onApontar={() => abrirApontamento("novo")}
       >
         <div className="mx-auto max-w-5xl space-y-3">
-          {erro && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800">Não foi possível carregar o painel. Tente novamente.</div>}
+          {erro && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800"
+            >
+              Não foi possível carregar o painel. Tente novamente.
+            </div>
+          )}
 
           {!loading && (!profile?.setor_atual || !profile.turno_atual) && (
-            <Card className="rounded-2xl"><CardContent className="flex items-center justify-between gap-3 p-4"><p className="text-sm">Escolha setor e turno para começar.</p><Button asChild size="sm"><Link to="/selecionar">Escolher</Link></Button></CardContent></Card>
+            <Card className="rounded-2xl">
+              <CardContent className="flex items-center justify-between gap-3 p-4">
+                <p className="text-sm">Escolha setor e turno para começar.</p>
+                <Button asChild size="sm">
+                  <Link to="/selecionar">Escolher</Link>
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
           <div className="grid grid-cols-2 gap-2.5">
-            <Indicador icon={Clock3} label="Pendentes" valor={resumo.pendentes} detalhe="para lançar" tone="amber" />
-            <Indicador icon={PackageCheck} label="Lançados" valor={resumo.lancados} detalhe="no Protheus" tone="green" />
-            <Indicador icon={Boxes} label={setorFitas ? "Apontamentos" : "PLTs fechados"} valor={setorFitas ? resumo.registros : resumo.plts} detalhe="neste turno" tone="slate" />
-            <Indicador icon={Gauge} label={setorFitas || setorMantas ? "Metragem Protheus" : "Unidades produzidas"} valor={setorFitas ? formatarNumero(resumo.area) : setorMantas ? formatarNumero(resumo.metragem) : resumo.rolos.toLocaleString("pt-BR")} detalhe={setorFitas ? "m²" : setorMantas ? "m" : "unidades"} tone="slate" destaque={setorFitas || setorMantas} />
+            <Indicador
+              icon={Clock3}
+              label="Pendentes"
+              valor={resumo.pendentes}
+              detalhe="para lançar"
+              tone="amber"
+            />
+            <Indicador
+              icon={PackageCheck}
+              label="Lançados"
+              valor={resumo.lancados}
+              detalhe="no Protheus"
+              tone="green"
+            />
+            <Indicador
+              icon={Boxes}
+              label={setorFitas ? "Apontamentos" : "PLTs fechados"}
+              valor={setorFitas ? resumo.registros : resumo.plts}
+              detalhe="neste turno"
+              tone="slate"
+            />
+            <Indicador
+              icon={Gauge}
+              label={setorFitas || setorMantas ? "Metragem Protheus" : "Unidades produzidas"}
+              valor={
+                setorFitas
+                  ? formatarNumero(resumo.area)
+                  : setorMantas
+                    ? formatarNumero(resumo.metragem)
+                    : resumo.rolos.toLocaleString("pt-BR")
+              }
+              detalhe={setorFitas ? "m²" : setorMantas ? "m" : "unidades"}
+              tone="slate"
+              destaque={setorFitas || setorMantas}
+            />
           </div>
 
           {isAutorizado && gruposProtheus.length > 0 && (
             <section className="rounded-2xl border border-primary/20 bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <div><h2 className="font-bold text-slate-950">Lançar no Protheus</h2><p className="text-xs text-slate-500">Valores já agrupados para reduzir lançamentos</p></div>
-                <Button asChild variant="ghost" size="sm"><Link to="/controle-apontamentos">Abrir controle <ArrowRight className="size-4" /></Link></Button>
+                <div>
+                  <h2 className="font-bold text-slate-950">Lançar no Protheus</h2>
+                  <p className="text-xs text-slate-500">
+                    Valores já agrupados para reduzir lançamentos
+                  </p>
+                </div>
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/controle-apontamentos">
+                    Abrir controle <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
               </div>
               <div className="space-y-2">
                 {gruposProtheus.slice(0, 4).map((grupo) => (
-                  <div key={grupo.chave} className="flex items-center gap-2 rounded-xl bg-slate-50 p-2.5">
+                  <div
+                    key={grupo.chave}
+                    className="flex items-center gap-2 rounded-xl bg-slate-50 p-2.5"
+                  >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold">{tituloGrupo(grupo, setor)}</p>
                       <p className="truncate text-xs text-slate-500">{resumoGrupo(grupo, setor)}</p>
                     </div>
-                    <Button size="sm" className="shrink-0" disabled={confirmandoChave !== null} onClick={() => void confirmarGrupo(grupo)}>
+                    <Button
+                      size="sm"
+                      className="shrink-0"
+                      disabled={confirmandoChave !== null}
+                      onClick={() => void confirmarGrupo(grupo)}
+                    >
                       {confirmandoChave === grupo.chave ? "Lançando..." : "Lançar"}
                     </Button>
                   </div>
@@ -294,23 +369,55 @@ function Painel() {
           )}
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="px-3 pb-2 pt-3"><h2 className="text-lg font-extrabold text-slate-950">Apontamentos do turno</h2><p className="text-xs text-slate-500">Horário e produção de cada registro</p></div>
+            <div className="px-3 pb-2 pt-3">
+              <h2 className="text-lg font-extrabold text-slate-950">Apontamentos do turno</h2>
+              <p className="text-xs text-slate-500">Horário e produção de cada registro</p>
+            </div>
             <div className="grid grid-cols-[1fr_112px] gap-2 border-b border-slate-100 px-3 pb-3">
-              <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="OP, lote ou produto" className="h-10 rounded-xl pl-9 text-sm" /></div>
-              <select value={statusFiltro} onChange={(event) => setStatusFiltro(event.target.value as "todos" | "pendente" | "lancado")} className="h-10 w-full rounded-xl border bg-white px-2 text-sm"><option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="lancado">Lançados</option></select>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={busca}
+                  onChange={(event) => setBusca(event.target.value)}
+                  placeholder="OP, lote ou produto"
+                  className="h-10 rounded-xl pl-9 text-sm"
+                />
+              </div>
+              <select
+                value={statusFiltro}
+                onChange={(event) =>
+                  setStatusFiltro(event.target.value as "todos" | "pendente" | "lancado")
+                }
+                className="h-10 w-full rounded-xl border bg-white px-2 text-sm"
+              >
+                <option value="todos">Todos</option>
+                <option value="pendente">Pendentes</option>
+                <option value="lancado">Lançados</option>
+              </select>
             </div>
             <div className="px-3 py-2">
               {filtrados.length === 0 ? (
-                <div className="rounded-xl border border-dashed bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Nenhum apontamento neste turno.</div>
+                <div className="rounded-xl border border-dashed bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  Nenhum apontamento neste turno.
+                </div>
               ) : (
                 <div className="divide-y divide-slate-100">
                   {filtrados.map((item) => (
                     <div key={item.id} className="flex items-center justify-between gap-2 py-2.5">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-950">{tituloRegistro(item, setor)}</p>
-                        <p className="truncate text-xs text-slate-500"><strong>{horaProducao(item.data_hora_producao)}</strong> · {resumoRegistro(item, setor)}</p>
+                        <p className="truncate text-sm font-semibold text-slate-950">
+                          {tituloRegistro(item, setor)}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          <strong>{horaProducao(item.data_hora_producao)}</strong> ·{" "}
+                          {resumoRegistro(item, setor)}
+                        </p>
                       </div>
-                      <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${item.status === "lancado" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status === "lancado" ? "Lançado" : "Pendente"}</span>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${item.status === "lancado" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+                      >
+                        {item.status === "lancado" ? "Lançado" : "Pendente"}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -319,7 +426,22 @@ function Painel() {
           </section>
 
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 shadow-sm">
-            <div className="flex items-center gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><CheckCircle2 className="size-5" /></div><div className="min-w-0 flex-1"><h2 className="font-bold text-slate-950">Turno aberto</h2><p className="text-xs text-slate-500">{resumo.registros} apontamento(s) · {resumo.pendentes} pendente(s)</p></div><Button asChild variant="secondary" size="sm"><Link to="/passagem-turno"><LockKeyhole className="size-4" /> Encerrar</Link></Button></div>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                <CheckCircle2 className="size-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-bold text-slate-950">Turno aberto</h2>
+                <p className="text-xs text-slate-500">
+                  {resumo.registros} apontamento(s) · {resumo.pendentes} pendente(s)
+                </p>
+              </div>
+              <Button asChild variant="secondary" size="sm">
+                <Link to="/passagem-turno">
+                  <LockKeyhole className="size-4" /> Encerrar
+                </Link>
+              </Button>
+            </div>
           </section>
         </div>
       </AppShell>
@@ -337,38 +459,74 @@ function Painel() {
 
       <Dialog open={notificacoesAbertas} onOpenChange={setNotificacoesAbertas}>
         <DialogContent className="max-h-[92dvh] overscroll-contain overflow-y-auto rounded-2xl p-4 sm:max-w-xl">
-          <DialogHeader><DialogTitle>Pendências de turnos anteriores</DialogTitle><DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Pendências de turnos anteriores</DialogTitle>
+            <DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-2">
             {gruposAnteriores.length === 0 ? (
-              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Nenhuma pendência anterior.</div>
-            ) : gruposAnteriores.map((grupo) => (
-              <article key={grupo.chave} className="rounded-xl border bg-slate-50/50 p-3">
-                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-bold">{tituloGrupo(grupo, setor)}</p><p className="text-xs text-slate-500">{formatarData(grupo.item.data_local)} · {nomeTurno(grupo.item.turno)} · {horaProducao(grupo.item.data_hora_producao)}</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Pendente</span></div>
-                <p className="mt-2 text-sm font-medium text-slate-600">{resumoGrupo(grupo, setor)}</p>
-                {isAutorizado && <Button type="button" variant="outline" size="sm" className="mt-2 w-full border-primary text-primary" disabled={confirmandoChave !== null} onClick={() => void confirmarGrupo(grupo)}>{confirmandoChave === grupo.chave ? "Lançando..." : grupo.ids.length > 1 ? `Lançar agrupado (${grupo.ids.length})` : "Conferir e lançar"}</Button>}
-              </article>
-            ))}
+              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">
+                Nenhuma pendência anterior.
+              </div>
+            ) : (
+              gruposAnteriores.map((grupo) => (
+                <article key={grupo.chave} className="rounded-xl border bg-slate-50/50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold">{tituloGrupo(grupo, setor)}</p>
+                      <p className="text-xs text-slate-500">
+                        {formatarData(grupo.item.data_local)} · {nomeTurno(grupo.item.turno)} ·{" "}
+                        {horaProducao(grupo.item.data_hora_producao)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                      Pendente
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-slate-600">
+                    {resumoGrupo(grupo, setor)}
+                  </p>
+                  {isAutorizado && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 w-full border-primary text-primary"
+                      disabled={confirmandoChave !== null}
+                      onClick={() => void confirmarGrupo(grupo)}
+                    >
+                      {confirmandoChave === grupo.chave
+                        ? "Lançando..."
+                        : grupo.ids.length > 1
+                          ? `Lançar agrupado (${grupo.ids.length})`
+                          : "Conferir e lançar"}
+                    </Button>
+                  )}
+                </article>
+              ))
+            )}
           </div>
-          <DialogFooter className="grid grid-cols-2 gap-2 sm:flex"><Button variant="outline" onClick={() => setNotificacoesAbertas(false)}>Fechar</Button><Button asChild><Link to="/controle-apontamentos" onClick={() => setNotificacoesAbertas(false)}>Controle Protheus</Link></Button></DialogFooter>
+          <DialogFooter className="grid grid-cols-2 gap-2 sm:flex">
+            <Button variant="outline" onClick={() => setNotificacoesAbertas(false)}>
+              Fechar
+            </Button>
+            <Button asChild>
+              <Link to="/controle-apontamentos" onClick={() => setNotificacoesAbertas(false)}>
+                Controle Protheus
+              </Link>
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-function normalizarChave(valor: string | null | undefined) {
-  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
-}
-
 function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChave: boolean) {
   const mapa = new Map<string, GrupoProtheus>();
   for (const item of itens) {
     const sufixoTurno = incluirTurnoNaChave ? `:${item.data_local}:${item.turno}` : "";
-    const produto = normalizarChave(item.produto_nome);
-    let chave = `item:${item.id}`;
-    if (setor === "mantas" && item.lote) chave = `manta:${produto}:${normalizarChave(item.lote)}${sufixoTurno}`;
-    if (setor === "corte" && item.op) chave = `corte:${produto}:${normalizarChave(item.op)}${sufixoTurno}`;
-    if (setor === "fitas" && item.op) chave = `fitas:${produto}:${normalizarChave(item.op)}${sufixoTurno}`;
+    const chave = chaveAgrupamentoProtheus(item, setor, sufixoTurno);
 
     const atual = mapa.get(chave);
     if (!atual) {
@@ -394,9 +552,45 @@ function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChav
   return [...mapa.values()];
 }
 
-function Indicador({ icon: Icon, label, valor, detalhe, tone, destaque = false }: { icon: typeof Clock3; label: string; valor: string | number; detalhe: string; tone: "amber" | "green" | "slate"; destaque?: boolean }) {
-  const toneClasses = tone === "amber" ? "bg-amber-50 text-amber-700" : tone === "green" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600";
-  return <Card className={`rounded-2xl border-slate-200 shadow-sm ${destaque ? "border-primary/25 bg-primary/[0.025]" : ""}`}><CardContent className="flex min-h-[94px] items-center gap-2.5 p-3"><div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${toneClasses}`}><Icon className="size-5" /></div><div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-500">{label}</p><p className="truncate text-2xl font-extrabold leading-none text-slate-950">{valor}</p><p className="mt-1 text-xs text-slate-400">{detalhe}</p></div></CardContent></Card>;
+function Indicador({
+  icon: Icon,
+  label,
+  valor,
+  detalhe,
+  tone,
+  destaque = false,
+}: {
+  icon: typeof Clock3;
+  label: string;
+  valor: string | number;
+  detalhe: string;
+  tone: "amber" | "green" | "slate";
+  destaque?: boolean;
+}) {
+  const toneClasses =
+    tone === "amber"
+      ? "bg-amber-50 text-amber-700"
+      : tone === "green"
+        ? "bg-emerald-50 text-emerald-700"
+        : "bg-slate-100 text-slate-600";
+  return (
+    <Card
+      className={`rounded-2xl border-slate-200 shadow-sm ${destaque ? "border-primary/25 bg-primary/[0.025]" : ""}`}
+    >
+      <CardContent className="flex min-h-[94px] items-center gap-2.5 p-3">
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${toneClasses}`}
+        >
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-slate-500">{label}</p>
+          <p className="truncate text-2xl font-extrabold leading-none text-slate-950">{valor}</p>
+          <p className="mt-1 text-xs text-slate-400">{detalhe}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function tituloRegistro(item: Registro, setor: string) {
@@ -411,15 +605,23 @@ function tituloGrupo(grupo: GrupoProtheus, setor: string) {
 
 function resumoRegistro(item: Registro, setor: string) {
   if (setor === "fitas") return `${formatarNumero(Number(item.area_m2 ?? 0))} m² para Protheus`;
-  if (setor === "mantas") return `${formatarNumero(Number(item.metragem ?? 0))} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
+  if (setor === "mantas")
+    return `${formatarNumero(Number(item.metragem ?? 0))} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
   return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} unidades`;
 }
 
 function resumoGrupo(grupo: GrupoProtheus, setor: string) {
-  if (setor === "fitas") return `${formatarNumero(grupo.area)} m² para lançar${grupo.registros > 1 ? ` · ${grupo.registros} registros` : ""}`;
-  if (setor === "mantas") return `${formatarNumero(grupo.metragem)} m · ${grupo.plts} PLTs · ${grupo.rolos} rolos${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
+  if (setor === "fitas")
+    return `${formatarNumero(grupo.area)} m² para lançar${grupo.registros > 1 ? ` · ${grupo.registros} registros` : ""}`;
+  if (setor === "mantas")
+    return `${formatarNumero(grupo.metragem)} m · ${grupo.plts} PLTs · ${grupo.rolos} rolos${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
   return `${grupo.plts} PLTs para lançar · ${grupo.rolos} unidades${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
 }
 
-function formatarNumero(valor: number) { return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
-function formatarData(valor: string) { const [ano, mes, dia] = valor.split("-"); return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor; }
+function formatarNumero(valor: number) {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+function formatarData(valor: string) {
+  const [ano, mes, dia] = valor.split("-");
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
+}

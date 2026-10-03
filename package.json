@@ -10,6 +10,9 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
+    "lint:critical": "eslint src/lib/producao.ts src/lib/agrupamento-protheus.ts src/lib/perfil.ts src/lib/limite-autenticacao.ts src/lib/indicadores-gerenciais.ts tests/producao.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "verify:backup": "node --check scripts/exportar-storage-backup.mjs",
     "verify:portability": "node scripts/verificar-portabilidade.mjs",
     "format": "prettier --write ."
   },
