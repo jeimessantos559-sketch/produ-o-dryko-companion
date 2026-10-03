@@ -1,18 +1,16 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import {
   CalendarDays,
-  ClipboardCopy,
-  Clock3,
-  MessageSquare,
   PackageCheck,
+  Pencil,
   Save,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
+import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
+import { AppShell } from "@/components/dryko/app-shell";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,19 +18,70 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { OcorrenciasOperacionaisForm } from "@/components/dryko/ocorrencias-operacionais-form";
-import { textoOcorrencias, type OcorrenciaOperacional } from "@/lib/ocorrencias-operacionais";
-import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
+import {
+  dataOperacional,
+  horaCheiaProducao,
+  horasProdutivasTurno,
+  ordemHoraTurno,
+} from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
-export const Route = createFileRoute("/_authenticated/programacao")({ component: Programacao });
+export const Route = createFileRoute("/_authenticated/programacao")({
+  head: () => ({
+    meta: [
+      { title: "Programação | Aponta Produção DRYKO" },
+      { name: "description", content: "Produção automática hora a hora e programação diária." },
+    ],
+  }),
+  component: Programacao,
+});
+
+type Registro = {
+  id: string;
+  produto_id: string;
+  produto_nome: string;
+  op: string | null;
+  lote: string | null;
+  quantidade_plts: number | null;
+  total_rolos: number | null;
+  metragem: number | null;
+  area_m2: number | null;
+  data_hora_producao: string;
+};
+
+type MetaTurno = Database["public"]["Tables"]["metas_turno"]["Row"];
+
+type Linha = {
+  produto: string;
+  apontamentos: number;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+};
+
+type Hora = {
+  hora: string;
+  apontamentos: number;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+  produtos: Linha[];
+};
+
+type HoraInterna = Omit<Hora, "produtos"> & { produtos: Map<string, Linha> };
+
+type HoraPlanejada = Hora & {
+  metaHora: number;
+  realizadoAcumulado: number;
+  saldoAcumulado: number;
+};
 
 type ProgramacaoItem = {
   id: string;
-  setor: string;
-  turno: "T1" | "T2" | "T3";
-  data_local: string;
   produto_id: string;
   produto_nome: string;
   op: string | null;
@@ -41,195 +90,334 @@ type ProgramacaoItem = {
   unidade: string;
 };
 
-type AjusteHora = {
-  id: string;
-  hora: number;
-  meta_hora: number | null;
-  parada_minutos: number;
-  motivo_parada: string | null;
-};
-
-type Registro = {
-  produto_id: string;
-  produto_nome: string;
-  op: string | null;
-  lote: string | null;
-  quantidade_plts: number | null;
-  metragem: number | null;
-  area_m2: number | null;
-  data_hora_producao: string;
-};
-
-type MetaTurno = {
-  quantidade_meta: number;
-  horas_produtivas: number;
-};
-
-type Ocorrencia = OcorrenciaOperacional;
-
-type EdicaoHora = {
-  meta: string;
-  parada: string;
-  motivo: string;
-};
+type AbaProgramacao = "hora" | "programacao";
 
 function Programacao() {
-  const { profile, user, canProgramProduction } = useAuth();
+  const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
+  const [recarga, setRecarga] = useState(0);
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
   const dataAtual = turno ? dataOperacional(turno) : "";
-  const suportado = setor === "corte" || setor === "fitas" || setor === "mantas";
-  const unidade = unidadeDoSetor(setor);
-  const horasBase = useMemo(() => horasProdutivasTurno(turno), [turno]);
+  const horasDisponiveis = useMemo(() => horasProdutivasTurno(turno), [turno]);
+  const unidade = unidadeMetaTurno(setor);
+  const unidadeProg = unidadeProgramacao(setor);
+  const programacaoSuportada = setor === "corte" || setor === "fitas" || setor === "mantas";
 
-  const [produtos, setProdutos] = useState<ProdutoCatalogo[]>([]);
-  const [programacao, setProgramacao] = useState<ProgramacaoItem[]>([]);
-  const [ajustesHora, setAjustesHora] = useState<AjusteHora[]>([]);
+  const [abaAtiva, setAbaAtiva] = useState<AbaProgramacao>("hora");
   const [registros, setRegistros] = useState<Registro[]>([]);
-  const [registrosDia, setRegistrosDia] = useState<Registro[]>([]);
   const [metaTurno, setMetaTurno] = useState<MetaTurno | null>(null);
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [programacao, setProgramacao] = useState<ProgramacaoItem[]>([]);
+  const [registrosDia, setRegistrosDia] = useState<Registro[]>([]);
+  const [produtos, setProdutos] = useState<ProdutoCatalogo[]>([]);
+  const [metaDigitada, setMetaDigitada] = useState("");
+  const [horasDigitadas, setHorasDigitadas] = useState("");
   const [produtoId, setProdutoId] = useState("");
-  const [referencia, setReferencia] = useState("");
-  const [quantidade, setQuantidade] = useState("");
-  const [textoGerado, setTextoGerado] = useState("");
-  const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
-  const [salvandoHora, setSalvandoHora] = useState<string | null>(null);
-  const [edicoesHora, setEdicoesHora] = useState<Record<string, EdicaoHora>>({});
-  const cargaAtual = useRef(0);
+  const [quantidadePrevista, setQuantidadePrevista] = useState("");
+  const [erro, setErro] = useState(false);
+  const [erroMeta, setErroMeta] = useState(false);
+  const [carregandoProgramacao, setCarregandoProgramacao] = useState(false);
+  const [salvandoMeta, setSalvandoMeta] = useState(false);
+  const [salvandoProgramacao, setSalvandoProgramacao] = useState(false);
+  const carregamentoAtual = useRef(0);
+  const carregamentoProgramacaoAtual = useRef(0);
+  const cacheProgramacao = useRef<{ chave: string; at: number } | null>(null);
 
-  const produto = produtos.find((item) => item.id === produtoId) ?? null;
+  const produtoSelecionado = useMemo(
+    () => produtos.find((item) => item.id === produtoId) ?? null,
+    [produtoId, produtos],
+  );
 
   useEffect(() => {
-    const carga = ++cargaAtual.current;
-    if (!setor || !turno || !dataAtual || !suportado) {
-      setProdutos([]);
-      setProgramacao([]);
-      setAjustesHora([]);
+    const carga = ++carregamentoAtual.current;
+    setErro(false);
+    setErroMeta(false);
+    setProgramacao([]);
+    setRegistrosDia([]);
+    setProdutos([]);
+    setProdutoId("");
+    setQuantidadePrevista("");
+    cacheProgramacao.current = null;
+
+    if (!setor || !turno || !dataAtual) {
       setRegistros([]);
-      setRegistrosDia([]);
       setMetaTurno(null);
-      setOcorrencias([]);
-      setCarregando(false);
+      setMetaDigitada("");
+      setHorasDigitadas("");
       return;
     }
 
-    setCarregando(true);
     void Promise.all([
-      obterProdutosAtivos(setor),
-      (supabase as any)
-        .from("programacao_producao")
-        .select("id, setor, turno, data_local, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
-        .eq("setor", setor)
-        .eq("data_local", dataAtual)
-        .eq("global_dia", true)
-        .order("created_at", { ascending: true }),
-      (supabase as any)
-        .from("programacao_hora")
-        .select("id, hora, meta_hora, parada_minutos, motivo_parada")
-        .eq("setor", setor)
-        .eq("turno", turno)
-        .eq("data_local", dataAtual),
       supabase
         .from("apontamentos")
-        .select("turno, produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, data_hora_producao")
+        .select(
+          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+        )
         .eq("setor", setor)
-        .eq("data_local", dataAtual),
-      (supabase as any)
+        .eq("turno", turno)
+        .eq("data_local", dataAtual)
+        .order("data_hora_producao", { ascending: true }),
+      supabase
         .from("metas_turno")
-        .select("quantidade_meta, horas_produtivas")
+        .select("*")
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
         .maybeSingle(),
+    ]).then(([resultadoApontamentos, resultadoMeta]) => {
+      if (carga !== carregamentoAtual.current) return;
+
+      if (resultadoApontamentos.error) setErro(true);
+      setRegistros((resultadoApontamentos.data ?? []) as Registro[]);
+
+      if (resultadoMeta.error) {
+        setErroMeta(true);
+        setMetaTurno(null);
+        setMetaDigitada("");
+        setHorasDigitadas("");
+      } else {
+        const meta = (resultadoMeta.data as MetaTurno | null) ?? null;
+        setMetaTurno(meta);
+        setMetaDigitada(meta ? formatarCampoNumero(Number(meta.quantidade_meta)) : "");
+        setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
+      }
+    });
+  }, [dataAtual, setor, turno, recarga]);
+
+  useEffect(() => {
+    if (
+      abaAtiva !== "programacao" ||
+      !programacaoSuportada ||
+      !setor ||
+      !turno ||
+      !dataAtual
+    ) {
+      return;
+    }
+
+    const chave = `${setor}:${dataAtual}`;
+    if (
+      cacheProgramacao.current?.chave === chave &&
+      Date.now() - cacheProgramacao.current.at < 30_000
+    ) {
+      return;
+    }
+
+    const carga = ++carregamentoProgramacaoAtual.current;
+    setCarregandoProgramacao(true);
+
+    void Promise.all([
       (supabase as any)
-        .from("ocorrencias_turno")
-        .select("id, equipamento, tipo_status, mensagem, created_at")
+        .from("programacao_producao")
+        .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
         .eq("setor", setor)
-        .eq("turno", turno)
         .eq("data_local", dataAtual)
+        .eq("global_dia", true)
         .order("created_at", { ascending: true }),
+      obterProdutosAtivos(setor),
+      supabase
+        .from("apontamentos")
+        .select(
+          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+        )
+        .eq("setor", setor)
+        .eq("data_local", dataAtual),
     ])
-      .then(([
-        listaProdutos,
-        resultadoProgramacao,
-        resultadoHoras,
-        resultadoRegistros,
-        resultadoMeta,
-        resultadoOcorrencias,
-      ]) => {
-        if (carga !== cargaAtual.current) return;
-        if (resultadoProgramacao.error || resultadoHoras.error || resultadoRegistros.error || resultadoOcorrencias.error) {
-          throw (resultadoProgramacao.error || resultadoHoras.error || resultadoRegistros.error || resultadoOcorrencias.error);
+      .then(([resultadoProgramacao, listaProdutos, resultadoDia]) => {
+        if (carga !== carregamentoProgramacaoAtual.current) return;
+        if (resultadoProgramacao.error || resultadoDia.error) {
+          setErro(true);
+          return;
         }
-        setProdutos(listaProdutos);
         setProgramacao((resultadoProgramacao.data ?? []) as ProgramacaoItem[]);
-        const horas = (resultadoHoras.data ?? []) as AjusteHora[];
-        setAjustesHora(horas);
-        const todosDia = (resultadoRegistros.data ?? []) as (Registro & { turno: string })[];
-        setRegistrosDia(todosDia);
-        setRegistros(todosDia.filter((item) => item.turno === turno));
-        setMetaTurno((resultadoMeta.data as MetaTurno | null) ?? null);
-        setOcorrencias((resultadoOcorrencias.data ?? []) as Ocorrencia[]);
-        const edicoes: Record<string, EdicaoHora> = {};
-        for (const item of horas) {
-          const chave = chaveHora(item.hora);
-          edicoes[chave] = {
-            meta: item.meta_hora == null ? "" : String(Number(item.meta_hora)),
-            parada: String(Number(item.parada_minutos ?? 0)),
-            motivo: item.motivo_parada ?? "",
-          };
-        }
-        setEdicoesHora(edicoes);
+        setProdutos(listaProdutos as ProdutoCatalogo[]);
+        setRegistrosDia((resultadoDia.data ?? []) as Registro[]);
+        cacheProgramacao.current = { chave, at: Date.now() };
       })
       .catch(() => {
-        if (carga === cargaAtual.current) toast.error("Não foi possível carregar o controle do turno.");
+        if (carga === carregamentoProgramacaoAtual.current) setErro(true);
       })
       .finally(() => {
-        if (carga === cargaAtual.current) setCarregando(false);
+        if (carga === carregamentoProgramacaoAtual.current) setCarregandoProgramacao(false);
       });
-  }, [dataAtual, setor, suportado, turno]);
+  }, [abaAtiva, dataAtual, programacaoSuportada, setor, turno]);
 
-  const resumoProgramacao = useMemo(() => programacao.map((item) => {
-    const realizado = registrosDia.filter((registro) => correspondeProgramacao(registro, item, setor)).reduce((total, registro) => total + valorRealizado(registro, setor), 0);
-    const previsto = Number(item.quantidade_prevista ?? 0);
-    return { ...item, previsto, realizado, saldo: previsto - realizado, aderencia: previsto > 0 ? (realizado / previsto) * 100 : 0 };
-  }), [programacao, registrosDia, setor]);
+  const porHora = useMemo(() => {
+    const mapa = new Map<string, HoraInterna>();
+    for (const item of registros) {
+      const chave = horaCheiaProducao(item.data_hora_producao);
+      const atual = mapa.get(chave) ?? horaVazia(chave);
+      atual.apontamentos += 1;
+      atual.plts += Number(item.quantidade_plts ?? 0);
+      atual.rolos += Number(item.total_rolos ?? 0);
+      atual.metragem += Number(item.metragem ?? 0);
+      atual.area += Number(item.area_m2 ?? 0);
+      const produto = atual.produtos.get(item.produto_nome) ?? linhaVazia(item.produto_nome);
+      somarRegistro(produto, item);
+      atual.produtos.set(item.produto_nome, produto);
+      mapa.set(chave, atual);
+    }
 
-  const totais = useMemo(() => resumoProgramacao.reduce((acc, item) => ({ previsto: acc.previsto + item.previsto, realizado: acc.realizado + item.realizado }), { previsto: 0, realizado: 0 }), [resumoProgramacao]);
+    return [...mapa.values()]
+      .sort((a, b) => ordemHoraTurno(a.hora, turno) - ordemHoraTurno(b.hora, turno))
+      .map((item) => ({
+        ...item,
+        produtos: [...item.produtos.values()].sort((a, b) =>
+          a.produto.localeCompare(b.produto),
+        ),
+      }));
+  }, [registros, turno]);
 
-  const horasExibidas = useMemo(() => {
-    const horasApontadas = registros.map((item) => horaCheiaProducao(item.data_hora_producao));
-    const horasAjustadas = ajustesHora.map((item) => chaveHora(item.hora));
-    return [...new Set([...horasBase, ...horasApontadas, ...horasAjustadas])].sort((a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno));
-  }, [ajustesHora, horasBase, registros, turno]);
+  const metaTotal = Number(metaTurno?.quantidade_meta ?? 0);
+  const duracaoProdutiva = Number(metaTurno?.horas_produtivas ?? 0);
+  const metaPorHora = duracaoProdutiva > 0 ? metaTotal / duracaoProdutiva : 0;
 
-  const metaAutomatica = useMemo(() => {
-    const total = Number(metaTurno?.quantidade_meta ?? 0);
-    const horas = Math.min(Number(metaTurno?.horas_produtivas ?? 0), horasBase.length);
-    return horas > 0 ? total / horas : 0;
-  }, [horasBase.length, metaTurno]);
+  const horasComMeta = useMemo<HoraPlanejada[]>(() => {
+    const producaoPorHora = new Map(porHora.map((item) => [item.hora, item]));
+    const horasPlanejadas = metaTurno ? horasDisponiveis : [];
+    const horasPlanejadasSet = new Set(horasPlanejadas);
+    const chaves = [
+      ...new Set([...horasPlanejadas, ...porHora.map((item) => item.hora)]),
+    ].sort((a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno));
 
-  function limparFormulario() { setProdutoId(""); setReferencia(""); setQuantidade(""); }
+    let realizadoAcumulado = 0;
+    let previstoAcumulado = 0;
+
+    return chaves.map((hora) => {
+      const item = producaoPorHora.get(hora) ?? horaVaziaFinal(hora);
+      const metaHora = horasPlanejadasSet.has(hora) ? metaPorHora : 0;
+      const realizadoHora = valorMetaHora(item, setor);
+      previstoAcumulado += metaHora;
+      realizadoAcumulado += realizadoHora;
+
+      return {
+        ...item,
+        metaHora,
+        realizadoAcumulado,
+        saldoAcumulado: realizadoAcumulado - previstoAcumulado,
+      };
+    });
+  }, [horasDisponiveis, metaPorHora, metaTurno, porHora, setor, turno]);
+
+  const realizadoTurno = useMemo(
+    () => porHora.reduce((total, item) => total + valorMetaHora(item, setor), 0),
+    [porHora, setor],
+  );
+  const atingimento = metaTotal > 0 ? (realizadoTurno / metaTotal) * 100 : 0;
+  const percentualBarra = Math.min(100, Math.max(0, atingimento));
+
+  const metaInformada = numeroDoCampo(metaDigitada);
+  const metaSimulada = Number.isFinite(metaInformada) ? metaInformada : 0;
+  const horasSimuladas = duracaoDoCampo(horasDigitadas);
+  const metaHoraSimulada =
+    metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
+
+  const resumoProgramacao = useMemo(() => {
+    return programacao.map((item) => {
+      const previsto = Number(item.quantidade_prevista ?? 0);
+      const realizado = registrosDia
+        .filter((registro) => correspondeProgramacaoItem(registro, item, setor))
+        .reduce((total, registro) => total + valorRealizadoRegistro(registro, setor), 0);
+      return { ...item, previsto, realizado, saldo: previsto - realizado };
+    });
+  }, [programacao, registrosDia, setor]);
+
+  async function salvarMeta() {
+    if (!canFinalizeGoals || !user || !setor || !turno || salvandoMeta) return;
+    if (!Number.isFinite(metaSimulada) || metaSimulada <= 0) {
+      toast.error("Informe uma meta maior que zero.");
+      return;
+    }
+    if (!Number.isFinite(horasSimuladas) || horasSimuladas <= 0 || horasSimuladas > 24) {
+      toast.error("Informe um tempo produtivo válido, por exemplo 9:28.");
+      return;
+    }
+
+    setSalvandoMeta(true);
+    const duracaoParaSalvar = Number(horasSimuladas.toFixed(2));
+    const { data, error } = await supabase
+      .from("metas_turno")
+      .upsert(
+        {
+          setor,
+          turno,
+          data_local: dataAtual,
+          quantidade_meta: metaSimulada,
+          unidade,
+          horas_produtivas: duracaoParaSalvar,
+          criado_por: user.id,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "setor,turno,data_local" },
+      )
+      .select("*")
+      .single();
+    setSalvandoMeta(false);
+
+    if (error) {
+      toast.error(error.message || "Não foi possível salvar a meta do turno.");
+      return;
+    }
+
+    const metaSalva = data as MetaTurno;
+    setMetaTurno(metaSalva);
+    setHorasDigitadas(formatarDuracaoHoras(Number(metaSalva.horas_produtivas)));
+    toast.success("Meta do turno salva.");
+  }
 
   async function salvarProgramacao() {
-    if (!user || !setor || !turno || !produto || salvando) return;
-    const qtd = numeroCampo(quantidade);
-    if (!Number.isFinite(qtd) || qtd <= 0) { toast.error("Informe produto e quantidade prevista."); return; }
-    setSalvando(true);
-    const valores = { setor, turno, data_local: dataAtual, produto_id: produto.id, produto_nome: produto.nome, quantidade_prevista: qtd, unidade, global_dia: true, updated_at: new Date().toISOString() };
-    const consulta = (supabase as any).from("programacao_producao").update(valores).eq("setor", setor).eq("data_local", dataAtual).eq("global_dia", true).eq("produto_id", produto.id);
-    const atualizado = await consulta.select("*").limit(1).maybeSingle();
-    let resultado = atualizado;
-    if (!atualizado.error && !atualizado.data) {
-      resultado = await (supabase as any).from("programacao_producao").insert({ ...valores, op: null, lote: null, criado_por: user.id }).select("*").single();
+    if (!user || !setor || !turno || !produtoSelecionado || salvandoProgramacao) return;
+    const quantidade = numeroDoCampo(quantidadePrevista);
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      toast.error("Informe produto e quantidade prevista.");
+      return;
     }
-    setSalvando(false);
-    if (resultado.error || !resultado.data) { toast.error(resultado.error?.message || "Não foi possível salvar a programação."); return; }
+
+    setSalvandoProgramacao(true);
+    const valores = {
+      setor,
+      turno,
+      data_local: dataAtual,
+      produto_id: produtoSelecionado.id,
+      produto_nome: produtoSelecionado.nome,
+      quantidade_prevista: quantidade,
+      unidade: unidadeProg,
+      global_dia: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    const consulta = (supabase as any)
+      .from("programacao_producao")
+      .update(valores)
+      .eq("setor", setor)
+      .eq("data_local", dataAtual)
+      .eq("global_dia", true)
+      .eq("produto_id", produtoSelecionado.id);
+    const existente = await consulta
+      .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+      .limit(1)
+      .maybeSingle();
+
+    let resultado = existente;
+    if (!existente.error && !existente.data) {
+      resultado = await (supabase as any)
+        .from("programacao_producao")
+        .insert({ ...valores, op: null, lote: null, criado_por: user.id })
+        .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+        .single();
+    }
+    setSalvandoProgramacao(false);
+
+    if (resultado.error || !resultado.data) {
+      toast.error(resultado.error?.message || "Não foi possível salvar a programação.");
+      return;
+    }
+
     const salvo = resultado.data as ProgramacaoItem;
     setProgramacao((atuais) => [...atuais.filter((item) => item.id !== salvo.id), salvo]);
-    limparFormulario(); setTextoGerado(""); toast.success("Programação salva.");
+    setProdutoId("");
+    setQuantidadePrevista("");
+    cacheProgramacao.current = { chave: `${setor}:${dataAtual}`, at: Date.now() };
+    toast.success("Produto adicionado à programação.");
   }
 
   async function editarReferencia(id: string, atual: string | null) {
@@ -239,120 +427,611 @@ function Programacao() {
     const digitado = window.prompt(`${nome} da programação (deixe vazio para limpar):`, atual ?? "");
     if (digitado === null) return;
     const valor = digitado.trim() || null;
-    const { error } = await (supabase as any).from("programacao_producao").update({ [coluna]: valor, updated_at: new Date().toISOString() }).eq("id", id);
-    if (error) { toast.error(`Não foi possível atualizar ${coluna === "lote" ? "o lote" : "a OP"}.`); return; }
-    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)));
-    setTextoGerado("");
-    toast.success(valor ? `${nome} atualizado${coluna === "op" ? "a" : ""}.` : `${nome} removid${coluna === "op" ? "a" : "o"}.`);
-  }
-
-  async function excluirProgramacao(item: ProgramacaoItem) {
-    if (!window.confirm(`Excluir a programação de ${item.produto_nome}?`)) return;
-    const { error } = await (supabase as any).from("programacao_producao").delete().eq("id", item.id);
-    if (error) { toast.error("Não foi possível excluir a programação."); return; }
-    setProgramacao((atuais) => atuais.filter((atual) => atual.id !== item.id)); setTextoGerado(""); toast.success("Programação removida.");
-  }
-
-  function editarHora(hora: string, campo: keyof EdicaoHora, valor: string) {
-    setEdicoesHora((atuais) => ({ ...atuais, [hora]: { meta: atuais[hora]?.meta ?? "", parada: atuais[hora]?.parada ?? "0", motivo: atuais[hora]?.motivo ?? "", [campo]: valor } }));
-  }
-
-  async function salvarAjusteHora(hora: string) {
-    if (!user || !setor || !turno || salvandoHora) return;
-    const edicao = edicoesHora[hora] ?? { meta: "", parada: "0", motivo: "" };
-    const meta = edicao.meta.trim() ? numeroCampo(edicao.meta) : null;
-    const parada = Number(edicao.parada || 0);
-    if ((meta != null && (!Number.isFinite(meta) || meta < 0)) || !Number.isInteger(parada) || parada < 0 || parada > 60) { toast.error("Revise a meta da hora e os minutos de parada."); return; }
-    if (parada > 0 && !edicao.motivo.trim()) { toast.error("Informe o motivo da parada."); return; }
-    setSalvandoHora(hora);
-    const { data, error } = await (supabase as any).from("programacao_hora").upsert({ setor, turno, data_local: dataAtual, hora: Number(hora.slice(0, 2)), meta_hora: meta, parada_minutos: parada, motivo_parada: parada > 0 ? edicao.motivo.trim() : null, criado_por: user.id, updated_at: new Date().toISOString() }, { onConflict: "setor,turno,data_local,hora" }).select("id, hora, meta_hora, parada_minutos, motivo_parada").single();
-    setSalvandoHora(null);
-    if (error || !data) { toast.error(error?.message || "Não foi possível salvar o controle da hora."); return; }
-    const salvo = data as AjusteHora;
-    setAjustesHora((atuais) => [...atuais.filter((item) => item.hora !== salvo.hora), salvo]); setTextoGerado(""); toast.success(`${hora} atualizado.`);
-  }
-
-  function gerarOcorrencias() {
-    if (!setor || !turno) return;
-    const linhas: string[] = [`OCORRÊNCIAS - ${nomeSetor(setor)} - ${nomeTurno(turno)} - ${formatarData(dataAtual)}`, ""];
-    linhas.push(textoOcorrencias(ocorrencias, true, setor), "");
-    setTextoGerado(linhas.join("\n").trim());
-  }
-
-  async function copiarOcorrencias() {
-    if (!textoGerado) return;
-    try { await navigator.clipboard.writeText(textoGerado); toast.success("Ocorrências copiadas."); }
-    catch { toast.error("Não foi possível copiar automaticamente."); }
-  }
-
-  const previsaoSelecionada = useMemo(() => {
-    const qtd = numeroCampo(quantidade);
-    if (!produto || !Number.isFinite(qtd) || qtd <= 0) return null;
-    if (setor === "corte") {
-      const unidades = qtd * Number(produto.rolos_por_plt ?? 0);
-      const area = (Number(produto.largura ?? 0) * unidades) / 10;
-      return `${fmt(qtd)} PLTs · ${fmt(unidades)} unidades · ${fmt(area)} m²`;
+    const { error } = await (supabase as any)
+      .from("programacao_producao")
+      .update({ [coluna]: valor, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) {
+      toast.error(`Não foi possível atualizar ${coluna === "lote" ? "o lote" : "a OP"}.`);
+      return;
     }
-    if (setor === "mantas") {
-      const plts = Number(produto.metragem_por_plt ?? 0) > 0 ? qtd / Number(produto.metragem_por_plt) : 0;
-      const rolos = Number(produto.metros_por_rolo ?? 0) > 0 ? qtd / Number(produto.metros_por_rolo) : 0;
-      return `${fmt(qtd)} m · ${fmt(plts)} PLTs · ${fmt(rolos)} rolos`;
+    setProgramacao((atuais) =>
+      atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)),
+    );
+    toast.success(valor ? `${nome} atualizado.` : `${nome} removido.`);
+  }
+
+  async function excluirProgramacao(id: string) {
+    const { error } = await (supabase as any)
+      .from("programacao_producao")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      toast.error("Não foi possível remover este item.");
+      return;
     }
-    return `${fmt(qtd)} m² previstos`;
-  }, [produto, quantidade, setor]);
+    setProgramacao((atuais) => atuais.filter((item) => item.id !== id));
+    if (setor) cacheProgramacao.current = { chave: `${setor}:${dataAtual}`, at: Date.now() };
+  }
 
   if (!setor || !turno) {
-    return <AppShell title="Programação" eyebrow="PRODUÇÃO · PLANEJAMENTO"><Card><CardContent className="p-5 text-sm text-muted-foreground">Escolha setor e turno antes de programar a produção.</CardContent></Card></AppShell>;
-  }
-
-  if (!suportado) {
-    return <AppShell title="Programação" eyebrow="PRODUÇÃO · PLANEJAMENTO"><Card><CardContent className="p-5 text-sm text-muted-foreground">A Programação está pronta para Corte, Fitas e Mantas. Os demais setores entram quando suas regras de produção forem definidas.</CardContent></Card></AppShell>;
+    return (
+      <AppShell title="Programação" eyebrow="PRODUÇÃO · PLANEJAMENTO">
+        <Card>
+          <CardContent className="p-5 text-sm text-muted-foreground">
+            Escolha setor e turno antes de abrir a Programação.
+          </CardContent>
+        </Card>
+      </AppShell>
+    );
   }
 
   return (
-    <AppShell title="Programação" eyebrow="PRODUÇÃO · PLANEJAMENTO">
-      <div className="mx-auto max-w-5xl space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div><h2 className="text-xl font-extrabold">Controle do turno</h2><p className="text-xs text-muted-foreground">{nomeSetor(setor)} · {nomeTurno(turno)} · {formatarData(dataAtual)}</p></div>
-          <Button asChild variant="outline" size="sm"><Link to="/contagem"><Clock3 className="size-4" /> Contagem detalhada</Link></Button>
+    <AppShell title="Programação" eyebrow="PRODUÇÃO · CONTROLE DO TURNO">
+      <div className="mx-auto max-w-4xl space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-extrabold">Produção hora a hora</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {formatarData(dataAtual)} · dados vindos dos apontamentos
+            </p>
+          </div>
+          <span className="rounded-full bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            Automático
+          </span>
         </div>
-        {carregando ? <Card><CardContent className="p-5 text-sm text-muted-foreground">Carregando controle do turno...</CardContent></Card> : (
-          <Tabs defaultValue="programacao" className="space-y-4">
-            <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl p-1"><TabsTrigger value="programacao" className="min-h-10 px-1 text-[11px] sm:text-sm">Programação do dia</TabsTrigger><TabsTrigger value="hora" className="min-h-10 px-1 text-[11px] sm:text-sm">Hora a hora</TabsTrigger><TabsTrigger value="ocorrencias" className="min-h-10 px-1 text-[11px] sm:text-sm">Ocorrências</TabsTrigger></TabsList>
-            <TabsContent value="programacao" className="space-y-4">
-              {canProgramProduction ? <Card className="rounded-2xl border-border shadow-sm"><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="size-5 text-primary" /> Produtos que vão rodar no dia</CardTitle><p className="text-xs text-muted-foreground">Cadastre produto e quantidade prevista. A OP/lote é preenchida no primeiro apontamento.</p></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2"><div className="space-y-1"><Label>Produto *</Label><ProdutoSelect produtos={produtos} value={produtoId} onValueChange={setProdutoId} placeholder="Selecione o produto" /></div><div className="space-y-1 sm:col-span-2"><Label>Quantidade prevista ({unidade}) *</Label><Input inputMode="decimal" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} placeholder="0" /></div>{previsaoSelecionada && <div className="rounded-xl bg-muted p-3 text-sm font-semibold sm:col-span-2">{previsaoSelecionada}</div>}<Button className="h-11 sm:col-span-2" disabled={salvando || !produtoId || !quantidade.trim()} onClick={() => void salvarProgramacao()}><Save className="size-4" /> {salvando ? "Salvando..." : "Adicionar à programação"}</Button></CardContent></Card> : <p className="text-xs text-muted-foreground">Programação global do dia (acumulada entre turnos). Somente administrador ou Programador de Produção pode alterar.</p>}
-              <div className="grid grid-cols-3 gap-2"><Resumo label="Previsto" valor={`${fmt(totais.previsto)} ${unidade}`} /><Resumo label="Realizado" valor={`${fmt(totais.realizado)} ${unidade}`} destaque /><Resumo label="Saldo" valor={`${fmt(totais.previsto - totais.realizado)} ${unidade}`} alerta={totais.realizado < totais.previsto} /></div>
-              <Card className="rounded-2xl border-border shadow-sm"><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><PackageCheck className="size-5 text-primary" /> Programação do turno</CardTitle></CardHeader><CardContent className="space-y-2">{resumoProgramacao.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum produto programado para este turno.</p> : resumoProgramacao.map((item) => <div key={item.id} className="rounded-xl border border-border bg-card p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-bold">{item.produto_nome}</p><div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground"><span>{setor === "mantas" ? (item.lote ? `Lote ${item.lote}` : "Lote: aguardando primeiro apontamento") : (item.op ? `OP ${item.op}` : "OP: aguardando primeiro apontamento")}</span>{canProgramProduction && <button type="button" className="font-semibold text-primary hover:underline" onClick={() => void editarReferencia(item.id, setor === "mantas" ? item.lote : item.op)}>{setor === "mantas" ? "Editar lote" : "Editar OP"}</button>}</div></div>{canProgramProduction && <Button size="icon" variant="ghost" className="size-8 shrink-0 text-red-600" onClick={() => void excluirProgramacao(item)} aria-label="Excluir programação"><Trash2 className="size-4" /></Button>}</div><div className="mt-3 grid grid-cols-4 gap-1.5 text-center"><Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} /><Mini label="Produzido no dia" valor={`${fmt(item.realizado)} ${item.unidade}`} destaque /><Mini label="Saldo" valor={`${fmt(item.saldo)} ${item.unidade}`} alerta={item.saldo > 0} /><Mini label="Aderência" valor={`${fmt(item.aderencia)}%`} /></div></div>)}</CardContent></Card>
-            </TabsContent>
-            <TabsContent value="hora" className="space-y-4">
-              <Card className="rounded-2xl border-border shadow-sm"><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Clock3 className="size-5 text-primary" /> Planejamento hora a hora</CardTitle><p className="text-xs text-muted-foreground">A meta vem automaticamente da Meta do turno. Ajuste somente quando necessário e registre paradas por horário.</p></CardHeader><CardContent className="space-y-3">{horasExibidas.map((hora) => { const ajuste = ajustesHora.find((item) => item.hora === Number(hora.slice(0, 2))); const edicao = edicoesHora[hora] ?? { meta: ajuste?.meta_hora == null ? "" : String(Number(ajuste.meta_hora)), parada: String(Number(ajuste?.parada_minutos ?? 0)), motivo: ajuste?.motivo_parada ?? "" }; const dentroMeta = metaTurno && horasBase.slice(0, Math.min(Number(metaTurno.horas_produtivas), horasBase.length)).includes(hora); const previstoHora = ajuste?.meta_hora == null ? dentroMeta ? metaAutomatica : 0 : Number(ajuste.meta_hora); const realizadoHora = registros.filter((item) => horaCheiaProducao(item.data_hora_producao) === hora).reduce((total, item) => total + valorRealizado(item, setor), 0); const saldoHora = previstoHora - realizadoHora; return <div key={hora} className="rounded-xl border border-border bg-muted/40 p-3"><div className="mb-2 flex items-center justify-between gap-2"><div><p className="text-lg font-black">{hora}</p><p className="text-[11px] text-muted-foreground">Previsto {fmt(previstoHora)} · Realizado {fmt(realizadoHora)} · Saldo {fmt(saldoHora)} {unidade}</p></div>{Number(ajuste?.parada_minutos ?? 0) > 0 && <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-200">Parada {ajuste?.parada_minutos} min</span>}</div><div className="grid gap-2 sm:grid-cols-[1fr_120px_1.5fr_auto]"><div className="space-y-1"><Label className="text-[11px]">Meta da hora ({unidade})</Label><Input className="h-9" inputMode="decimal" value={edicao.meta} onChange={(e) => editarHora(hora, "meta", e.target.value)} placeholder={metaAutomatica > 0 ? `Auto ${fmt(metaAutomatica)}` : "Automática"} /></div><div className="space-y-1"><Label className="text-[11px]">Parada (min)</Label><Input className="h-9" type="number" min={0} max={60} step={1} value={edicao.parada} onChange={(e) => editarHora(hora, "parada", e.target.value)} /></div><div className="space-y-1"><Label className="text-[11px]">Motivo da parada</Label><Input className="h-9" value={edicao.motivo} onChange={(e) => editarHora(hora, "motivo", e.target.value)} placeholder="Ex.: ajuste de máquina" /></div><Button className="h-9 self-end" size="sm" disabled={salvandoHora !== null} onClick={() => void salvarAjusteHora(hora)}>{salvandoHora === hora ? "..." : <Save className="size-4" />}</Button></div></div>; })}</CardContent></Card>
-            </TabsContent>
-            <TabsContent value="ocorrencias" className="space-y-4">
-              <Card className="rounded-2xl border-border shadow-sm"><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-5 text-primary" /> Registrar ocorrência</CardTitle><p className="text-xs text-muted-foreground">Escolha o equipamento e a situação. Equipamentos sem registro saem como “Sem ocorrências”.</p></CardHeader><CardContent>{setor && turno ? <OcorrenciasOperacionaisForm setor={setor} turno={turno} dataLocal={dataAtual} userId={user?.id} ocorrencias={ocorrencias} permitirExcluir onChange={(lista) => { setOcorrencias(lista); setTextoGerado(""); }} /> : null}</CardContent></Card>
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200"><div className="flex gap-2"><TriangleAlert className="mt-0.5 size-4 shrink-0" /><p>Ao gerar, o sistema reúne somente as ocorrências registradas no padrão do setor.</p></div></div>
-              <Button className="h-12 w-full text-base font-bold" onClick={gerarOcorrencias}><MessageSquare className="size-5" /> Gerar ocorrências</Button>
-              {textoGerado && <Card className="rounded-2xl border-primary/30 shadow-sm"><CardHeader className="flex flex-row items-center justify-between gap-2 pb-2"><CardTitle className="text-base">Resumo gerado</CardTitle><Button variant="outline" size="sm" onClick={() => void copiarOcorrencias()}><ClipboardCopy className="size-4" /> Copiar</Button></CardHeader><CardContent><textarea readOnly value={textoGerado} rows={12} className="w-full resize-y rounded-xl border border-input bg-muted/30 px-3 py-2 font-mono text-xs text-foreground" /></CardContent></Card>}
-            </TabsContent>
-          </Tabs>
+
+        {erro && (
+          <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+            Parte dos dados do turno não pôde ser carregada.
+          </div>
         )}
+
+        <Tabs value={abaAtiva} onValueChange={(valor) => setAbaAtiva(valor as AbaProgramacao)}>
+          <TabsList className="grid h-14 w-full grid-cols-2 rounded-2xl p-1.5">
+            <TabsTrigger value="hora" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
+              Hora a hora
+            </TabsTrigger>
+            <TabsTrigger value="programacao" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
+              Programação
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="hora" className="space-y-4">
+            <AjustarHorarioApontamentos
+              registros={registros}
+              setor={setor}
+              onAjustado={() => setRecarga((v) => v + 1)}
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+              <ResumoGrande label="Previsto" valor={`${fmt(metaTotal)} ${unidade}`} />
+              <ResumoGrande label="Realizado" valor={`${fmt(realizadoTurno)} ${unidade}`} destaque />
+              <ResumoGrande label="Atingimento" valor={`${fmt(atingimento)}%`} className="col-span-2" />
+            </div>
+
+            <Card className="rounded-2xl border-border shadow-sm">
+              <CardContent className="p-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <strong>Produção acumulada do turno</strong>
+                  <strong className="text-primary">
+                    {fmt(realizadoTurno)} / {fmt(metaTotal)} {unidade}
+                  </strong>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width]"
+                    style={{ width: `${percentualBarra}%` }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {!metaTurno && !erroMeta && (
+              <div className="rounded-xl border border-dashed border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+                A meta deste turno ainda não foi definida. Use a aba Programação.
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {horasComMeta.length === 0 ? (
+                <Card>
+                  <CardContent className="p-5 text-sm text-muted-foreground">
+                    Nenhum apontamento registrado.
+                  </CardContent>
+                </Card>
+              ) : (
+                horasComMeta.map((item) => (
+                  <HoraCard
+                    key={item.hora}
+                    item={item}
+                    setor={setor}
+                    unidade={unidade}
+                    mostrarMeta={Boolean(metaTurno)}
+                  />
+                ))
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="programacao" className="space-y-4">
+            <Card className="rounded-2xl border-border shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarDays className="size-5 text-primary" /> Meta do turno
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {canFinalizeGoals ? (
+                  <>
+                    <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-2">
+                      <div className="space-y-1.5">
+                        <Label>Meta total ({unidade})</Label>
+                        <Input
+                          inputMode="decimal"
+                          value={metaDigitada}
+                          onChange={(e) => setMetaDigitada(e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Tempo produtivo</Label>
+                        <Input
+                          inputMode="decimal"
+                          value={horasDigitadas}
+                          onChange={(e) => setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))}
+                          placeholder="Ex.: 9:28"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Digite o tempo que quiser, como 9:28, 8:45 ou 7,5 horas.
+                    </p>
+                    <div className="rounded-xl bg-muted p-3 text-center">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                        Previsto por hora
+                      </p>
+                      <p className="mt-1 text-xl font-black text-primary">
+                        {fmt(metaHoraSimulada)} {unidade}
+                      </p>
+                    </div>
+                    <Button
+                      className="w-full touch-manipulation"
+                      disabled={salvandoMeta || metaSimulada <= 0 || horasSimuladas <= 0}
+                      onClick={() => void salvarMeta()}
+                    >
+                      <Save className="size-4" /> {salvandoMeta ? "Salvando..." : "Salvar meta"}
+                    </Button>
+                  </>
+                ) : metaTurno ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <ResumoGrande label="Meta" valor={`${fmt(metaTotal)} ${unidade}`} />
+                    <ResumoGrande label="Por hora" valor={`${fmt(metaPorHora)} ${unidade}`} />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">A meta ainda não foi definida.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {programacaoSuportada && (
+              <>
+                {canProgramProduction ? (
+                  <Card className="rounded-2xl border-border shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <PackageCheck className="size-5 text-primary" /> Produtos que vão rodar no dia
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label>Produto</Label>
+                        <ProdutoSelect
+                          produtos={produtos}
+                          value={produtoId}
+                          onValueChange={setProdutoId}
+                          carregando={carregandoProgramacao}
+                          placeholder="Selecione"
+                        />
+                      </div>
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label>Quantidade prevista ({unidadeProg})</Label>
+                        <Input
+                          inputMode="decimal"
+                          value={quantidadePrevista}
+                          onChange={(e) => setQuantidadePrevista(e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                      <Button
+                        className="touch-manipulation sm:col-span-2"
+                        disabled={
+                          carregandoProgramacao ||
+                          salvandoProgramacao ||
+                          !produtoId ||
+                          !quantidadePrevista.trim()
+                        }
+                        onClick={() => void salvarProgramacao()}
+                      >
+                        <Save className="size-4" />
+                        {salvandoProgramacao ? "Salvando..." : "Adicionar à programação"}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Somente administrador ou Programador de Produção pode alterar a programação.
+                  </p>
+                )}
+
+                <Card className="rounded-2xl border-border shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      Programação do dia{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        · produção acumulada entre turnos
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {carregandoProgramacao ? (
+                      <p className="text-sm text-muted-foreground">Carregando programação...</p>
+                    ) : resumoProgramacao.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhum produto programado.</p>
+                    ) : (
+                      resumoProgramacao.map((item) => (
+                        <div key={item.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold">{item.produto_nome}</p>
+                              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                                <span>
+                                  {setor === "mantas"
+                                    ? item.lote
+                                      ? `Lote ${item.lote}`
+                                      : "Lote: aguardando primeiro apontamento"
+                                    : item.op
+                                      ? `OP ${item.op}`
+                                      : "OP: aguardando primeiro apontamento"}
+                                </span>
+                                {canProgramProduction && (
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 font-semibold text-primary underline-offset-2 hover:underline"
+                                    onClick={() =>
+                                      void editarReferencia(
+                                        item.id,
+                                        setor === "mantas" ? item.lote : item.op,
+                                      )
+                                    }
+                                  >
+                                    <Pencil className="size-3" />
+                                    {setor === "mantas" ? "Editar lote" : "Editar OP"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {canProgramProduction && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8 touch-manipulation text-red-600"
+                                onClick={() => void excluirProgramacao(item.id)}
+                                aria-label="Excluir programação"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            )}
+                          </div>
+                          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                            <Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} />
+                            <Mini
+                              label="Produzido no dia"
+                              valor={`${fmt(item.realizado)} ${item.unidade}`}
+                              destaque
+                            />
+                            <Mini
+                              label="Saldo"
+                              valor={`${fmt(item.saldo)} ${item.unidade}`}
+                              alerta={item.saldo > 0}
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </AppShell>
   );
 }
 
-function correspondeProgramacao(registro: Registro, item: ProgramacaoItem, setor?: string | null) { if (registro.produto_id !== item.produto_id) return false; if (setor === "mantas") return true; const opItem = normalizar(item.op); if (!opItem) return true; return normalizar(registro.op) === opItem; }
-function normalizar(valor: string | null | undefined) { return (valor ?? "").trim().toLocaleUpperCase("pt-BR"); }
-function valorRealizado(item: Registro, setor?: string | null) { if (setor === "corte") return Number(item.quantidade_plts ?? 0); if (setor === "mantas") return Number(item.metragem ?? 0); if (setor === "fitas") return Number(item.area_m2 ?? 0); return 0; }
-function unidadeDoSetor(setor?: string | null) { if (setor === "corte") return "PLTs"; if (setor === "mantas") return "m"; return "m²"; }
-function chaveHora(hora: number) { return `${String(hora).padStart(2, "0")}:00`; }
-function numeroCampo(valor: string) { const normalizado = valor.trim().replace(/\s/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", "."); return Number(normalizado); }
-function fmt(valor: number) { return Number(valor || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
-function formatarData(valor: string) { const [ano, mes, dia] = valor.split("-"); return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor; }
+function HoraCard({
+  item,
+  setor,
+  unidade,
+  mostrarMeta,
+}: {
+  item: HoraPlanejada;
+  setor: string | null | undefined;
+  unidade: string;
+  mostrarMeta: boolean;
+}) {
+  return (
+    <article className="overflow-hidden rounded-[1.6rem] border border-border bg-card shadow-sm">
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xl font-black text-foreground">{intervaloHora(item.hora)}</p>
+            <p className="mt-2 text-sm font-semibold text-muted-foreground">
+              {resumoProdutosHora(item, setor)}
+            </p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-2xl font-black text-primary">{destaqueHora(item, setor)}</p>
+            <p className="mt-1 text-sm font-bold text-muted-foreground">
+              {secundarioHora(item, setor)}
+            </p>
+          </div>
+        </div>
 
-function Resumo({ label, valor, destaque = false, alerta = false }: { label: string; valor: string; destaque?: boolean; alerta?: boolean }) {
-  return <Card className={`rounded-xl ${alerta ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40" : destaque ? "border-primary/20 bg-primary/[0.04]" : "border-border"}`}><CardContent className="p-2.5 text-center"><p className="text-[10px] font-bold uppercase text-muted-foreground">{label}</p><p className={`mt-1 truncate text-sm font-black ${alerta ? "text-amber-800 dark:text-amber-200" : destaque ? "text-primary" : "text-foreground"}`}>{valor}</p></CardContent></Card>;
+        {mostrarMeta && (
+          <>
+            <div className="my-4 border-t border-border" />
+            <div className="grid grid-cols-3 gap-3">
+              <MetricaHora label="Previsto" valor={`${fmt(item.metaHora)} ${unidade}`} />
+              <MetricaHora label="Acumulado" valor={`${fmt(item.realizadoAcumulado)} ${unidade}`} />
+              <MetricaHora
+                label="Δ acumulado"
+                valor={`${item.saldoAcumulado > 0 ? "+" : ""}${fmt(item.saldoAcumulado)} ${unidade}`}
+                negativo={item.saldoAcumulado < 0}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </article>
+  );
 }
 
-function Mini({ label, valor, destaque = false, alerta = false }: { label: string; valor: string; destaque?: boolean; alerta?: boolean }) {
-  return <div className={`rounded-lg p-2 ${alerta ? "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200" : destaque ? "bg-primary/10 text-primary" : "bg-muted"}`}><p className="text-[9px] uppercase text-muted-foreground">{label}</p><p className="truncate text-xs font-bold">{valor}</p></div>;
+function ResumoGrande({
+  label,
+  valor,
+  destaque = false,
+  className = "",
+}: {
+  label: string;
+  valor: string;
+  destaque?: boolean;
+  className?: string;
+}) {
+  return (
+    <Card className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}>
+      <CardContent className="p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+        <p className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}>
+          {valor}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MetricaHora({
+  label,
+  valor,
+  negativo = false,
+}: {
+  label: string;
+  valor: string;
+  negativo?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <p className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}>
+        {valor}
+      </p>
+    </div>
+  );
+}
+
+function Mini({
+  label,
+  valor,
+  destaque = false,
+  alerta = false,
+}: {
+  label: string;
+  valor: string;
+  destaque?: boolean;
+  alerta?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-lg p-2 ${
+        alerta
+          ? "bg-amber-100/80 dark:bg-amber-950/50"
+          : destaque
+            ? "bg-primary/10"
+            : "bg-muted"
+      }`}
+    >
+      <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
+      <p
+        className={`font-bold ${
+          alerta
+            ? "text-amber-900 dark:text-amber-100"
+            : destaque
+              ? "text-primary"
+              : ""
+        }`}
+      >
+        {valor}
+      </p>
+    </div>
+  );
+}
+
+function linhaVazia(produto: string): Linha {
+  return { produto, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0 };
+}
+
+function horaVazia(hora: string): HoraInterna {
+  return {
+    hora,
+    apontamentos: 0,
+    plts: 0,
+    rolos: 0,
+    metragem: 0,
+    area: 0,
+    produtos: new Map(),
+  };
+}
+
+function horaVaziaFinal(hora: string): Hora {
+  return { hora, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0, produtos: [] };
+}
+
+function somarRegistro(linha: Linha, item: Registro) {
+  linha.apontamentos += 1;
+  linha.plts += Number(item.quantidade_plts ?? 0);
+  linha.rolos += Number(item.total_rolos ?? 0);
+  linha.metragem += Number(item.metragem ?? 0);
+  linha.area += Number(item.area_m2 ?? 0);
+}
+
+function unidadeMetaTurno(setor: string | null | undefined) {
+  if (setor === "mantas") return "m";
+  return "m²";
+}
+
+function unidadeProgramacao(setor: string | null | undefined) {
+  if (setor === "fitas") return "m²";
+  if (setor === "mantas") return "m";
+  return "PLTs";
+}
+
+function valorMetaHora(
+  item: Pick<Hora, "plts" | "metragem" | "area">,
+  setor: string | null | undefined,
+) {
+  if (setor === "fitas") return Number(item.area ?? 0);
+  return Number(item.metragem ?? 0);
+}
+
+function correspondeProgramacaoItem(
+  registro: Registro,
+  item: ProgramacaoItem,
+  setor: string | null | undefined,
+) {
+  if (registro.produto_id !== item.produto_id) return false;
+  if (setor === "mantas") return true;
+  const opItem = normalizar(item.op);
+  if (!opItem) return true;
+  return normalizar(registro.op) === opItem;
+}
+
+function valorRealizadoRegistro(item: Registro, setor: string | null | undefined) {
+  if (setor === "fitas") return Number(item.area_m2 ?? 0);
+  if (setor === "mantas") return Number(item.metragem ?? 0);
+  return Number(item.quantidade_plts ?? 0);
+}
+
+function normalizar(valor: string | null | undefined) {
+  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
+}
+
+function resumoProdutosHora(item: Hora, setor: string | null | undefined) {
+  if (!item.produtos.length) return "Sem produção registrada";
+  return item.produtos
+    .map((produto) => {
+      if (setor === "corte")
+        return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`;
+      if (setor === "mantas") return `${produto.produto}: ${fmt(produto.metragem)} m`;
+      if (setor === "fitas") return `${produto.produto}: ${fmt(produto.area)} m²`;
+      return `${produto.produto}: ${fmt(produto.plts)}`;
+    })
+    .join(" · ");
+}
+
+function destaqueHora(item: Hora, setor: string | null | undefined) {
+  if (setor === "corte") return `${fmt(item.plts)} PLT${item.plts === 1 ? "" : "s"}`;
+  if (setor === "mantas") return `${fmt(item.metragem)} m`;
+  if (setor === "fitas") return `${fmt(item.area)} m²`;
+  return `${fmt(item.plts)} PLTs`;
+}
+
+function secundarioHora(item: Hora, setor: string | null | undefined) {
+  if (setor === "corte") return `${fmt(item.metragem)} m²`;
+  if (setor === "mantas") return `${fmt(item.plts)} PLTs · ${fmt(item.rolos)} rolos`;
+  if (setor === "fitas") return `${item.produtos.length} produto(s)`;
+  return `${fmt(item.rolos)} unidades`;
+}
+
+function intervaloHora(hora: string) {
+  const inicio = Number(hora.slice(0, 2));
+  const fim = (inicio + 1) % 24;
+  return `${String(inicio).padStart(2, "0")}:00–${String(fim).padStart(2, "0")}:00`;
+}
+
+function duracaoDoCampo(valor: string) {
+  const limpo = valor.trim().toLowerCase().replace(/\s/g, "").replace("h", ":");
+  if (!limpo) return 0;
+  if (limpo.includes(":")) {
+    const [horasTexto, minutosTexto = "0"] = limpo.split(":", 2);
+    const horas = Number(horasTexto);
+    const minutos = Number(minutosTexto);
+    if (
+      !Number.isFinite(horas) ||
+      !Number.isFinite(minutos) ||
+      horas < 0 ||
+      minutos < 0 ||
+      minutos >= 60
+    ) {
+      return Number.NaN;
+    }
+    return horas + minutos / 60;
+  }
+  return numeroDoCampo(limpo);
+}
+
+function formatarDuracaoHoras(valor: number) {
+  if (!Number.isFinite(valor) || valor <= 0) return "";
+  let horas = Math.floor(valor);
+  let minutos = Math.round((valor - horas) * 60);
+  if (minutos === 60) {
+    horas += 1;
+    minutos = 0;
+  }
+  return `${horas}:${String(minutos).padStart(2, "0")}`;
+}
+
+function normalizarDuracaoDigitada(valor: string) {
+  return valor.replace(/[^0-9:,.hH]/g, "").slice(0, 8);
+}
+
+function numeroDoCampo(valor: string) {
+  const limpo = valor.trim().replace(/\s/g, "");
+  if (!limpo) return 0;
+  if (limpo.includes(",")) return Number(limpo.replace(/\./g, "").replace(",", "."));
+  if (/^\d{1,3}(\.\d{3})+$/.test(limpo)) return Number(limpo.replace(/\./g, ""));
+  return Number(limpo);
+}
+
+function formatarCampoNumero(valor: number) {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+
+function formatarData(valor: string) {
+  const [ano, mes, dia] = valor.split("-");
+  return ano && mes && dia ? `${dia}/${mes}` : "—";
+}
+
+function fmt(valor: number) {
+  return Number(valor || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }
