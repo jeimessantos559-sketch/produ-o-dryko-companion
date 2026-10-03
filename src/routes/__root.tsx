@@ -154,7 +154,7 @@ function RootComponent() {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("controllerchange", aoTrocarControlador);
       void navigator.serviceWorker
-        .register("/sw.js")
+        .register("/sw.js?v=7")
         .then((registro) => {
           const avisarAtualizacao = () => {
             if (!registro.waiting || !navigator.serviceWorker.controller) return;
