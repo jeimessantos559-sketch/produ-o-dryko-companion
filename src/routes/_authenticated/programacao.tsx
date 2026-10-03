@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   CalendarDays,
-  Clock3,
   PackageCheck,
   Save,
   Trash2,
@@ -49,14 +48,6 @@ type ProgramacaoItem = {
   unidade: string;
 };
 
-type AjusteHora = {
-  id: string;
-  hora: number;
-  meta_hora: number | null;
-  parada_minutos: number;
-  motivo_parada: string | null;
-};
-
 type Registro = {
   id: string;
   produto_id: string;
@@ -64,6 +55,7 @@ type Registro = {
   op: string | null;
   lote: string | null;
   quantidade_plts: number | null;
+  total_rolos: number | null;
   metragem: number | null;
   area_m2: number | null;
   data_hora_producao: string;
@@ -72,36 +64,51 @@ type Registro = {
 type MetaTurno = {
   quantidade_meta: number;
   horas_produtivas: number;
+  unidade: string;
 };
 
-type EdicaoHora = {
-  meta: string;
-  parada: string;
-  motivo: string;
+type LinhaHora = {
+  produto: string;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+};
+
+type ResumoHora = {
+  hora: string;
+  plts: number;
+  rolos: number;
+  metragem: number;
+  area: number;
+  produtos: LinhaHora[];
+  metaHora: number;
+  realizadoAcumulado: number;
+  saldoAcumulado: number;
 };
 
 function Programacao() {
-  const { profile, user, canProgramProduction } = useAuth();
+  const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
   const dataAtual = turno ? dataOperacional(turno) : "";
   const suportado = setor === "corte" || setor === "fitas" || setor === "mantas";
   const unidade = unidadeDoSetor(setor);
+  const unidadeMeta = unidadeMetaTurno(setor);
   const horasBase = useMemo(() => horasProdutivasTurno(turno), [turno]);
 
   const [produtos, setProdutos] = useState<ProdutoCatalogo[]>([]);
   const [programacao, setProgramacao] = useState<ProgramacaoItem[]>([]);
-  const [ajustesHora, setAjustesHora] = useState<AjusteHora[]>([]);
   const [registros, setRegistros] = useState<Registro[]>([]);
   const [registrosDia, setRegistrosDia] = useState<Registro[]>([]);
   const [metaTurno, setMetaTurno] = useState<MetaTurno | null>(null);
   const [produtoId, setProdutoId] = useState("");
-  const [referencia, setReferencia] = useState("");
   const [quantidade, setQuantidade] = useState("");
+  const [metaDigitada, setMetaDigitada] = useState("");
+  const [horasDigitadas, setHorasDigitadas] = useState("");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
-  const [salvandoHora, setSalvandoHora] = useState<string | null>(null);
-  const [edicoesHora, setEdicoesHora] = useState<Record<string, EdicaoHora>>({});
+  const [salvandoMeta, setSalvandoMeta] = useState(false);
   const cargaAtual = useRef(0);
   const [recarga, setRecarga] = useState(0);
 
@@ -112,7 +119,6 @@ function Programacao() {
     if (!setor || !turno || !dataAtual || !suportado) {
       setProdutos([]);
       setProgramacao([]);
-      setAjustesHora([]);
       setRegistros([]);
       setRegistrosDia([]);
       setMetaTurno(null);
@@ -130,20 +136,14 @@ function Programacao() {
         .eq("data_local", dataAtual)
         .eq("global_dia", true)
         .order("created_at", { ascending: true }),
-      (supabase as any)
-        .from("programacao_hora")
-        .select("id, hora, meta_hora, parada_minutos, motivo_parada")
-        .eq("setor", setor)
-        .eq("turno", turno)
-        .eq("data_local", dataAtual),
       supabase
         .from("apontamentos")
-        .select("id, turno, produto_id, produto_nome, op, lote, quantidade_plts, metragem, area_m2, data_hora_producao")
+        .select("id, turno, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao")
         .eq("setor", setor)
         .eq("data_local", dataAtual),
       (supabase as any)
         .from("metas_turno")
-        .select("quantidade_meta, horas_produtivas")
+        .select("quantidade_meta, horas_produtivas, unidade")
         .eq("setor", setor)
         .eq("turno", turno)
         .eq("data_local", dataAtual)
@@ -153,42 +153,29 @@ function Programacao() {
         ([
           listaProdutos,
           resultadoProgramacao,
-          resultadoHoras,
           resultadoRegistros,
           resultadoMeta,
         ]) => {
           if (carga !== cargaAtual.current) return;
           if (
             resultadoProgramacao.error ||
-            resultadoHoras.error ||
             resultadoRegistros.error
           ) {
             throw (
               resultadoProgramacao.error ||
-              resultadoHoras.error ||
               resultadoRegistros.error
             );
           }
 
           setProdutos(listaProdutos);
           setProgramacao((resultadoProgramacao.data ?? []) as ProgramacaoItem[]);
-          const horas = (resultadoHoras.data ?? []) as AjusteHora[];
-          setAjustesHora(horas);
           const todosDia = (resultadoRegistros.data ?? []) as (Registro & { turno: string })[];
           setRegistrosDia(todosDia);
           setRegistros(todosDia.filter((item) => item.turno === turno));
-          setMetaTurno((resultadoMeta.data as MetaTurno | null) ?? null);
-
-          const edicoes: Record<string, EdicaoHora> = {};
-          for (const item of horas) {
-            const chave = chaveHora(item.hora);
-            edicoes[chave] = {
-              meta: item.meta_hora == null ? "" : String(Number(item.meta_hora)),
-              parada: String(Number(item.parada_minutos ?? 0)),
-              motivo: item.motivo_parada ?? "",
-            };
-          }
-          setEdicoesHora(edicoes);
+          const meta = (resultadoMeta.data as MetaTurno | null) ?? null;
+          setMetaTurno(meta);
+          setMetaDigitada(meta ? formatarCampoNumero(Number(meta.quantidade_meta)) : "");
+          setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
         },
       )
       .catch(() => {
@@ -229,24 +216,109 @@ function Programacao() {
     [resumoProgramacao],
   );
 
-  const horasExibidas = useMemo(() => {
-    const horasApontadas = registros.map((item) => horaCheiaProducao(item.data_hora_producao));
-    const horasAjustadas = ajustesHora.map((item) => chaveHora(item.hora));
-    return [...new Set([...horasBase, ...horasApontadas, ...horasAjustadas])].sort(
+  const metaTotal = Number(metaTurno?.quantidade_meta ?? 0);
+  const duracaoProdutiva = Number(metaTurno?.horas_produtivas ?? 0);
+  const metaPorHora = duracaoProdutiva > 0 ? metaTotal / duracaoProdutiva : 0;
+
+  const horasAutomaticas = useMemo<ResumoHora[]>(() => {
+    const mapa = new Map<string, Omit<ResumoHora, "metaHora" | "realizadoAcumulado" | "saldoAcumulado"> & { produtosMap: Map<string, LinhaHora> }>();
+    for (const registro of registros) {
+      const hora = horaCheiaProducao(registro.data_hora_producao);
+      const atual = mapa.get(hora) ?? horaVazia(hora);
+      atual.plts += Number(registro.quantidade_plts ?? 0);
+      atual.rolos += Number(registro.total_rolos ?? 0);
+      atual.metragem += Number(registro.metragem ?? 0);
+      atual.area += Number(registro.area_m2 ?? 0);
+      const linha = atual.produtosMap.get(registro.produto_nome) ?? linhaVazia(registro.produto_nome);
+      linha.plts += Number(registro.quantidade_plts ?? 0);
+      linha.rolos += Number(registro.total_rolos ?? 0);
+      linha.metragem += Number(registro.metragem ?? 0);
+      linha.area += Number(registro.area_m2 ?? 0);
+      atual.produtosMap.set(registro.produto_nome, linha);
+      mapa.set(hora, atual);
+    }
+
+    const horas = [...new Set([...(metaTurno ? horasBase : []), ...mapa.keys()])].sort(
       (a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno),
     );
-  }, [ajustesHora, horasBase, registros, turno]);
+    const horasPlanejadas = new Set(metaTurno ? horasBase : []);
+    let metaAcumulada = 0;
+    let realizadoAcumulado = 0;
+    return horas.map((hora) => {
+      const base = mapa.get(hora) ?? horaVazia(hora);
+      const metaHora = horasPlanejadas.has(hora) ? metaPorHora : 0;
+      const realizadoHora = valorMetaHora(base, setor);
+      metaAcumulada += metaHora;
+      realizadoAcumulado += realizadoHora;
+      return {
+        hora,
+        plts: base.plts,
+        rolos: base.rolos,
+        metragem: base.metragem,
+        area: base.area,
+        produtos: [...base.produtosMap.values()].sort((a, b) => a.produto.localeCompare(b.produto)),
+        metaHora,
+        realizadoAcumulado,
+        saldoAcumulado: realizadoAcumulado - metaAcumulada,
+      };
+    });
+  }, [horasBase, metaPorHora, metaTurno, registros, setor, turno]);
 
-  const metaAutomatica = useMemo(() => {
-    const total = Number(metaTurno?.quantidade_meta ?? 0);
-    const horas = Math.min(Number(metaTurno?.horas_produtivas ?? 0), horasBase.length);
-    return horas > 0 ? total / horas : 0;
-  }, [horasBase.length, metaTurno]);
+  const realizadoTurno = useMemo(
+    () => registros.reduce((total, registro) => total + valorMetaRegistro(registro, setor), 0),
+    [registros, setor],
+  );
+  const atingimento = metaTotal > 0 ? (realizadoTurno / metaTotal) * 100 : 0;
+  const percentualBarra = Math.min(100, Math.max(0, atingimento));
+  const metaSimulada = numeroCampo(metaDigitada);
+  const horasSimuladas = duracaoDoCampo(horasDigitadas);
+  const metaHoraSimulada = metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
 
   function limparFormulario() {
     setProdutoId("");
-    setReferencia("");
     setQuantidade("");
+  }
+
+  async function salvarMetaTurno() {
+    if (!canFinalizeGoals || !user || !setor || !turno || salvandoMeta) return;
+    if (!Number.isFinite(metaSimulada) || metaSimulada <= 0) {
+      toast.error("Informe uma meta maior que zero.");
+      return;
+    }
+    if (!Number.isFinite(horasSimuladas) || horasSimuladas <= 0 || horasSimuladas > 24) {
+      toast.error("Informe um tempo produtivo válido, por exemplo 9:28.");
+      return;
+    }
+
+    setSalvandoMeta(true);
+    const { data, error } = await (supabase as any)
+      .from("metas_turno")
+      .upsert(
+        {
+          setor,
+          turno,
+          data_local: dataAtual,
+          quantidade_meta: metaSimulada,
+          unidade: unidadeMeta,
+          horas_produtivas: Number(horasSimuladas.toFixed(2)),
+          criado_por: user.id,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "setor,turno,data_local" },
+      )
+      .select("quantidade_meta, horas_produtivas, unidade")
+      .single();
+    setSalvandoMeta(false);
+
+    if (error || !data) {
+      toast.error(error?.message || "Não foi possível salvar a meta do turno.");
+      return;
+    }
+    const metaSalva = data as MetaTurno;
+    setMetaTurno(metaSalva);
+    setMetaDigitada(formatarCampoNumero(Number(metaSalva.quantidade_meta)));
+    setHorasDigitadas(formatarDuracaoHoras(Number(metaSalva.horas_produtivas)));
+    toast.success("Meta do turno salva.");
   }
 
   async function salvarProgramacao() {
@@ -449,13 +521,16 @@ function Programacao() {
   return (
     <AppShell title="Programação" eyebrow="PRODUÇÃO · PLANEJAMENTO">
       <div className="mx-auto max-w-5xl space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-xl font-extrabold">Controle do turno</h2>
-            <p className="text-xs text-muted-foreground">
-              {nomeSetor(setor)} · {nomeTurno(turno)} · {formatarData(dataAtual)}
+            <h2 className="text-xl font-extrabold sm:text-2xl">Produção hora a hora</h2>
+            <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+              {formatarData(dataAtual)} · dados vindos dos apontamentos · {nomeSetor(setor)} · {nomeTurno(turno)}
             </p>
           </div>
+          <span className="shrink-0 rounded-full bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            Automático
+          </span>
         </div>
 
         {carregando ? (
@@ -476,6 +551,58 @@ function Programacao() {
             </TabsList>
 
             <TabsContent value="programacao" className="space-y-4">
+              <Card className="rounded-2xl border-border shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CalendarDays className="size-5 text-primary" /> Meta do turno
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {canFinalizeGoals ? (
+                    <>
+                      <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-2">
+                        <div className="space-y-1.5">
+                          <Label>Meta total ({unidadeMeta})</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={metaDigitada}
+                            onChange={(event) => setMetaDigitada(event.target.value)}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Tempo produtivo</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={horasDigitadas}
+                            onChange={(event) => setHorasDigitadas(normalizarDuracaoDigitada(event.target.value))}
+                            placeholder="Ex.: 9:28"
+                          />
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-muted p-3 text-center">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Previsto por hora</p>
+                        <p className="mt-1 text-xl font-black text-primary">{fmt(metaHoraSimulada)} {unidadeMeta}</p>
+                      </div>
+                      <Button
+                        className="w-full touch-manipulation"
+                        disabled={salvandoMeta || metaSimulada <= 0 || horasSimuladas <= 0}
+                        onClick={() => void salvarMetaTurno()}
+                      >
+                        <Save className="size-4" /> {salvandoMeta ? "Salvando..." : "Salvar meta do turno"}
+                      </Button>
+                    </>
+                  ) : metaTurno ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Resumo label="Meta" valor={`${fmt(metaTotal)} ${unidadeMeta}`} />
+                      <Resumo label="Previsto por hora" valor={`${fmt(metaPorHora)} ${unidadeMeta}`} />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">A meta deste turno ainda não foi definida.</p>
+                  )}
+                </CardContent>
+              </Card>
+
               {canProgramProduction ? (
               <Card className="rounded-2xl border-border shadow-sm">
                 <CardHeader className="pb-2">
@@ -604,109 +731,37 @@ function Programacao() {
                   onAjustado={() => setRecarga((v) => v + 1)}
                 />
               ) : null}
+              <div className="grid grid-cols-2 gap-3">
+                <ResumoGrande label="Previsto" valor={`${fmt(metaTotal)} ${unidadeMeta}`} />
+                <ResumoGrande label="Realizado" valor={`${fmt(realizadoTurno)} ${unidadeMeta}`} destaque />
+                <ResumoGrande label="Atingimento" valor={`${fmt(atingimento)}%`} className="col-span-2" />
+              </div>
+
               <Card className="rounded-2xl border-border shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Clock3 className="size-5 text-primary" /> Planejamento hora a hora
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    A meta vem automaticamente da Meta do turno. Ajuste somente quando necessário e
-                    registre paradas por horário.
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {horasExibidas.map((hora) => {
-                    const ajuste = ajustesHora.find(
-                      (item) => item.hora === Number(hora.slice(0, 2)),
-                    );
-                    const edicao = edicoesHora[hora] ?? {
-                      meta:
-                        ajuste?.meta_hora == null ? "" : String(Number(ajuste.meta_hora)),
-                      parada: String(Number(ajuste?.parada_minutos ?? 0)),
-                      motivo: ajuste?.motivo_parada ?? "",
-                    };
-                    const dentroMeta =
-                      metaTurno &&
-                      horasBase
-                        .slice(
-                          0,
-                          Math.min(Number(metaTurno.horas_produtivas), horasBase.length),
-                        )
-                        .includes(hora);
-                    const previstoHora =
-                      ajuste?.meta_hora == null
-                        ? dentroMeta
-                          ? metaAutomatica
-                          : 0
-                        : Number(ajuste.meta_hora);
-                    const realizadoHora = registros
-                      .filter((item) => horaCheiaProducao(item.data_hora_producao) === hora)
-                      .reduce((total, item) => total + valorRealizado(item, setor), 0);
-                    const saldoHora = previstoHora - realizadoHora;
-                    return (
-                      <div key={hora} className="rounded-xl border border-border bg-muted/40 p-3">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <div>
-                            <p className="text-lg font-black">{hora}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              Previsto {fmt(previstoHora)} · Realizado {fmt(realizadoHora)} · Saldo{" "}
-                              {fmt(saldoHora)} {unidade}
-                            </p>
-                          </div>
-                          {Number(ajuste?.parada_minutos ?? 0) > 0 && (
-                            <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                              Parada {ajuste?.parada_minutos} min
-                            </span>
-                          )}
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-[1fr_120px_1.5fr_auto]">
-                          <div className="space-y-1">
-                            <Label className="text-[11px]">Meta da hora ({unidade})</Label>
-                            <Input
-                              className="h-9"
-                              inputMode="decimal"
-                              value={edicao.meta}
-                              onChange={(e) => editarHora(hora, "meta", e.target.value)}
-                              placeholder={
-                                metaAutomatica > 0 ? `Auto ${fmt(metaAutomatica)}` : "Automática"
-                              }
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px]">Parada (min)</Label>
-                            <Input
-                              className="h-9"
-                              type="number"
-                              min={0}
-                              max={60}
-                              step={1}
-                              value={edicao.parada}
-                              onChange={(e) => editarHora(hora, "parada", e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[11px]">Motivo da parada</Label>
-                            <Input
-                              className="h-9"
-                              value={edicao.motivo}
-                              onChange={(e) => editarHora(hora, "motivo", e.target.value)}
-                              placeholder="Ex.: ajuste de máquina"
-                            />
-                          </div>
-                          <Button
-                            className="h-9 self-end"
-                            size="sm"
-                            disabled={salvandoHora !== null}
-                            onClick={() => void salvarAjusteHora(hora)}
-                          >
-                            {salvandoHora === hora ? "..." : <Save className="size-4" />}
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <CardContent className="p-4">
+                  <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                    <strong>Produção acumulada do turno</strong>
+                    <strong className="text-right text-primary">{fmt(realizadoTurno)} / {fmt(metaTotal)} {unidadeMeta}</strong>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${percentualBarra}%` }} />
+                  </div>
                 </CardContent>
               </Card>
+
+              {!metaTurno && (
+                <div className="rounded-xl border border-dashed border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+                  A meta deste turno ainda não foi definida. Use a aba Programação.
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {horasAutomaticas.length === 0 ? (
+                  <Card><CardContent className="p-5 text-sm text-muted-foreground">Nenhum apontamento registrado.</CardContent></Card>
+                ) : horasAutomaticas.map((item) => (
+                  <HoraCard key={item.hora} item={item} setor={setor} unidade={unidadeMeta} mostrarMeta={Boolean(metaTurno)} />
+                ))}
+              </div>
             </TabsContent>
 
           </Tabs>
