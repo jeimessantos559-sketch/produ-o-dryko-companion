@@ -22,6 +22,10 @@ export const Route = createFileRoute("/_authenticated/programacao")({
     meta: [
       { title: "Programação | Aponta Produção DRYKO" },
       { name: "description", content: "Produção automática hora a hora e programação diária." },
+      { property: "og:title", content: "Programação | Aponta Produção DRYKO" },
+      { property: "og:description", content: "Produção automática hora a hora e programação diária." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Programacao,
