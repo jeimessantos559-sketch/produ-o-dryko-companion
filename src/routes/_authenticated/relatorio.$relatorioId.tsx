@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { baixarPdf, compartilharPdf, imprimirPdf } from "@/lib/relatorio-pdf";
+import { completarResponsaveisRelatorio, nomesResponsaveisRelatorio, responsaveisDoApontamento } from "@/lib/responsaveis-relatorio";
 
 export const Route = createFileRoute("/_authenticated/relatorio/$relatorioId")({
   component: RelatorioDetalhado,
@@ -92,12 +93,16 @@ function RelatorioDetalhado() {
 
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const { data, error } = await supabase.from("relatorios").select("*").eq("id", relatorioId).single();
+    const [{ data, error }, { data: perfis }] = await Promise.all([
+      supabase.from("relatorios").select("*").eq("id", relatorioId).single(),
+      supabase.from("profiles").select("id, nome"),
+    ]);
     if (error || !data) {
       toast.error("Não foi possível abrir o relatório.");
       setRelatorio(null);
     } else {
-      setRelatorio(data);
+      const nomes = Object.fromEntries((perfis ?? []).map((item) => [item.id, item.nome || ""]));
+      setRelatorio({ ...data, resumo: completarResponsaveisRelatorio(data.resumo, nomes) });
       if (data.destinatarios?.length) setDestinatarios(data.destinatarios.join("; "));
     }
     setCarregando(false);
@@ -128,6 +133,7 @@ function RelatorioDetalhado() {
       totais,
       apontamentos,
       metas,
+      responsaveis: nomesResponsaveisRelatorio(relatorio?.resumo ?? null),
       produtos: [...produtos.entries()].sort((a, b) => b[1].plts - a[1].plts || b[1].area - a[1].area),
     };
   }, [relatorio]);
@@ -228,10 +234,15 @@ function RelatorioDetalhado() {
                 <p className="mt-1 text-lg font-bold text-[#c70812]">{setorNome(relatorio.setor)} · {turnoNome(relatorio.turno)}</p>
               </div>
               <div className="text-sm text-slate-500 sm:text-right">
-                <p><strong className="text-slate-700">Responsável:</strong> {texto(dados.raiz.responsavel)}</p>
+                <p><strong className="text-slate-700">Responsável pelo relatório:</strong> {texto(dados.raiz.responsavel)}</p>
                 <p><strong className="text-slate-700">Gerado em:</strong> {formatarDataHora(texto(dados.raiz.geradoEm))}</p>
                 <p><strong className="text-slate-700">ID:</strong> {relatorio.id.slice(0, 8).toUpperCase()}</p>
               </div>
+            </section>
+
+            <section className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2">
+              <p className="break-words"><strong className="text-slate-700">Apontado por:</strong> {dados.responsaveis.apontadores}</p>
+              <p className="break-words"><strong className="text-slate-700">Lançado no Protheus por:</strong> {dados.responsaveis.lancadores}</p>
             </section>
 
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -259,12 +270,17 @@ function RelatorioDetalhado() {
               <div className="space-y-2">
                 {dados.apontamentos.map((item, indice) => {
                   const statusLancado = texto(item.status).toLowerCase() === "lancado";
+                  const responsaveis = responsaveisDoApontamento(item);
                   const producao = fitas ? `${formatarNumero(numero(item.area_m2))} m²` : `${formatarNumero(numero(item.metragem))} ${unidade}`;
                   return (
                     <div key={String(item.id ?? indice)} className="rounded-2xl border border-slate-200 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div><p className="font-bold text-slate-950">{item.op ? `OP ${texto(item.op)} · ` : item.lote ? `Lote ${texto(item.lote)} · ` : ""}{texto(item.produto_nome)}</p><p className="mt-1 text-sm text-slate-500">{numero(item.quantidade_plts)} PLT(s) · {formatarNumero(numero(item.total_rolos), 0)} rolos · {producao}</p></div>
                         <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusLancado ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{statusLancado ? "Lançado" : "Pendente"}</span>
+                      </div>
+                      <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 text-xs text-slate-600 sm:grid-cols-2">
+                        <p className="break-words"><strong>Apontado por:</strong> {responsaveis.apontador}<br />Registrado em: {formatarDataHora(responsaveis.apontadoEm)}</p>
+                        <p className="break-words">{responsaveis.lancado ? <><strong>Lançado no Protheus por:</strong> {responsaveis.lancador}<br />Lançado em: {formatarDataHora(responsaveis.lancadoEm)}</> : <strong>Pendente no Protheus</strong>}</p>
                       </div>
                     </div>
                   );
