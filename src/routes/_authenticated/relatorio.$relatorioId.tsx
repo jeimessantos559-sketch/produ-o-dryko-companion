@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { baixarPdf, compartilharPdf, imprimirPdf } from "@/lib/relatorio-pdf";
-import { completarResponsaveisRelatorio } from "@/lib/responsaveis-relatorio";
+import { completarResponsaveisRelatorio, nomeCurtoRelatorio } from "@/lib/responsaveis-relatorio";
 
 export const Route = createFileRoute("/_authenticated/relatorio/$relatorioId")({
   component: RelatorioDetalhado,
@@ -234,7 +234,7 @@ function RelatorioDetalhado() {
                 <p className="mt-1 text-lg font-bold text-[#c70812]">{setorNome(relatorio.setor)} · {turnoNome(relatorio.turno)}</p>
               </div>
               <div className="text-sm text-slate-500 sm:text-right">
-                <p><strong className="text-slate-700">Responsável pelo relatório:</strong> {texto(dados.raiz.responsavel)}</p>
+                <p><strong className="text-slate-700">Responsável pelo relatório:</strong> {nomeCurtoRelatorio(dados.raiz.responsavel)}</p>
                 <p><strong className="text-slate-700">Gerado em:</strong> {formatarDataHora(texto(dados.raiz.geradoEm))}</p>
                 <p><strong className="text-slate-700">ID:</strong> {relatorio.id.slice(0, 8).toUpperCase()}</p>
               </div>

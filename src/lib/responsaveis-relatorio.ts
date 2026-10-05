@@ -1,4 +1,5 @@
 import type { Json } from "@/integrations/supabase/types";
+import { aliasDoNome } from "./login-operacional.ts";
 
 function registro(valor: Json | undefined): Record<string, Json | undefined> {
   return valor && typeof valor === "object" && !Array.isArray(valor) ? valor : {};
@@ -17,15 +18,26 @@ function dataHora(valor: Json | undefined) {
   return typeof valor === "string" && !Number.isNaN(new Date(valor).getTime()) ? valor : null;
 }
 
+// Usa o mesmo padrão de primeiro nome e último sobrenome do login operacional.
+export function nomeCurtoRelatorio(valor: Json | undefined) {
+  const completo = nome(valor);
+  if (!completo) return "Não identificado";
+  const alias = aliasDoNome(completo.replace(/[._]+/g, " "));
+  return alias
+    ? alias
+        .split(".")
+        .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
+        .join(" ")
+    : completo;
+}
+
 export function responsaveisDoApontamento(valor: Json | undefined) {
   const item = registro(valor);
   const lancado = item["status"] === "lancado";
   return {
-    apontador: nome(item["apontado_por_nome"]) ?? "Não identificado",
+    apontador: nomeCurtoRelatorio(item["apontado_por_nome"]),
     apontadoEm: dataHora(item["created_at"]),
-    lancador: lancado
-      ? (nome(item["lancado_por_nome"]) ?? "Não identificado")
-      : "Pendente no Protheus",
+    lancador: lancado ? nomeCurtoRelatorio(item["lancado_por_nome"]) : "Pendente no Protheus",
     lancadoEm: lancado ? dataHora(item["lancado_em"]) : null,
     lancado,
   };
