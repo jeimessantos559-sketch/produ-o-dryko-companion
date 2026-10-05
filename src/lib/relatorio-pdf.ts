@@ -1,5 +1,5 @@
 import type { Json } from "@/integrations/supabase/types";
-import { nomesResponsaveisRelatorio, responsaveisDoApontamento } from "./responsaveis-relatorio.ts";
+import { nomeCurtoRelatorio, nomesResponsaveisRelatorio, responsaveisDoApontamento } from "./responsaveis-relatorio.ts";
 
 type ResumoRegistro = {
   totais?: Json;
@@ -141,7 +141,7 @@ export function linhasDoRelatorio(resumo: Json) {
   return [
     `DRYKO - Relatorio de Producao`,
     `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`,
-    `Responsavel pelo relatorio: ${texto(raiz.responsavel)}`,
+    `Responsavel pelo relatorio: ${nomeCurtoRelatorio(raiz.responsavel)}`,
     `Apontado por: ${responsaveis.apontadores}`,
     `Lancado no Protheus por: ${responsaveis.lancadores}`,
     `Apontamentos: ${texto(totais.apontamentos)} | Pendentes: ${texto(totais.pendentes)} | Lancados: ${texto(totais.lancados)}`,
@@ -315,7 +315,7 @@ function montarPrimeiraPagina(resumo: Json) {
   comandos.push(comandoTexto(formatarData(texto(raiz.data)), 38, 728, 18, true));
   comandos.push(comandoTexto(`${setor} | ${turnoLegivel(texto(raiz.turno))}`, 38, 711, 10, true, "0.78 0.04 0.06"));
   comandos.push(comandoTexto("RESPONSAVEL PELO RELATORIO", 320, 742, 7, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto(limitar(texto(raiz.responsavel), 30), 320, 728, 8.2, true));
+  comandos.push(comandoTexto(limitar(nomeCurtoRelatorio(raiz.responsavel), 30), 320, 728, 8.2, true));
   comandos.push(comandoTexto(`Gerado em: ${formatarDataHora(texto(raiz.geradoEm))}`, 320, 711, 8.5, false, "0.42 0.44 0.49"));
   comandos.push(comandoLinha(38, 695, 557, 695, "0.15 0.15 0.17"));
 
