@@ -1,4 +1,5 @@
 import type { Json } from "@/integrations/supabase/types";
+import { nomesResponsaveisRelatorio, responsaveisDoApontamento } from "./responsaveis-relatorio.ts";
 
 type ResumoRegistro = {
   totais?: Json;
@@ -136,10 +137,13 @@ export function linhasDoRelatorio(resumo: Json) {
   const apontamentos = Array.isArray(raiz.apontamentos) ? raiz.apontamentos : [];
   const setor = texto(raiz.setor).toLowerCase();
   const fitas = setor.includes("fita");
+  const responsaveis = nomesResponsaveisRelatorio(resumo);
   return [
     `DRYKO - Relatorio de Producao`,
     `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`,
-    `Responsavel: ${texto(raiz.responsavel)}`,
+    `Responsavel pelo relatorio: ${texto(raiz.responsavel)}`,
+    `Apontado por: ${responsaveis.apontadores}`,
+    `Lancado no Protheus por: ${responsaveis.lancadores}`,
     `Apontamentos: ${texto(totais.apontamentos)} | Pendentes: ${texto(totais.pendentes)} | Lancados: ${texto(totais.lancados)}`,
     fitas
       ? `Producao: ${texto(totais.area)} m2`
@@ -187,6 +191,25 @@ function desenharCabecalhoDetalhamento(comandos: string[], y: number, fitas: boo
   comandos.push(comandoLinha(38, y - 10, 557, y - 10));
 }
 
+function quebrarLinhas(valor: string, limite = 80) {
+  const partes = semAcentos(valor).match(new RegExp(`.{1,${limite}}(?:\\s|$)|.{1,${limite}}`, "g"));
+  return partes?.map((parte) => parte.trim()) ?? [""];
+}
+
+function linhasResponsaveisDetalhamento(item: Json) {
+  const responsaveis = responsaveisDoApontamento(item);
+  return [
+    ...quebrarLinhas(`Apontado por: ${responsaveis.apontador} | Registrado em: ${formatarDataHora(responsaveis.apontadoEm ?? "")}`),
+    ...quebrarLinhas(responsaveis.lancado
+      ? `Lancado no Protheus por: ${responsaveis.lancador} | Lancado em: ${formatarDataHora(responsaveis.lancadoEm ?? "")}`
+      : "Pendente no Protheus"),
+  ];
+}
+
+function alturaDetalhamento(item: Json) {
+  return 22 + linhasResponsaveisDetalhamento(item).length * 10;
+}
+
 function desenharLinhaDetalhamento(
   comandos: string[],
   item: Json,
@@ -196,8 +219,10 @@ function desenharLinhaDetalhamento(
   mantas: boolean,
 ) {
   const apontamento = registro(item);
+  const linhasResponsaveis = linhasResponsaveisDetalhamento(item);
+  const altura = alturaDetalhamento(item);
   const fundo = indice % 2 === 0 ? "0.985 0.985 0.99" : "1 1 1";
-  comandos.push(comandoRetangulo(36, y - 10, 523, 21, fundo));
+  comandos.push(comandoRetangulo(36, y - altura + 12, 523, altura - 1, fundo));
   const seqIni = texto(apontamento.sequencia_inicio);
   const seqFim = texto(apontamento.sequencia_fim);
   const seq = seqIni !== "-" && seqFim !== "-" ? (seqIni === seqFim ? seqIni : `${seqIni}-${seqFim}`) : String(indice + 1);
@@ -212,6 +237,10 @@ function desenharLinhaDetalhamento(
   comandos.push(comandoTexto(limitar(producao, 12), 442, y, 7.6));
   const status = texto(apontamento.status).toLowerCase() === "lancado" ? "Lancado" : "Pendente";
   comandos.push(comandoTexto(status, 510, y, 7.0, true, status === "Pendente" ? "0.67 0.14 0.05" : "0.07 0.45 0.23"));
+  linhasResponsaveis.forEach((linha, indiceLinha) => {
+    comandos.push(comandoTexto(linha, 40, y - 12 - indiceLinha * 10, 6.8, false, "0.42 0.44 0.49"));
+  });
+  return altura;
 }
 
 function montarPrimeiraPagina(resumo: Json) {
@@ -224,15 +253,19 @@ function montarPrimeiraPagina(resumo: Json) {
   const setorChave = setor.toLowerCase();
   const fitas = setorChave.includes("fita");
   const mantas = setorChave.includes("manta");
+  const responsaveis = nomesResponsaveisRelatorio(resumo);
   const comandos: string[] = [];
 
   cabecalhoPagina(comandos, "RELATORIO DE PRODUCAO", "Fechamento operacional de turno");
 
   comandos.push(comandoTexto(formatarData(texto(raiz.data)), 38, 728, 18, true));
   comandos.push(comandoTexto(`${setor} | ${turnoLegivel(texto(raiz.turno))}`, 38, 711, 10, true, "0.78 0.04 0.06"));
-  comandos.push(comandoTexto(`Responsavel: ${limitar(texto(raiz.responsavel), 48)}`, 320, 728, 9.5, true));
+  comandos.push(comandoTexto("RESPONSAVEL PELO RELATORIO", 320, 742, 7, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto(limitar(texto(raiz.responsavel), 30), 320, 728, 8.2, true));
   comandos.push(comandoTexto(`Gerado em: ${formatarDataHora(texto(raiz.geradoEm))}`, 320, 711, 8.5, false, "0.42 0.44 0.49"));
   comandos.push(comandoLinha(38, 695, 557, 695, "0.15 0.15 0.17"));
+  comandos.push(comandoTexto(limitar(`Apontado por: ${responsaveis.apontadores}`, 74), 38, 681, 7.4));
+  comandos.push(comandoTexto(limitar(`Lancado no Protheus por: ${responsaveis.lancadores}`, 74), 38, 669, 7.4));
 
   const cards: Array<readonly [string, string]> = [
     ["APONTAMENTOS", texto(totais.apontamentos)],
@@ -243,23 +276,23 @@ function montarPrimeiraPagina(resumo: Json) {
   const cardXs = [38, 168, 298, 428];
   cards.forEach(([rotulo, valor], i) => {
     const x = cardXs[i] ?? 38;
-    comandos.push(comandoRetangulo(x, 624, 117, 55, i === 2 && numero(totais.pendentes) > 0 ? "1 0.96 0.94" : "0.97 0.98 0.99", "0.86 0.87 0.89"));
-    comandos.push(comandoTexto(rotulo, x + 10, 659, 7.2, true, "0.42 0.44 0.49"));
-    comandos.push(comandoTexto(valor, x + 10, 637, 18, true, i === 2 && numero(totais.pendentes) > 0 ? "0.67 0.14 0.05" : "0.12 0.12 0.14"));
+    comandos.push(comandoRetangulo(x, 588, 117, 55, i === 2 && numero(totais.pendentes) > 0 ? "1 0.96 0.94" : "0.97 0.98 0.99", "0.86 0.87 0.89"));
+    comandos.push(comandoTexto(rotulo, x + 10, 623, 7.2, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto(valor, x + 10, 601, 18, true, i === 2 && numero(totais.pendentes) > 0 ? "0.67 0.14 0.05" : "0.12 0.12 0.14"));
   });
 
-  comandos.push(comandoRetangulo(38, 555, 247, 53, "0.98 0.96 0.96", "0.91 0.80 0.81"));
-  comandos.push(comandoTexto(fitas ? "PRODUCAO TOTAL" : mantas ? "METRAGEM PRODUZIDA" : "AREA PRODUZIDA", 50, 588, 7.5, true, "0.55 0.24 0.25"));
+  comandos.push(comandoRetangulo(38, 519, 247, 53, "0.98 0.96 0.96", "0.91 0.80 0.81"));
+  comandos.push(comandoTexto(fitas ? "PRODUCAO TOTAL" : mantas ? "METRAGEM PRODUZIDA" : "AREA PRODUZIDA", 50, 552, 7.5, true, "0.55 0.24 0.25"));
   const producao = fitas
     ? `${formatarNumero(numero(totais.area))} m2`
     : `${formatarNumero(numero(totais.metragem))} ${mantas ? "m" : "m2"}`;
-  comandos.push(comandoTexto(producao, 50, 566, 18, true, "0.78 0.04 0.06"));
+  comandos.push(comandoTexto(producao, 50, 530, 18, true, "0.78 0.04 0.06"));
 
-  comandos.push(comandoRetangulo(300, 555, 245, 53, "0.97 0.98 0.99", "0.86 0.87 0.89"));
-  comandos.push(comandoTexto("ROLOS PRODUZIDOS", 312, 588, 7.5, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto(formatarNumero(numero(totais.rolos), 0), 312, 566, 18, true));
+  comandos.push(comandoRetangulo(300, 519, 245, 53, "0.97 0.98 0.99", "0.86 0.87 0.89"));
+  comandos.push(comandoTexto("ROLOS PRODUZIDOS", 312, 552, 7.5, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto(formatarNumero(numero(totais.rolos), 0), 312, 530, 18, true));
 
-  let y = 520;
+  let y = 484;
   comandos.push(comandoTexto("RESUMO POR PRODUTO", 38, y, 11, true));
   y -= 12;
   comandos.push(comandoLinha(38, y, 557, y));
@@ -308,19 +341,18 @@ function montarPrimeiraPagina(resumo: Json) {
   }
 
   let consumidos = 0;
-  const espacoUtil = y - 78;
-  const capacidade = Math.max(0, Math.floor((espacoUtil - 38) / 22));
-  if (apontamentos.length > 0 && capacidade > 0) {
+  const primeiroApontamento = apontamentos[0];
+  if (primeiroApontamento && y - 56 - alturaDetalhamento(primeiroApontamento) >= 66) {
     y -= 8;
     comandos.push(comandoTexto("DETALHAMENTO DO TURNO", 38, y, 10, true));
     y -= 20;
     desenharCabecalhoDetalhamento(comandos, y, fitas);
     y -= 28;
-    consumidos = Math.min(apontamentos.length, capacidade);
-    apontamentos.slice(0, consumidos).forEach((item, indice) => {
-      desenharLinhaDetalhamento(comandos, item, indice, y, fitas, mantas);
-      y -= 22;
-    });
+    for (const item of apontamentos) {
+      if (y - alturaDetalhamento(item) < 66) break;
+      y -= desenharLinhaDetalhamento(comandos, item, consumidos, y, fitas, mantas);
+      consumidos += 1;
+    }
     if (consumidos < apontamentos.length && y > 55) {
       comandos.push(comandoTexto(`Continua na pagina seguinte (+${apontamentos.length - consumidos} registro(s))`, 40, y, 7.5, false, "0.45 0.47 0.52"));
     }
@@ -335,20 +367,23 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
   const setor = texto(raiz.setor).toLowerCase();
   const fitas = setor.includes("fita");
   const mantas = setor.includes("manta");
-  const porPagina = 27;
   const paginas: string[][] = [];
 
-  for (let inicio = inicioDetalhamento; inicio < apontamentos.length; inicio += porPagina) {
+  let inicio = inicioDetalhamento;
+  while (inicio < apontamentos.length) {
     const comandos: string[] = [];
-    const lote = apontamentos.slice(inicio, inicio + porPagina);
     cabecalhoPagina(comandos, "DETALHAMENTO DO TURNO", `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`);
     desenharCabecalhoDetalhamento(comandos, 730, fitas);
 
     let y = 699;
-    lote.forEach((item, indice) => {
-      desenharLinhaDetalhamento(comandos, item, inicio + indice, y, fitas, mantas);
-      y -= 23;
-    });
+    const inicioPagina = inicio;
+    while (inicio < apontamentos.length) {
+      const item = apontamentos[inicio];
+      if (item === undefined || y - alturaDetalhamento(item) < 66) break;
+      y -= desenharLinhaDetalhamento(comandos, item, inicio, y, fitas, mantas);
+      inicio += 1;
+    }
+    if (inicio === inicioPagina) throw new Error("Os dados do responsável excedem o espaço de uma página do relatório.");
     paginas.push(comandos);
   }
 
