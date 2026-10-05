@@ -180,34 +180,100 @@ function rodapePagina(comandos: string[], pagina: number, totalPaginas: number) 
   comandos.push(comandoTexto(`Pagina ${pagina} de ${totalPaginas}`, 500, 26, 7.5, true, "0.45 0.47 0.52"));
 }
 
+const colunasDetalhamento = [
+  { titulo: "Seq.", x: 36, largura: 24 },
+  { titulo: "OP / Lote", x: 60, largura: 52 },
+  { titulo: "Produto", x: 112, largura: 102 },
+  { titulo: "PLTs", x: 214, largura: 28 },
+  { titulo: "Rolos", x: 242, largura: 36 },
+  { titulo: "Producao", x: 278, largura: 59 },
+  { titulo: "APONTADO POR", x: 337, largura: 100 },
+  { titulo: "PROTHEUS / LANCADO POR", x: 437, largura: 122 },
+];
+
+// Larguras das fontes Helvetica do PDF, em milésimos de um ponto por tamanho.
+const largurasHelvetica = [
+  [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+    1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+    333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+    556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584],
+  [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
+    975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
+    333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+    611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584],
+];
+
+type TextoCelula = { texto: string; tamanho?: number; negrito?: boolean; cor?: string };
+
+function quebrarLinhas(valor: string, largura: number, tamanho = 7.5, negrito = false) {
+  const metricas = largurasHelvetica[negrito ? 1 : 0]!;
+  const linhas: string[] = [];
+  let restante = semAcentos(valor).trim();
+  while (restante) {
+    let usado = 0;
+    let fim = 0;
+    let espaco = -1;
+    while (fim < restante.length) {
+      const caractere = restante.charCodeAt(fim);
+      const medida = (metricas[caractere - 32] ?? 556) * tamanho / 1000;
+      if (usado + medida > largura) break;
+      usado += medida;
+      if (restante[fim] === " ") espaco = fim;
+      fim += 1;
+    }
+    if (fim < restante.length && espaco > 0) fim = espaco;
+    fim = Math.max(1, fim);
+    linhas.push(restante.slice(0, fim).trim());
+    restante = restante.slice(fim).trimStart();
+  }
+  return linhas.length ? linhas : [""];
+}
+
 function desenharCabecalhoDetalhamento(comandos: string[], y: number, fitas: boolean) {
-  comandos.push(comandoTexto("Seq.", 38, y, 7.2, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto("OP / Lote", 78, y, 7.2, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto("Produto", 168, y, 7.2, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto("PLTs", 350, y, 7.2, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto("Rolos", 390, y, 7.2, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto(fitas ? "Area" : "Producao", 442, y, 7.2, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto("Status", 510, y, 7.2, true, "0.42 0.44 0.49"));
-  comandos.push(comandoLinha(38, y - 10, 557, y - 10));
+  comandos.push(comandoRetangulo(36, y - 10, 523, 28, "0.93 0.95 0.97", "0.84 0.85 0.88"));
+  for (const coluna of colunasDetalhamento) {
+    const titulo = coluna.titulo === "Producao" && fitas ? "Area" : coluna.titulo;
+    comandos.push(comandoTexto(titulo, coluna.x + 5, y, 6.6, true, "0.42 0.44 0.49"));
+    if (coluna.x > 36) comandos.push(comandoLinha(coluna.x, y - 10, coluna.x, y + 18));
+  }
 }
 
-function quebrarLinhas(valor: string, limite = 80) {
-  const partes = semAcentos(valor).match(new RegExp(`.{1,${limite}}(?:\\s|$)|.{1,${limite}}`, "g"));
-  return partes?.map((parte) => parte.trim()) ?? [""];
-}
-
-function linhasResponsaveisDetalhamento(item: Json) {
+function celulasDetalhamento(item: Json, indice: number, fitas: boolean, mantas: boolean) {
+  const apontamento = registro(item);
   const responsaveis = responsaveisDoApontamento(item);
-  return [
-    ...quebrarLinhas(`Apontado por: ${responsaveis.apontador} | Registrado em: ${formatarDataHora(responsaveis.apontadoEm ?? "")}`),
-    ...quebrarLinhas(responsaveis.lancado
-      ? `Lancado no Protheus por: ${responsaveis.lancador} | Lancado em: ${formatarDataHora(responsaveis.lancadoEm ?? "")}`
-      : "Pendente no Protheus"),
+  const seqIni = texto(apontamento.sequencia_inicio);
+  const seqFim = texto(apontamento.sequencia_fim);
+  const seq = seqIni !== "-" && seqFim !== "-" ? (seqIni === seqFim ? seqIni : `${seqIni}-${seqFim}`) : String(indice + 1);
+  const producao = fitas
+    ? `${formatarNumero(numero(apontamento.area_m2))} m2`
+    : `${formatarNumero(numero(apontamento.metragem))} ${mantas ? "m" : "m2"}`;
+  const celulas: TextoCelula[][] = [
+    [{ texto: seq }],
+    [{ texto: texto(apontamento.op ?? apontamento.lote), negrito: true }],
+    [{ texto: texto(apontamento.produto_nome) }],
+    [{ texto: String(numero(apontamento.quantidade_plts) || "-") }],
+    [{ texto: formatarNumero(numero(apontamento.total_rolos), 0) }],
+    [{ texto: producao }],
+    [
+      { texto: responsaveis.apontador, negrito: true },
+      { texto: formatarDataHora(responsaveis.apontadoEm ?? ""), tamanho: 7, cor: "0.45 0.47 0.52" },
+    ],
+    [
+      { texto: responsaveis.lancado ? "Lancado" : "Pendente", negrito: true, cor: responsaveis.lancado ? "0.07 0.45 0.23" : "0.55 0.31 0.07" },
+      { texto: responsaveis.lancado ? `${responsaveis.lancador} | ${formatarDataHora(responsaveis.lancadoEm ?? "")}` : "Aguardando lancamento", tamanho: 7, cor: "0.45 0.47 0.52" },
+    ],
   ];
+  return celulas.map((partes, coluna) => partes.flatMap((parte) =>
+    quebrarLinhas(parte.texto, colunasDetalhamento[coluna]!.largura - 10, parte.tamanho ?? 7.5, parte.negrito)
+      .map((linha) => ({ ...parte, texto: linha }))));
 }
 
-function alturaDetalhamento(item: Json) {
-  return 22 + linhasResponsaveisDetalhamento(item).length * 10;
+function alturaDetalhamento(item: Json, indice: number, fitas: boolean, mantas: boolean) {
+  return 16 + Math.max(...celulasDetalhamento(item, indice, fitas, mantas).map((linhas) => linhas.length)) * 11;
 }
 
 function desenharLinhaDetalhamento(
@@ -218,27 +284,16 @@ function desenharLinhaDetalhamento(
   fitas: boolean,
   mantas: boolean,
 ) {
-  const apontamento = registro(item);
-  const linhasResponsaveis = linhasResponsaveisDetalhamento(item);
-  const altura = alturaDetalhamento(item);
-  const fundo = indice % 2 === 0 ? "0.985 0.985 0.99" : "1 1 1";
-  comandos.push(comandoRetangulo(36, y - altura + 12, 523, altura - 1, fundo));
-  const seqIni = texto(apontamento.sequencia_inicio);
-  const seqFim = texto(apontamento.sequencia_fim);
-  const seq = seqIni !== "-" && seqFim !== "-" ? (seqIni === seqFim ? seqIni : `${seqIni}-${seqFim}`) : String(indice + 1);
-  comandos.push(comandoTexto(limitar(seq, 7), 40, y, 7.6));
-  comandos.push(comandoTexto(limitar(texto(apontamento.op ?? apontamento.lote), 14), 78, y, 7.6, true));
-  comandos.push(comandoTexto(limitar(texto(apontamento.produto_nome), 27), 168, y, 7.6));
-  comandos.push(comandoTexto(String(numero(apontamento.quantidade_plts) || "-"), 354, y, 7.6));
-  comandos.push(comandoTexto(formatarNumero(numero(apontamento.total_rolos), 0), 393, y, 7.6));
-  const producao = fitas
-    ? `${formatarNumero(numero(apontamento.area_m2))} m2`
-    : `${formatarNumero(numero(apontamento.metragem))} ${mantas ? "m" : "m2"}`;
-  comandos.push(comandoTexto(limitar(producao, 12), 442, y, 7.6));
-  const status = texto(apontamento.status).toLowerCase() === "lancado" ? "Lancado" : "Pendente";
-  comandos.push(comandoTexto(status, 510, y, 7.0, true, status === "Pendente" ? "0.67 0.14 0.05" : "0.07 0.45 0.23"));
-  linhasResponsaveis.forEach((linha, indiceLinha) => {
-    comandos.push(comandoTexto(linha, 40, y - 12 - indiceLinha * 10, 6.8, false, "0.42 0.44 0.49"));
+  const celulas = celulasDetalhamento(item, indice, fitas, mantas);
+  const altura = alturaDetalhamento(item, indice, fitas, mantas);
+  const base = y - altura + 12;
+  comandos.push(comandoRetangulo(36, base, 523, altura, "1 1 1", "0.84 0.85 0.88"));
+  celulas.forEach((linhas, indiceColuna) => {
+    const coluna = colunasDetalhamento[indiceColuna]!;
+    if (coluna.x > 36) comandos.push(comandoLinha(coluna.x, base, coluna.x, y + 12));
+    linhas.forEach((linha, indiceLinha) => comandos.push(comandoTexto(
+      linha.texto, coluna.x + 5, y - indiceLinha * 11, linha.tamanho ?? 7.5, linha.negrito, linha.cor,
+    )));
   });
   return altura;
 }
@@ -253,7 +308,6 @@ function montarPrimeiraPagina(resumo: Json) {
   const setorChave = setor.toLowerCase();
   const fitas = setorChave.includes("fita");
   const mantas = setorChave.includes("manta");
-  const responsaveis = nomesResponsaveisRelatorio(resumo);
   const comandos: string[] = [];
 
   cabecalhoPagina(comandos, "RELATORIO DE PRODUCAO", "Fechamento operacional de turno");
@@ -264,8 +318,6 @@ function montarPrimeiraPagina(resumo: Json) {
   comandos.push(comandoTexto(limitar(texto(raiz.responsavel), 30), 320, 728, 8.2, true));
   comandos.push(comandoTexto(`Gerado em: ${formatarDataHora(texto(raiz.geradoEm))}`, 320, 711, 8.5, false, "0.42 0.44 0.49"));
   comandos.push(comandoLinha(38, 695, 557, 695, "0.15 0.15 0.17"));
-  comandos.push(comandoTexto(limitar(`Apontado por: ${responsaveis.apontadores}`, 74), 38, 681, 7.4));
-  comandos.push(comandoTexto(limitar(`Lancado no Protheus por: ${responsaveis.lancadores}`, 74), 38, 669, 7.4));
 
   const cards: Array<readonly [string, string]> = [
     ["APONTAMENTOS", texto(totais.apontamentos)],
@@ -276,23 +328,23 @@ function montarPrimeiraPagina(resumo: Json) {
   const cardXs = [38, 168, 298, 428];
   cards.forEach(([rotulo, valor], i) => {
     const x = cardXs[i] ?? 38;
-    comandos.push(comandoRetangulo(x, 588, 117, 55, i === 2 && numero(totais.pendentes) > 0 ? "1 0.96 0.94" : "0.97 0.98 0.99", "0.86 0.87 0.89"));
-    comandos.push(comandoTexto(rotulo, x + 10, 623, 7.2, true, "0.42 0.44 0.49"));
-    comandos.push(comandoTexto(valor, x + 10, 601, 18, true, i === 2 && numero(totais.pendentes) > 0 ? "0.67 0.14 0.05" : "0.12 0.12 0.14"));
+    comandos.push(comandoRetangulo(x, 612, 117, 55, i === 2 && numero(totais.pendentes) > 0 ? "1 0.96 0.94" : "0.97 0.98 0.99", "0.86 0.87 0.89"));
+    comandos.push(comandoTexto(rotulo, x + 10, 647, 7.2, true, "0.42 0.44 0.49"));
+    comandos.push(comandoTexto(valor, x + 10, 625, 18, true, i === 2 && numero(totais.pendentes) > 0 ? "0.67 0.14 0.05" : "0.12 0.12 0.14"));
   });
 
-  comandos.push(comandoRetangulo(38, 519, 247, 53, "0.98 0.96 0.96", "0.91 0.80 0.81"));
-  comandos.push(comandoTexto(fitas ? "PRODUCAO TOTAL" : mantas ? "METRAGEM PRODUZIDA" : "AREA PRODUZIDA", 50, 552, 7.5, true, "0.55 0.24 0.25"));
+  comandos.push(comandoRetangulo(38, 543, 247, 53, "0.98 0.96 0.96", "0.91 0.80 0.81"));
+  comandos.push(comandoTexto(fitas ? "PRODUCAO TOTAL" : mantas ? "METRAGEM PRODUZIDA" : "AREA PRODUZIDA", 50, 576, 7.5, true, "0.55 0.24 0.25"));
   const producao = fitas
     ? `${formatarNumero(numero(totais.area))} m2`
     : `${formatarNumero(numero(totais.metragem))} ${mantas ? "m" : "m2"}`;
-  comandos.push(comandoTexto(producao, 50, 530, 18, true, "0.78 0.04 0.06"));
+  comandos.push(comandoTexto(producao, 50, 554, 18, true, "0.78 0.04 0.06"));
 
-  comandos.push(comandoRetangulo(300, 519, 245, 53, "0.97 0.98 0.99", "0.86 0.87 0.89"));
-  comandos.push(comandoTexto("ROLOS PRODUZIDOS", 312, 552, 7.5, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto(formatarNumero(numero(totais.rolos), 0), 312, 530, 18, true));
+  comandos.push(comandoRetangulo(300, 543, 245, 53, "0.97 0.98 0.99", "0.86 0.87 0.89"));
+  comandos.push(comandoTexto("ROLOS PRODUZIDOS", 312, 576, 7.5, true, "0.42 0.44 0.49"));
+  comandos.push(comandoTexto(formatarNumero(numero(totais.rolos), 0), 312, 554, 18, true));
 
-  let y = 484;
+  let y = 508;
   comandos.push(comandoTexto("RESUMO POR PRODUTO", 38, y, 11, true));
   y -= 12;
   comandos.push(comandoLinha(38, y, 557, y));
@@ -342,14 +394,14 @@ function montarPrimeiraPagina(resumo: Json) {
 
   let consumidos = 0;
   const primeiroApontamento = apontamentos[0];
-  if (primeiroApontamento && y - 56 - alturaDetalhamento(primeiroApontamento) >= 66) {
+  if (primeiroApontamento && y - 56 - alturaDetalhamento(primeiroApontamento, 0, fitas, mantas) >= 66) {
     y -= 8;
     comandos.push(comandoTexto("DETALHAMENTO DO TURNO", 38, y, 10, true));
     y -= 20;
     desenharCabecalhoDetalhamento(comandos, y, fitas);
-    y -= 28;
+    y -= 22;
     for (const item of apontamentos) {
-      if (y - alturaDetalhamento(item) < 66) break;
+      if (y - alturaDetalhamento(item, consumidos, fitas, mantas) < 66) break;
       y -= desenharLinhaDetalhamento(comandos, item, consumidos, y, fitas, mantas);
       consumidos += 1;
     }
@@ -375,11 +427,11 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
     cabecalhoPagina(comandos, "DETALHAMENTO DO TURNO", `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`);
     desenharCabecalhoDetalhamento(comandos, 730, fitas);
 
-    let y = 699;
+    let y = 708;
     const inicioPagina = inicio;
     while (inicio < apontamentos.length) {
       const item = apontamentos[inicio];
-      if (item === undefined || y - alturaDetalhamento(item) < 66) break;
+      if (item === undefined || y - alturaDetalhamento(item, inicio, fitas, mantas) < 66) break;
       y -= desenharLinhaDetalhamento(comandos, item, inicio, y, fitas, mantas);
       inicio += 1;
     }
