@@ -1,11 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  CalendarDays,
-  PackageCheck,
-  Pencil,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { CalendarDays, PackageCheck, Pencil, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -14,6 +8,14 @@ import { AppShell } from "@/components/dryko/app-shell";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,6 +35,13 @@ export const Route = createFileRoute("/_authenticated/programacao")({
     meta: [
       { title: "Programação | Aponta Produção DRYKO" },
       { name: "description", content: "Produção automática hora a hora e programação diária." },
+      { property: "og:title", content: "Programação | Aponta Produção DRYKO" },
+      {
+        property: "og:description",
+        content: "Produção automática hora a hora e programação diária.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Programacao,
@@ -113,6 +122,9 @@ function Programacao() {
   const [horasDigitadas, setHorasDigitadas] = useState("");
   const [produtoId, setProdutoId] = useState("");
   const [quantidadePrevista, setQuantidadePrevista] = useState("");
+  const [programacaoEmEdicao, setProgramacaoEmEdicao] = useState<ProgramacaoItem | null>(null);
+  const [quantidadeEmEdicao, setQuantidadeEmEdicao] = useState("");
+  const [salvandoQuantidade, setSalvandoQuantidade] = useState(false);
   const [erro, setErro] = useState(false);
   const [erroMeta, setErroMeta] = useState(false);
   const [carregandoProgramacao, setCarregandoProgramacao] = useState(false);
@@ -136,6 +148,8 @@ function Programacao() {
     setProdutos([]);
     setProdutoId("");
     setQuantidadePrevista("");
+    setProgramacaoEmEdicao(null);
+    setQuantidadeEmEdicao("");
     cacheProgramacao.current = null;
 
     if (!setor || !turno || !dataAtual) {
@@ -184,13 +198,7 @@ function Programacao() {
   }, [dataAtual, setor, turno, recarga]);
 
   useEffect(() => {
-    if (
-      abaAtiva !== "programacao" ||
-      !programacaoSuportada ||
-      !setor ||
-      !turno ||
-      !dataAtual
-    ) {
+    if (abaAtiva !== "programacao" || !programacaoSuportada || !setor || !turno || !dataAtual) {
       return;
     }
 
@@ -261,9 +269,7 @@ function Programacao() {
       .sort((a, b) => ordemHoraTurno(a.hora, turno) - ordemHoraTurno(b.hora, turno))
       .map((item) => ({
         ...item,
-        produtos: [...item.produtos.values()].sort((a, b) =>
-          a.produto.localeCompare(b.produto),
-        ),
+        produtos: [...item.produtos.values()].sort((a, b) => a.produto.localeCompare(b.produto)),
       }));
   }, [registros, turno]);
 
@@ -275,9 +281,9 @@ function Programacao() {
     const producaoPorHora = new Map(porHora.map((item) => [item.hora, item]));
     const horasPlanejadas = metaTurno ? horasDisponiveis : [];
     const horasPlanejadasSet = new Set(horasPlanejadas);
-    const chaves = [
-      ...new Set([...horasPlanejadas, ...porHora.map((item) => item.hora)]),
-    ].sort((a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno));
+    const chaves = [...new Set([...horasPlanejadas, ...porHora.map((item) => item.hora)])].sort(
+      (a, b) => ordemHoraTurno(a, turno) - ordemHoraTurno(b, turno),
+    );
 
     let realizadoAcumulado = 0;
     let previstoAcumulado = 0;
@@ -365,7 +371,16 @@ function Programacao() {
   }
 
   async function salvarProgramacao() {
-    if (!user || !setor || !turno || !produtoSelecionado || salvandoProgramacao) return;
+    if (
+      !canProgramProduction ||
+      !user ||
+      !setor ||
+      !turno ||
+      !produtoSelecionado ||
+      salvandoProgramacao ||
+      salvandoQuantidade
+    )
+      return;
     const quantidade = numeroDoCampo(quantidadePrevista);
     if (!Number.isFinite(quantidade) || quantidade <= 0) {
       toast.error("Informe produto e quantidade prevista.");
@@ -420,11 +435,70 @@ function Programacao() {
     toast.success("Produto adicionado à programação.");
   }
 
+  function abrirEdicaoQuantidade(item: ProgramacaoItem) {
+    if (!canProgramProduction || salvandoQuantidade || salvandoProgramacao) return;
+    setProgramacaoEmEdicao(item);
+    setQuantidadeEmEdicao(String(item.quantidade_prevista).replace(".", ","));
+  }
+
+  async function salvarQuantidadeProgramacao() {
+    if (
+      !canProgramProduction ||
+      !user ||
+      !setor ||
+      !programacaoEmEdicao ||
+      salvandoQuantidade ||
+      salvandoProgramacao
+    )
+      return;
+    const quantidade = numeroDoCampo(quantidadeEmEdicao);
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      toast.error("Informe uma quantidade prevista maior que zero.");
+      return;
+    }
+
+    const carga = carregamentoAtual.current;
+    setSalvandoQuantidade(true);
+    try {
+      const { data, error } = await supabase
+        .from("programacao_producao")
+        .update({ quantidade_prevista: quantidade, updated_at: new Date().toISOString() })
+        .eq("id", programacaoEmEdicao.id)
+        .eq("setor", setor)
+        .eq("data_local", dataAtual)
+        .eq("global_dia", true)
+        .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+        .single();
+      if (error || !data) {
+        throw new Error(
+          error?.message || "Não foi possível atualizar a quantidade da programação.",
+        );
+      }
+      if (carga !== carregamentoAtual.current) return;
+
+      setProgramacao((atuais) => atuais.map((item) => (item.id === data.id ? data : item)));
+      cacheProgramacao.current = { chave: `${setor}:${dataAtual}`, at: Date.now() };
+      setProgramacaoEmEdicao(null);
+      toast.success("Quantidade da programação atualizada.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar a quantidade da programação.",
+      );
+    } finally {
+      setSalvandoQuantidade(false);
+    }
+  }
+
   async function editarReferencia(id: string, atual: string | null) {
     if (!canProgramProduction) return;
     const coluna = setor === "mantas" ? "lote" : "op";
     const nome = coluna === "lote" ? "Lote" : "OP";
-    const digitado = window.prompt(`${nome} da programação (deixe vazio para limpar):`, atual ?? "");
+    const digitado = window.prompt(
+      `${nome} da programação (deixe vazio para limpar):`,
+      atual ?? "",
+    );
     if (digitado === null) return;
     const valor = digitado.trim() || null;
     const { error } = await (supabase as any)
@@ -442,10 +516,7 @@ function Programacao() {
   }
 
   async function excluirProgramacao(id: string) {
-    const { error } = await (supabase as any)
-      .from("programacao_producao")
-      .delete()
-      .eq("id", id);
+    const { error } = await (supabase as any).from("programacao_producao").delete().eq("id", id);
     if (error) {
       toast.error("Não foi possível remover este item.");
       return;
@@ -489,10 +560,16 @@ function Programacao() {
 
         <Tabs value={abaAtiva} onValueChange={(valor) => setAbaAtiva(valor as AbaProgramacao)}>
           <TabsList className="grid h-14 w-full grid-cols-2 rounded-2xl p-1.5">
-            <TabsTrigger value="hora" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
+            <TabsTrigger
+              value="hora"
+              className="h-11 touch-manipulation rounded-xl text-sm font-bold"
+            >
               Hora a hora
             </TabsTrigger>
-            <TabsTrigger value="programacao" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
+            <TabsTrigger
+              value="programacao"
+              className="h-11 touch-manipulation rounded-xl text-sm font-bold"
+            >
               Programação
             </TabsTrigger>
           </TabsList>
@@ -506,8 +583,16 @@ function Programacao() {
 
             <div className="grid grid-cols-2 gap-3">
               <ResumoGrande label="Previsto" valor={`${fmt(metaTotal)} ${unidade}`} />
-              <ResumoGrande label="Realizado" valor={`${fmt(realizadoTurno)} ${unidade}`} destaque />
-              <ResumoGrande label="Atingimento" valor={`${fmt(atingimento)}%`} className="col-span-2" />
+              <ResumoGrande
+                label="Realizado"
+                valor={`${fmt(realizadoTurno)} ${unidade}`}
+                destaque
+              />
+              <ResumoGrande
+                label="Atingimento"
+                valor={`${fmt(atingimento)}%`}
+                className="col-span-2"
+              />
             </div>
 
             <Card className="rounded-2xl border-border shadow-sm">
@@ -579,7 +664,9 @@ function Programacao() {
                         <Input
                           inputMode="decimal"
                           value={horasDigitadas}
-                          onChange={(e) => setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))}
+                          onChange={(e) =>
+                            setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))
+                          }
                           placeholder="Ex.: 9:28"
                         />
                       </div>
@@ -620,7 +707,8 @@ function Programacao() {
                   <Card className="rounded-2xl border-border shadow-sm">
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-base">
-                        <PackageCheck className="size-5 text-primary" /> Produtos que vão rodar no dia
+                        <PackageCheck className="size-5 text-primary" /> Produtos que vão rodar no
+                        dia
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -680,7 +768,10 @@ function Programacao() {
                       <p className="text-sm text-muted-foreground">Nenhum produto programado.</p>
                     ) : (
                       resumoProgramacao.map((item) => (
-                        <div key={item.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                        <div
+                          key={item.id}
+                          className="rounded-xl border border-border bg-muted/30 p-3"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="font-bold">{item.produto_nome}</p>
@@ -724,7 +815,10 @@ function Programacao() {
                             )}
                           </div>
                           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                            <Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} />
+                            <Mini
+                              label="Programado"
+                              valor={`${fmt(item.previsto)} ${item.unidade}`}
+                            />
                             <Mini
                               label="Produzido no dia"
                               valor={`${fmt(item.realizado)} ${item.unidade}`}
@@ -736,6 +830,20 @@ function Programacao() {
                               alerta={item.saldo > 0}
                             />
                           </div>
+                          {canProgramProduction && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 h-11 w-full touch-manipulation sm:w-auto"
+                              disabled={salvandoProgramacao || salvandoQuantidade}
+                              onClick={() => abrirEdicaoQuantidade(item)}
+                              aria-label={`Editar quantidade de ${item.produto_nome}`}
+                            >
+                              <Pencil className="size-4" />
+                              Editar quantidade
+                            </Button>
+                          )}
                         </div>
                       ))
                     )}
@@ -746,6 +854,62 @@ function Programacao() {
           </TabsContent>
         </Tabs>
       </div>
+      <Dialog
+        open={programacaoEmEdicao !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto && !salvandoQuantidade) setProgramacaoEmEdicao(null);
+        }}
+      >
+        <DialogContent className="w-[calc(100%-2rem)] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar quantidade</DialogTitle>
+            <DialogDescription>
+              {programacaoEmEdicao?.produto_nome} · programação de {formatarData(dataAtual)}. O
+              saldo será recalculado conforme a produção do dia.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void salvarQuantidadeProgramacao();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="quantidade-programacao">
+                Quantidade prevista ({programacaoEmEdicao?.unidade})
+              </Label>
+              <Input
+                id="quantidade-programacao"
+                inputMode="decimal"
+                value={quantidadeEmEdicao}
+                onChange={(event) => setQuantidadeEmEdicao(event.target.value)}
+                disabled={salvandoQuantidade}
+                autoFocus
+              />
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 touch-manipulation"
+                disabled={salvandoQuantidade}
+                onClick={() => setProgramacaoEmEdicao(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="h-11 touch-manipulation"
+                disabled={salvandoQuantidade || !quantidadeEmEdicao.trim()}
+              >
+                <Save className="size-4" />
+                {salvandoQuantidade ? "Salvando..." : "Salvar quantidade"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
@@ -810,7 +974,9 @@ function ResumoGrande({
   className?: string;
 }) {
   return (
-    <Card className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}>
+    <Card
+      className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}
+    >
       <CardContent className="p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
         <p className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}>
@@ -833,7 +999,9 @@ function MetricaHora({
   return (
     <div className="min-w-0">
       <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}>
+      <p
+        className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}
+      >
         {valor}
       </p>
     </div>
@@ -854,22 +1022,12 @@ function Mini({
   return (
     <div
       className={`rounded-lg p-2 ${
-        alerta
-          ? "bg-amber-100/80 dark:bg-amber-950/50"
-          : destaque
-            ? "bg-primary/10"
-            : "bg-muted"
+        alerta ? "bg-amber-100/80 dark:bg-amber-950/50" : destaque ? "bg-primary/10" : "bg-muted"
       }`}
     >
       <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
       <p
-        className={`font-bold ${
-          alerta
-            ? "text-amber-900 dark:text-amber-100"
-            : destaque
-              ? "text-primary"
-              : ""
-        }`}
+        className={`font-bold ${alerta ? "text-amber-900 dark:text-amber-100" : destaque ? "text-primary" : ""}`}
       >
         {valor}
       </p>
