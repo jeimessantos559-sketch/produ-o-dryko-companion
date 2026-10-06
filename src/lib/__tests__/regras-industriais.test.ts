@@ -34,7 +34,7 @@ describe("turnos", () => {
     const horas = horasProdutivasTurno("T2");
     const ordenadas = [...horas].sort((a, b) => ordemHoraTurno(a, "T2") - ordemHoraTurno(b, "T2"));
     expect(ordenadas).toEqual(horas);
-    expect(ordenadas.at(-1)).toBe("01:00");
+    expect(ordenadas.at(-1)).toBe("00:00");
   });
 });
 
