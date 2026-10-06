@@ -716,6 +716,8 @@ export type Database = {
       }
       programacao_producao: {
         Row: {
+          finalizado_em: string | null
+          finalizado_por: string | null
           created_at: string
           criado_por: string
           data_local: string
@@ -732,6 +734,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          finalizado_em?: string | null
+          finalizado_por?: string | null
           created_at?: string
           criado_por: string
           data_local: string
@@ -748,6 +752,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          finalizado_em?: string | null
+          finalizado_por?: string | null
           created_at?: string
           criado_por?: string
           data_local?: string
@@ -960,6 +966,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      limpar_tentativas_auth: {
+        Args: { p_acao: string; p_chave: string }
+        Returns: undefined
+      }
+      registrar_tentativa_auth: {
+        Args: { p_acao: string; p_bloqueio_segundos: number; p_chave: string; p_janela_segundos: number; p_max_tentativas: number }
+        Returns: boolean
+      }
+      produtos_da_referencia: {
+        Args: { p_setor: Database["public"]["Enums"]["setor_codigo"]; p_referencia: string }
+        Returns: { produto_id: string }[]
+      }
+      contagem_turno: {
+        Args: { p_setor: Database["public"]["Enums"]["setor_codigo"]; p_turno: Database["public"]["Enums"]["turno_codigo"]; p_data: string }
+        Returns: Json
+      }
+      alterar_status_programacao: {
+        Args: { p_id: string; p_finalizar: boolean }
+        Returns: undefined
+      }
+      finalizar_meta_atingida: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
       ajustar_horario_apontamento: {
         Args: { p_data_hora: string; p_id: string }
         Returns: undefined
