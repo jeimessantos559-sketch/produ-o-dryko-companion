@@ -9,10 +9,12 @@ import {
   PackageCheck,
   Search,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { agruparProtheus } from "@/lib/protheus";
+import { pltsFechados, sequenciasDoTurno, type ApontamentoTurno } from "@/lib/apontamentos-turno";
+import { CartaoApontamento } from "@/components/dryko/cartao-apontamento";
 import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,6 +36,11 @@ import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consult
 const LazyApontamentoRapido = lazy(() =>
   import("@/components/dryko/apontamento-rapido").then((modulo) => ({
     default: modulo.ApontamentoRapido,
+  })),
+);
+const LazyCorrigirApontamento = lazy(() =>
+  import("@/components/dryko/corrigir-apontamento").then((m) => ({
+    default: m.CorrigirApontamento,
   })),
 );
 
@@ -61,19 +68,7 @@ type Resumo = {
   area: number;
 };
 
-type Registro = {
-  id: string;
-  op: string | null;
-  lote: string | null;
-  produto_nome: string;
-  quantidade_plts: number | null;
-  total_rolos: number | null;
-  metragem: number | null;
-  area_m2: number | null;
-  status: "pendente" | "lancado";
-  created_at: string;
-  data_hora_producao: string;
-};
+type Registro = ApontamentoTurno;
 
 type Pendencia = Registro & {
   data_local: string;
@@ -108,7 +103,7 @@ const RESUMO_VAZIO: Resumo = {
 };
 
 function Painel() {
-  const { profile, loading, isAutorizado } = useAuth();
+  const { profile, loading, isAutorizado, isAdmin } = useAuth();
   const [resumo, setResumo] = useState<Resumo>(RESUMO_VAZIO);
   const [pendencias, setPendencias] = useState<Pendencia[]>([]);
   const [recentes, setRecentes] = useState<Registro[]>([]);
@@ -119,36 +114,49 @@ function Painel() {
   const [apontarAberto, setApontarAberto] = useState(false);
   const [modoApontamento, setModoApontamento] = useState<"novo" | "repetir">("novo");
   const [confirmandoChave, setConfirmandoChave] = useState<string | null>(null);
+  const [corrigindo, setCorrigindo] = useState<Registro | null>(null);
+  const cargaAtual = useRef(0);
+  const sequencias = useMemo(() => sequenciasDoTurno(recentes), [recentes]);
 
-  const carregarPainel = useCallback(async (forcar = false) => {
-    if (!profile?.setor_atual || !profile.turno_atual) {
-      setRecentes([]);
-      setResumo(RESUMO_VAZIO);
-      setPendencias([]);
-      setErro(false);
-      return;
-    }
+  const carregarPainel = useCallback(
+    async (forcar = false) => {
+      const carga = ++cargaAtual.current;
+      if (!profile?.setor_atual || !profile.turno_atual) {
+        setRecentes([]);
+        setResumo(RESUMO_VAZIO);
+        setPendencias([]);
+        setErro(false);
+        return;
+      }
 
-    const setorAtual = profile.setor_atual;
-    const turnoAtual = profile.turno_atual;
-    const dataAtual = dataOperacional(turnoAtual);
-    const chave = `painel:${setorAtual}:${turnoAtual}:${dataAtual}`;
-    // Mostra o último resultado na hora e revalida em segundo plano.
-    const salvo = lerCache<PainelPayload>(chave);
-    if (salvo && !forcar) aplicarPayload(salvo.valor);
+      const setorAtual = profile.setor_atual;
+      const turnoAtual = profile.turno_atual;
+      const dataAtual = dataOperacional(turnoAtual);
+      const chave = `painel:${setorAtual}:${turnoAtual}:${dataAtual}`;
+      // Mostra o último resultado na hora e revalida em segundo plano.
+      const salvo = lerCache<PainelPayload>(chave);
+      if (salvo && !forcar) aplicarPayload(salvo.valor);
 
-    try {
-      const payload = await consultarComCache<PainelPayload>(chave, 15_000, () => buscarPainel(setorAtual, turnoAtual, dataAtual), { forcar });
-      setErro(false);
-      aplicarPayload(payload);
-    } catch {
-      if (salvo) return;
-      setErro(true);
-      setRecentes([]);
-      setResumo(RESUMO_VAZIO);
-      setPendencias([]);
-    }
-  }, [profile?.setor_atual, profile?.turno_atual]);
+      try {
+        const payload = await consultarComCache<PainelPayload>(
+          chave,
+          15_000,
+          () => buscarPainel(setorAtual, turnoAtual, dataAtual),
+          { forcar },
+        );
+        if (carga !== cargaAtual.current) return;
+        setErro(false);
+        aplicarPayload(payload);
+      } catch {
+        if (carga !== cargaAtual.current) return;
+        setErro(true);
+        setRecentes([]);
+        setResumo(RESUMO_VAZIO);
+        setPendencias([]);
+      }
+    },
+    [profile?.setor_atual, profile?.turno_atual],
+  );
 
   const recarregarAposMudanca = useCallback(async () => {
     invalidarCache("painel:");
@@ -161,7 +169,7 @@ function Painel() {
       registros: Number(r.registros ?? 0),
       pendentes: Number(r.pendentes ?? 0),
       lancados: Number(r.lancados ?? 0),
-      plts: Number(r.plts ?? 0),
+      plts: (payload.recentes ?? []).reduce((n, item) => n + pltsFechados(item), 0),
       rolos: Number(r.rolos ?? 0),
       metragem: Number(r.metragem ?? 0),
       area: Number(r.area ?? 0),
@@ -183,11 +191,17 @@ function Painel() {
   const turnoNome = nomeTurno(profile?.turno_atual);
 
   const pendenciasAnteriores = useMemo(
-    () => pendencias.filter((item) => item.data_local !== dataAtual || item.turno !== profile?.turno_atual),
+    () =>
+      pendencias.filter(
+        (item) => item.data_local !== dataAtual || item.turno !== profile?.turno_atual,
+      ),
     [dataAtual, pendencias, profile?.turno_atual],
   );
   const pendenciasAtuais = useMemo(
-    () => pendencias.filter((item) => item.data_local === dataAtual && item.turno === profile?.turno_atual),
+    () =>
+      pendencias.filter(
+        (item) => item.data_local === dataAtual && item.turno === profile?.turno_atual,
+      ),
     [dataAtual, pendencias, profile?.turno_atual],
   );
 
@@ -221,7 +235,9 @@ function Painel() {
   async function confirmarGrupo(grupo: GrupoProtheus) {
     if (!isAutorizado || confirmandoChave) return;
     setConfirmandoChave(grupo.chave);
-    const { data, error } = await supabase.rpc("confirmar_apontamentos_protheus", { p_ids: grupo.ids });
+    const { data, error } = await supabase.rpc("confirmar_apontamentos_protheus", {
+      p_ids: grupo.ids,
+    });
     setConfirmandoChave(null);
     if (error) {
       toast.error(error.message || "Não foi possível lançar no Protheus.");
@@ -242,36 +258,95 @@ function Painel() {
         onApontar={() => abrirApontamento("novo")}
       >
         <div className="mx-auto max-w-5xl space-y-3">
-          {erro && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800">Não foi possível carregar o painel. Tente novamente.</div>}
+          {erro && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800"
+            >
+              Não foi possível carregar o painel. Tente novamente.
+            </div>
+          )}
           {profile?.setor_atual && profile.turno_atual && (
-            <OcorrenciasAbertasCard setor={profile.setor_atual} turno={profile.turno_atual} data={dataAtual} />
+            <OcorrenciasAbertasCard
+              setor={profile.setor_atual}
+              turno={profile.turno_atual}
+              data={dataAtual}
+            />
           )}
 
           {!loading && (!profile?.setor_atual || !profile.turno_atual) && (
-            <Card className="rounded-2xl"><CardContent className="flex items-center justify-between gap-3 p-4"><p className="text-sm">Escolha setor e turno para começar.</p><Button asChild size="sm"><Link to="/selecionar">Escolher</Link></Button></CardContent></Card>
+            <Card className="rounded-2xl">
+              <CardContent className="flex items-center justify-between gap-3 p-4">
+                <p className="text-sm">Escolha setor e turno para começar.</p>
+                <Button asChild size="sm">
+                  <Link to="/selecionar">Escolher</Link>
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
           <div className="grid grid-cols-2 gap-2.5">
-            <Indicador icon={Clock3} label="Pendentes" valor={resumo.pendentes} detalhe="para lançar" tone="amber" />
-            <Indicador icon={PackageCheck} label="Lançados" valor={resumo.lancados} detalhe="no Protheus" tone="green" />
-            <Indicador icon={Boxes} label={setorFitas ? "Apontamentos" : "PLTs fechados"} valor={setorFitas ? resumo.registros : resumo.plts} detalhe="neste turno" tone="slate" />
-            <Indicador icon={Gauge} label={setorCorte ? "Metragem produzida" : "Metragem Protheus"} valor={setorFitas ? formatarNumero(resumo.area) : formatarNumero(resumo.metragem)} detalhe={setorFitas || setorCorte ? "m²" : "m"} tone="slate" />
+            <Indicador
+              icon={Clock3}
+              label="Pendentes"
+              valor={resumo.pendentes}
+              detalhe="para lançar"
+              tone="amber"
+            />
+            <Indicador
+              icon={PackageCheck}
+              label="Lançados"
+              valor={resumo.lancados}
+              detalhe="no Protheus"
+              tone="green"
+            />
+            <Indicador
+              icon={Boxes}
+              label={setorFitas ? "Apontamentos" : "PLTs fechados"}
+              valor={setorFitas ? resumo.registros : resumo.plts}
+              detalhe="neste turno"
+              tone="slate"
+            />
+            <Indicador
+              icon={Gauge}
+              label={setorCorte ? "Metragem produzida" : "Metragem Protheus"}
+              valor={setorFitas ? formatarNumero(resumo.area) : formatarNumero(resumo.metragem)}
+              detalhe={setorFitas || setorCorte ? "m²" : "m"}
+              tone="slate"
+            />
           </div>
 
           {isAutorizado && gruposProtheus.length > 0 && (
             <section className="rounded-2xl border border-primary/20 bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <div><h2 className="font-bold text-slate-950">Lançar no Protheus</h2><p className="text-xs text-slate-500">Valores já agrupados para reduzir lançamentos</p></div>
-                <Button asChild variant="ghost" size="sm"><Link to="/controle-apontamentos">Abrir controle <ArrowRight className="size-4" /></Link></Button>
+                <div>
+                  <h2 className="font-bold text-slate-950">Lançar no Protheus</h2>
+                  <p className="text-xs text-slate-500">
+                    Valores já agrupados para reduzir lançamentos
+                  </p>
+                </div>
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/controle-apontamentos">
+                    Abrir controle <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
               </div>
               <div className="space-y-2">
                 {gruposProtheus.slice(0, 4).map((grupo) => (
-                  <div key={grupo.chave} className="flex items-center gap-2 rounded-xl bg-slate-50 p-2.5">
+                  <div
+                    key={grupo.chave}
+                    className="flex items-center gap-2 rounded-xl bg-slate-50 p-2.5"
+                  >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold">{tituloGrupo(grupo, setor)}</p>
                       <p className="truncate text-xs text-slate-500">{resumoGrupo(grupo, setor)}</p>
                     </div>
-                    <Button size="sm" className="shrink-0" disabled={confirmandoChave !== null} onClick={() => void confirmarGrupo(grupo)}>
+                    <Button
+                      size="sm"
+                      className="shrink-0"
+                      disabled={confirmandoChave !== null}
+                      onClick={() => void confirmarGrupo(grupo)}
+                    >
                       {confirmandoChave === grupo.chave ? "Lançando..." : "Lançar"}
                     </Button>
                   </div>
@@ -281,24 +356,52 @@ function Painel() {
           )}
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="px-3 pb-2 pt-3"><h2 className="text-lg font-extrabold text-slate-950">Apontamentos do turno</h2><p className="text-xs text-slate-500">Horário e produção de cada registro</p></div>
+            <div className="px-4 pb-3 pt-4">
+              <h2 className="text-lg font-extrabold text-slate-950">Apontamentos do turno</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Um registro por apontamento, mesmo quando houver vários PLTs.
+              </p>
+            </div>
             <div className="grid grid-cols-[1fr_112px] gap-2 border-b border-slate-100 px-3 pb-3">
-              <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="OP, lote ou produto" className="h-10 rounded-xl pl-9 text-sm" /></div>
-              <select value={statusFiltro} onChange={(event) => setStatusFiltro(event.target.value as "todos" | "pendente" | "lancado")} className="h-10 w-full rounded-xl border bg-white px-2 text-sm"><option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="lancado">Lançados</option></select>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={busca}
+                  onChange={(event) => setBusca(event.target.value)}
+                  placeholder="OP, lote ou produto"
+                  className="h-10 rounded-xl pl-9 text-sm"
+                />
+              </div>
+              <select
+                value={statusFiltro}
+                onChange={(event) =>
+                  setStatusFiltro(event.target.value as "todos" | "pendente" | "lancado")
+                }
+                className="h-10 w-full rounded-xl border bg-white px-2 text-sm"
+              >
+                <option value="todos">Todos</option>
+                <option value="pendente">Pendentes</option>
+                <option value="lancado">Lançados</option>
+              </select>
             </div>
             <div className="px-3 py-2">
               {filtrados.length === 0 ? (
-                <div className="rounded-xl border border-dashed bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Nenhum apontamento neste turno.</div>
+                <div className="rounded-xl border border-dashed bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  Nenhum apontamento neste turno.
+                </div>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="space-y-3 py-2">
                   {filtrados.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-2 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-950">{tituloRegistro(item, setor)}</p>
-                        <p className="truncate text-xs text-slate-500"><strong>{horaProducao(item.data_hora_producao)}</strong> · {resumoRegistro(item, setor)}</p>
-                      </div>
-                      <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${item.status === "lancado" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status === "lancado" ? "Lançado" : "Pendente"}</span>
-                    </div>
+                    <CartaoApontamento
+                      key={item.id}
+                      item={item}
+                      sequencia={sequencias.get(item.id)}
+                      onCorrigir={
+                        item.status === "pendente" || isAdmin
+                          ? () => setCorrigindo(item)
+                          : undefined
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -306,7 +409,22 @@ function Painel() {
           </section>
 
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 shadow-sm">
-            <div className="flex items-center gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700"><CheckCircle2 className="size-5" /></div><div className="min-w-0 flex-1"><h2 className="font-bold text-slate-950">Turno aberto</h2><p className="text-xs text-slate-500">{resumo.registros} apontamento(s) · {resumo.pendentes} pendente(s)</p></div><Button asChild variant="secondary" size="sm"><Link to="/passagem-turno"><LockKeyhole className="size-4" /> Encerrar</Link></Button></div>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                <CheckCircle2 className="size-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-bold text-slate-950">Turno aberto</h2>
+                <p className="text-xs text-slate-500">
+                  {resumo.registros} apontamento(s) · {resumo.pendentes} pendente(s)
+                </p>
+              </div>
+              <Button asChild variant="secondary" size="sm">
+                <Link to="/passagem-turno">
+                  <LockKeyhole className="size-4" /> Encerrar
+                </Link>
+              </Button>
+            </div>
           </section>
         </div>
       </AppShell>
@@ -321,66 +439,142 @@ function Painel() {
           />
         </Suspense>
       )}
+      {corrigindo && (
+        <Suspense fallback={null}>
+          <LazyCorrigirApontamento
+            key={corrigindo.id}
+            item={corrigindo}
+            onClose={() => setCorrigindo(null)}
+            onSaved={recarregarAposMudanca}
+          />
+        </Suspense>
+      )}
 
       <Dialog open={notificacoesAbertas} onOpenChange={setNotificacoesAbertas}>
         <DialogContent className="max-h-[92dvh] overscroll-contain overflow-y-auto rounded-2xl p-4 sm:max-w-xl">
-          <DialogHeader><DialogTitle>Pendências de turnos anteriores</DialogTitle><DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Pendências de turnos anteriores</DialogTitle>
+            <DialogDescription>Apontamentos ainda não lançados no Protheus.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-2">
             {gruposAnteriores.length === 0 ? (
-              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Nenhuma pendência anterior.</div>
-            ) : gruposAnteriores.map((grupo) => (
-              <article key={grupo.chave} className="rounded-xl border bg-slate-50/50 p-3">
-                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="font-bold">{tituloGrupo(grupo, setor)}</p><p className="text-xs text-slate-500">{formatarData(grupo.item.data_local)} · {nomeTurno(grupo.item.turno)} · {horaProducao(grupo.item.data_hora_producao)}</p></div><span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">Pendente</span></div>
-                <p className="mt-2 text-sm font-medium text-slate-600">{resumoGrupo(grupo, setor)}</p>
-                {isAutorizado && <Button type="button" variant="outline" size="sm" className="mt-2 w-full border-primary text-primary" disabled={confirmandoChave !== null} onClick={() => void confirmarGrupo(grupo)}>{confirmandoChave === grupo.chave ? "Lançando..." : grupo.ids.length > 1 ? `Lançar agrupado (${grupo.ids.length})` : "Conferir e lançar"}</Button>}
-              </article>
-            ))}
+              <div className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">
+                Nenhuma pendência anterior.
+              </div>
+            ) : (
+              gruposAnteriores.map((grupo) => (
+                <article key={grupo.chave} className="rounded-xl border bg-slate-50/50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold">{tituloGrupo(grupo, setor)}</p>
+                      <p className="text-xs text-slate-500">
+                        {formatarData(grupo.item.data_local)} · {nomeTurno(grupo.item.turno)} ·{" "}
+                        {horaProducao(grupo.item.data_hora_producao)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                      Pendente
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-slate-600">
+                    {resumoGrupo(grupo, setor)}
+                  </p>
+                  {isAutorizado && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 w-full border-primary text-primary"
+                      disabled={confirmandoChave !== null}
+                      onClick={() => void confirmarGrupo(grupo)}
+                    >
+                      {confirmandoChave === grupo.chave
+                        ? "Lançando..."
+                        : grupo.ids.length > 1
+                          ? `Lançar agrupado (${grupo.ids.length})`
+                          : "Conferir e lançar"}
+                    </Button>
+                  )}
+                </article>
+              ))
+            )}
           </div>
-          <DialogFooter className="grid grid-cols-2 gap-2 sm:flex"><Button variant="outline" onClick={() => setNotificacoesAbertas(false)}>Fechar</Button><Button asChild><Link to="/controle-apontamentos" onClick={() => setNotificacoesAbertas(false)}>Controle Protheus</Link></Button></DialogFooter>
+          <DialogFooter className="grid grid-cols-2 gap-2 sm:flex">
+            <Button variant="outline" onClick={() => setNotificacoesAbertas(false)}>
+              Fechar
+            </Button>
+            <Button asChild>
+              <Link to="/controle-apontamentos" onClick={() => setNotificacoesAbertas(false)}>
+                Controle Protheus
+              </Link>
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
   );
 }
 
-const COLUNAS = "id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao";
-
 async function buscarPainel(setor: string, turno: string, data: string): Promise<PainelPayload> {
-  const rpc = await (supabase.rpc as any)("painel_turno", { p_setor: setor, p_turno: turno, p_data: data });
-  if (!rpc.error) return (rpc.data ?? {}) as PainelPayload;
+  const rpc = await (supabase.rpc as any)("painel_turno", {
+    p_setor: setor,
+    p_turno: turno,
+    p_data: data,
+  });
+  // Uma lista parcial produz totais e sequências errados; em falha mostramos erro para tentar novamente.
+  if (rpc.error) throw rpc.error;
+  return (rpc.data ?? {}) as PainelPayload;
+}
 
-  const [{ data: itensData, error }, { data: pendenciasData, error: erroPendencias }] = await Promise.all([
-    supabase.from("apontamentos").select(COLUNAS)
-      .eq("setor", setor as never).eq("turno", turno as never).eq("data_local", data)
-      .order("data_hora_producao", { ascending: false }).limit(30),
-    supabase.from("apontamentos").select(`${COLUNAS}, data_local, turno`)
-      .eq("setor", setor as never).eq("status", "pendente")
-      .order("data_hora_producao", { ascending: false }).limit(60),
-  ]);
-  if (error || erroPendencias) throw error ?? erroPendencias;
-  const itens = (itensData ?? []) as Registro[];
-  const resumo = itens.reduce(
-    (acc, item) => ({
-      registros: acc.registros + 1,
-      pendentes: acc.pendentes + (item.status === "pendente" ? 1 : 0),
-      lancados: acc.lancados + (item.status === "lancado" ? 1 : 0),
-      plts: acc.plts + Number(item.quantidade_plts ?? 0),
-      rolos: acc.rolos + Number(item.total_rolos ?? 0),
-      metragem: acc.metragem + Number(item.metragem ?? 0),
-      area: acc.area + Number(item.area_m2 ?? 0),
-    }),
-    { ...RESUMO_VAZIO },
+function agruparPendencias(
+  itens: Pendencia[],
+  setor: string,
+  incluirTurnoNaChave: boolean,
+): GrupoProtheus[] {
+  return agruparProtheus(itens, setor, { incluirTurno: incluirTurnoNaChave }).map(
+    ({ itens: _itens, ...g }) => g,
   );
-  return { resumo, recentes: itens, pendencias: (pendenciasData ?? []) as Pendencia[] };
 }
 
-function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChave: boolean): GrupoProtheus[] {
-  return agruparProtheus(itens, setor, { incluirTurno: incluirTurnoNaChave }).map(({ itens: _itens, ...g }) => g);
-}
-
-function Indicador({ icon: Icon, label, valor, detalhe, tone, destaque = false }: { icon: typeof Clock3; label: string; valor: string | number; detalhe: string; tone: "amber" | "green" | "slate"; destaque?: boolean }) {
-  const toneClasses = tone === "amber" ? "bg-amber-50 text-amber-700" : tone === "green" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600";
-  return <Card className={`rounded-2xl border-slate-200 shadow-sm ${destaque ? "border-primary/25 bg-primary/[0.025]" : ""}`}><CardContent className="flex min-h-[94px] items-center gap-2.5 p-3"><div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${toneClasses}`}><Icon className="size-5" /></div><div className="min-w-0"><p className="truncate text-xs font-semibold text-slate-500">{label}</p><p className="truncate text-2xl font-extrabold leading-none text-slate-950">{valor}</p><p className="mt-1 text-xs text-slate-400">{detalhe}</p></div></CardContent></Card>;
+function Indicador({
+  icon: Icon,
+  label,
+  valor,
+  detalhe,
+  tone,
+  destaque = false,
+}: {
+  icon: typeof Clock3;
+  label: string;
+  valor: string | number;
+  detalhe: string;
+  tone: "amber" | "green" | "slate";
+  destaque?: boolean;
+}) {
+  const toneClasses =
+    tone === "amber"
+      ? "bg-amber-50 text-amber-700"
+      : tone === "green"
+        ? "bg-emerald-50 text-emerald-700"
+        : "bg-slate-100 text-slate-600";
+  return (
+    <Card
+      className={`rounded-2xl border-slate-200 shadow-sm ${destaque ? "border-primary/25 bg-primary/[0.025]" : ""}`}
+    >
+      <CardContent className="flex min-h-[94px] items-center gap-2.5 p-3">
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${toneClasses}`}
+        >
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-slate-500">{label}</p>
+          <p className="truncate text-2xl font-extrabold leading-none text-slate-950">{valor}</p>
+          <p className="mt-1 text-xs text-slate-400">{detalhe}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function tituloRegistro(item: Registro, setor: string) {
@@ -395,15 +589,23 @@ function tituloGrupo(grupo: GrupoProtheus, setor: string) {
 
 function resumoRegistro(item: Registro, setor: string) {
   if (setor === "fitas") return `${formatarNumero(Number(item.area_m2 ?? 0))} m² para Protheus`;
-  if (setor === "mantas") return `${formatarNumero(Number(item.metragem ?? 0))} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
+  if (setor === "mantas")
+    return `${formatarNumero(Number(item.metragem ?? 0))} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
   return `${item.total_rolos ?? 0} unidades · ${formatarNumero(Number(item.metragem ?? 0))} m²`;
 }
 
 function resumoGrupo(grupo: GrupoProtheus, setor: string) {
-  if (setor === "fitas") return `${formatarNumero(grupo.area)} m² para lançar${grupo.registros > 1 ? ` · ${grupo.registros} registros` : ""}`;
-  if (setor === "mantas") return `${formatarNumero(grupo.metragem)} m · ${grupo.plts} PLTs · ${grupo.rolos} rolos${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
+  if (setor === "fitas")
+    return `${formatarNumero(grupo.area)} m² para lançar${grupo.registros > 1 ? ` · ${grupo.registros} registros` : ""}`;
+  if (setor === "mantas")
+    return `${formatarNumero(grupo.metragem)} m · ${grupo.plts} PLTs · ${grupo.rolos} rolos${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
   return `${grupo.plts} PLTs para lançar · ${grupo.rolos} unidades${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
 }
 
-function formatarNumero(valor: number) { return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 }); }
-function formatarData(valor: string) { const [ano, mes, dia] = valor.split("-"); return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor; }
+function formatarNumero(valor: number) {
+  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+function formatarData(valor: string) {
+  const [ano, mes, dia] = valor.split("-");
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : valor;
+}

@@ -20,13 +20,16 @@ export async function consultarComCache<T>(
   const salvo = lerCache<T>(chave);
   if (!opcoes.forcar && salvo?.fresco) return salvo.valor;
   const atual = emAndamento.get(chave);
-  if (atual) return atual as Promise<T>;
+  if (atual && !opcoes.forcar) return atual as Promise<T>;
   const req = buscar()
     .then((valor) => {
-      valores.set(chave, { valor, expiraEm: Date.now() + ttlMs });
+      if (emAndamento.get(chave) === req)
+        valores.set(chave, { valor, expiraEm: Date.now() + ttlMs });
       return valor;
     })
-    .finally(() => emAndamento.delete(chave));
+    .finally(() => {
+      if (emAndamento.get(chave) === req) emAndamento.delete(chave);
+    });
   emAndamento.set(chave, req);
   return req;
 }
@@ -35,5 +38,9 @@ export async function consultarComCache<T>(
 export function invalidarCache(prefixo?: string) {
   for (const chave of [...valores.keys()]) {
     if (!prefixo || chave.startsWith(prefixo)) valores.delete(chave);
+  }
+  // Respostas anteriores à correção não podem repopular o cache invalidado.
+  for (const chave of [...emAndamento.keys()]) {
+    if (!prefixo || chave.startsWith(prefixo)) emAndamento.delete(chave);
   }
 }

@@ -1,6 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bell,
+  Boxes,
   CalendarDays,
   Copy,
   FileText,
@@ -48,6 +49,7 @@ const LazySetorTurnoDialog = lazy(() =>
 
 const ITENS = [
   { to: "/programacao", label: "Programação", icon: CalendarDays },
+  { to: "/contagem", label: "Contagem por produto", icon: Boxes },
   { to: "/ocorrencias", label: "Ocorrências", icon: MessageSquare },
   { to: "/historico", label: "Histórico", icon: History },
   { to: "/passagem-turno", label: "Passagem", icon: Repeat },
@@ -78,7 +80,13 @@ type PendenciaRapida = {
   turno: "T1" | "T2" | "T3";
 };
 
-function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSetorTurno: () => void }) {
+function Navegacao({
+  onNavigate,
+  onSetorTurno,
+}: {
+  onNavigate?: () => void;
+  onSetorTurno: () => void;
+}) {
   const { isAdmin, isAutorizado, roles, profile, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -89,7 +97,9 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
     ...(!isAdmin && isAutorizado
       ? [{ to: "/controle-apontamentos", label: "Controle Protheus", icon: ShieldCheck } as const]
       : []),
-    ...(isAdmin ? [{ to: "/administracao", label: "Administração", icon: ShieldCheck } as const] : []),
+    ...(isAdmin
+      ? [{ to: "/administracao", label: "Administração", icon: ShieldCheck } as const]
+      : []),
   ];
 
   async function sair() {
@@ -111,7 +121,10 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
             <DrykoLogo size="sm" />
           </div>
           <div className="min-w-0 md:mt-2">
-            <p data-heading className="truncate text-xl font-extrabold text-sidebar-foreground md:text-base md:font-bold">
+            <p
+              data-heading
+              className="truncate text-xl font-extrabold text-sidebar-foreground md:text-base md:font-bold"
+            >
               Aponta Produção
             </p>
             <p className="mt-0.5 text-xs font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/55 md:normal-case md:font-normal md:tracking-normal">
@@ -173,10 +186,18 @@ function Navegacao({ onNavigate, onSetorTurno }: { onNavigate?: () => void; onSe
       <div className="border-t border-sidebar-border px-5 py-4 md:p-3">
         <div className="flex items-center gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-sidebar-foreground md:hidden">
-            {avatarUrl ? <img src={avatarUrl} alt="" className="size-full rounded-full object-cover" /> : <span className="text-base font-bold">{(profile?.nome || "U").trim().charAt(0).toUpperCase()}</span>}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="size-full rounded-full object-cover" />
+            ) : (
+              <span className="text-base font-bold">
+                {(profile?.nome || "U").trim().charAt(0).toUpperCase()}
+              </span>
+            )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-bold md:text-sm md:font-semibold">{profile?.nome || "Usuário"}</p>
+            <p className="truncate text-[15px] font-bold md:text-sm md:font-semibold">
+              {profile?.nome || "Usuário"}
+            </p>
             <p className="truncate text-xs text-sidebar-foreground/65">
               {roles.map((r) => NOMES_PAPEIS[r]).join(", ") || "Sem perfil definido"}
               {profile?.setor_atual ? ` · ${nomeSetor(profile.setor_atual)}` : ""}
@@ -341,7 +362,6 @@ export function AppShell({
                 )}
               </Button>
 
-
               <Button
                 type="button"
                 variant="outline"
@@ -383,6 +403,9 @@ export function AppShell({
               if (!open) setModalRapido(null);
             }}
             repeatLatest={modalRapido === "repetir"}
+            onSaved={() => {
+              window.dispatchEvent(new Event("apontamento-salvo"));
+            }}
           />
         </Suspense>
       )}
@@ -418,7 +441,10 @@ export function AppShell({
                 </div>
                 <div className="space-y-2">
                   {pendenciasInternas.map((item) => (
-                    <article key={item.id} className="rounded-xl border border-border bg-muted/40 p-3">
+                    <article
+                      key={item.id}
+                      className="rounded-xl border border-border bg-muted/40 p-3"
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-bold text-foreground">
@@ -456,10 +482,7 @@ export function AppShell({
                 Fechar
               </Button>
               <Button asChild>
-                <Link
-                  to="/controle-apontamentos"
-                  onClick={() => setNotificacoesInternas(false)}
-                >
+                <Link to="/controle-apontamentos" onClick={() => setNotificacoesInternas(false)}>
                   Controle Protheus
                 </Link>
               </Button>
