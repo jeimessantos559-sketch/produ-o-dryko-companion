@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Download, FileText, LockKeyhole, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
@@ -12,7 +12,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import { pltsFechados } from "@/lib/apontamentos-turno";
 import { enviarRelatorio } from "@/lib/enviar-relatorio";
+import {
+  agruparRevisaoDoTurno,
+  opsFinalizadasDoTurno,
+  quantidadeDaRevisao,
+  type FonteFinalizacao,
+} from "@/lib/fechamento-turno";
 import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { realizadoNaUnidade, type SetorGerencial } from "@/lib/indicadores";
@@ -22,76 +29,125 @@ export const Route = createFileRoute("/_authenticated/passagem-turno")({
 });
 
 type Apontamento = Database["public"]["Tables"]["apontamentos"]["Row"];
-type Meta = Database["public"]["Tables"]["metas_op"]["Row"];
 type Fechamento = Database["public"]["Tables"]["fechamentos_turno"]["Row"];
 
 function PassagemTurno() {
   const { profile, user, isAdmin } = useAuth();
   const [data, setData] = useState(() => dataOperacional(profile?.turno_atual));
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
-  const [metas, setMetas] = useState<Meta[]>([]);
+  const [finalizacoes, setFinalizacoes] = useState<FonteFinalizacao[]>([]);
   const [fechamento, setFechamento] = useState<Fechamento | null>(null);
   const [anteriores, setAnteriores] = useState<Fechamento[]>([]);
   const [nomes, setNomes] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
   const [processando, setProcessando] = useState(false);
   const [gerando, setGerando] = useState(false);
   const [justificativa, setJustificativa] = useState("");
   const [programadosAbertos, setProgramadosAbertos] = useState<number | null>(null);
+  const cargaAtual = useRef(0);
 
   useEffect(() => {
     if (profile?.turno_atual) setData(dataOperacional(profile.turno_atual));
   }, [profile?.turno_atual]);
 
   const carregar = useCallback(async () => {
+    const carga = ++cargaAtual.current;
     if (!profile?.setor_atual || !profile.turno_atual) {
       setCarregando(false);
       return;
     }
     setCarregando(true);
-    const [{ data: registros }, { data: listaMetas }, { data: fechamentos }, { data: perfis }] =
-      await Promise.all([
-        supabase
-          .from("apontamentos")
-          .select("*")
-          .eq("setor", profile.setor_atual)
-          .eq("turno", profile.turno_atual)
-          .eq("data_local", data)
-          .order("data_hora_producao"),
-        supabase
-          .from("metas_op")
-          .select("*")
-          .eq("setor", profile.setor_atual)
-          .eq("status", "ativa")
-          .order("created_at"),
-        supabase
-          .from("fechamentos_turno")
-          .select("*")
-          .eq("setor", profile.setor_atual)
-          .order("data_local", { ascending: false })
-          .order("turno", { ascending: false })
-          .limit(8),
-        supabase.from("profiles").select("id, nome"),
-      ]);
+    setErroCarga(false);
+    const [
+      consultaApontamentos,
+      consultaMetas,
+      consultaProgramacao,
+      consultaFechamentos,
+      consultaPerfis,
+    ] = await Promise.all([
+      supabase
+        .from("apontamentos")
+        .select("*")
+        .eq("setor", profile.setor_atual)
+        .eq("turno", profile.turno_atual)
+        .eq("data_local", data)
+        .order("data_hora_producao"),
+      supabase
+        .from("metas_op")
+        .select("*")
+        .eq("setor", profile.setor_atual)
+        .eq("status", "finalizada")
+        .order("created_at"),
+      supabase
+        .from("programacao_producao")
+        .select("*")
+        .eq("setor", profile.setor_atual)
+        .eq("data_local", data)
+        .not("finalizado_em", "is", null),
+      supabase
+        .from("fechamentos_turno")
+        .select("*")
+        .eq("setor", profile.setor_atual)
+        .order("data_local", { ascending: false })
+        .order("turno", { ascending: false })
+        .limit(8),
+      supabase.from("profiles").select("id, nome"),
+    ]);
+    if (carga !== cargaAtual.current) return;
+    if (
+      [
+        consultaApontamentos,
+        consultaMetas,
+        consultaProgramacao,
+        consultaFechamentos,
+        consultaPerfis,
+      ].some((resposta) => resposta.error)
+    ) {
+      setErroCarga(true);
+      setCarregando(false);
+      return;
+    }
     const setorAtual = profile.setor_atual;
     if (setorAtual === "corte" || setorAtual === "fitas" || setorAtual === "mantas") {
-      const [{ data: prog }, { data: doDia }] = await Promise.all([
-        (supabase as any).from("programacao_producao").select("produto_id, quantidade_prevista, unidade")
-          .eq("setor", setorAtual).eq("data_local", data).eq("global_dia", true),
-        supabase.from("apontamentos").select("produto_id, status, created_at, lancado_em, quantidade_plts, metragem, area_m2")
-          .eq("setor", setorAtual).eq("data_local", data),
+      const [consultaProg, consultaDia] = await Promise.all([
+        supabase
+          .from("programacao_producao")
+          .select("produto_id, quantidade_prevista, unidade")
+          .eq("setor", setorAtual)
+          .eq("data_local", data)
+          .eq("global_dia", true),
+        supabase
+          .from("apontamentos")
+          .select("produto_id, status, created_at, lancado_em, quantidade_plts, metragem, area_m2")
+          .eq("setor", setorAtual)
+          .eq("data_local", data),
       ]);
-      const abertos = ((prog ?? []) as { produto_id: string; quantidade_prevista: number; unidade: string }[]).filter((p) => {
-        const real = realizadoNaUnidade(setorAtual as SetorGerencial, p.unidade, (doDia ?? []).filter((a) => a.produto_id === p.produto_id));
+      if (carga !== cargaAtual.current) return;
+      if (consultaProg.error || consultaDia.error) {
+        setErroCarga(true);
+        setCarregando(false);
+        return;
+      }
+      const prog = consultaProg.data;
+      const doDia = consultaDia.data;
+      const abertos = (
+        (prog ?? []) as { produto_id: string; quantidade_prevista: number; unidade: string }[]
+      ).filter((p) => {
+        const real = realizadoNaUnidade(
+          setorAtual as SetorGerencial,
+          p.unidade,
+          (doDia ?? []).filter((a) => a.produto_id === p.produto_id),
+        );
         return real === null || real < Number(p.quantidade_prevista);
       }).length;
       setProgramadosAbertos(abertos);
     } else {
       setProgramadosAbertos(null);
     }
-    setApontamentos(registros ?? []);
-    setMetas(listaMetas ?? []);
-    const listaFechamentos = fechamentos ?? [];
+    setApontamentos(consultaApontamentos.data ?? []);
+    setFinalizacoes([...(consultaMetas.data ?? []), ...(consultaProgramacao.data ?? [])]);
+    const listaFechamentos = consultaFechamentos.data ?? [];
     setFechamento(
       listaFechamentos.find(
         (item) => item.data_local === data && item.turno === profile.turno_atual,
@@ -102,13 +158,33 @@ function PassagemTurno() {
         (item) => !(item.data_local === data && item.turno === profile.turno_atual),
       ),
     );
-    setNomes(Object.fromEntries((perfis ?? []).map((item) => [item.id, item.nome || "Sem nome"])));
+    setNomes(
+      Object.fromEntries(
+        (consultaPerfis.data ?? []).map((item) => [item.id, item.nome || "Sem nome"]),
+      ),
+    );
     setCarregando(false);
   }, [data, profile?.setor_atual, profile?.turno_atual]);
 
   useEffect(() => {
     void carregar();
+    const atualizar = () => {
+      void carregar();
+    };
+    window.addEventListener("apontamento-salvo", atualizar);
+    return () => {
+      window.removeEventListener("apontamento-salvo", atualizar);
+    };
   }, [carregar]);
+
+  const revisao = useMemo(() => agruparRevisaoDoTurno(apontamentos), [apontamentos]);
+  const opsFinalizadas = useMemo(
+    () =>
+      profile?.turno_atual
+        ? opsFinalizadasDoTurno(apontamentos, finalizacoes, data, profile.turno_atual, nomes)
+        : [],
+    [apontamentos, finalizacoes, data, profile?.turno_atual, nomes],
+  );
 
   const totais = useMemo(
     () =>
@@ -117,7 +193,7 @@ function PassagemTurno() {
           apontamentos: acc.apontamentos + 1,
           pendentes: acc.pendentes + (item.status === "pendente" ? 1 : 0),
           lancados: acc.lancados + (item.status === "lancado" ? 1 : 0),
-          plts: acc.plts + (item.quantidade_plts ?? 0),
+          plts: acc.plts + pltsFechados(item),
           rolos: acc.rolos + (item.total_rolos ?? 0),
           metragem: acc.metragem + Number(item.metragem ?? 0),
           area: acc.area + Number(item.area_m2 ?? 0),
@@ -135,7 +211,7 @@ function PassagemTurno() {
       responsavel: profile?.nome || (user ? nomes[user.id] : "") || "Usuário",
       geradoEm: new Date().toISOString(),
       totais,
-      metas: metas as unknown as Json,
+      ops_finalizadas: opsFinalizadas as unknown as Json,
       apontamentos: apontamentos as unknown as Json,
     };
   }
@@ -150,12 +226,13 @@ function PassagemTurno() {
       .select("id, resumo")
       .eq("id", relatorioId)
       .single();
-    if (error || !relatorio) throw new Error("O relatório foi criado, mas não foi possível abrir o PDF.");
+    if (error || !relatorio)
+      throw new Error("O relatório foi criado, mas não foi possível abrir o PDF.");
     baixarPdf(relatorio.resumo, nomeArquivo());
   }
 
   async function enviarAutomaticamente(relatorioId: string) {
-    const { data: grupo } = await (supabase as any)
+    const { data: grupo } = await supabase
       .from("grupos_email_relatorio")
       .select("nome, emails")
       .eq("automatico", true)
@@ -170,7 +247,9 @@ function PassagemTurno() {
 
     try {
       await enviarRelatorio({ data: { relatorioId, destinatarios: emails } });
-      toast.success(`Relatório enviado automaticamente para ${grupo.nome}.`);
+      toast.success(
+        `Relatório enviado automaticamente para ${grupo?.nome ?? "o grupo automático"}.`,
+      );
     } catch (erro) {
       toast.warning(
         `Turno fechado, mas o envio automático falhou. ${erro instanceof Error ? erro.message : "Você pode reenviar pela tela de Relatórios."}`,
@@ -179,7 +258,15 @@ function PassagemTurno() {
   }
 
   async function fechar() {
-    if (!profile?.setor_atual || !profile.turno_atual || !user || processando) return;
+    if (
+      !profile?.setor_atual ||
+      !profile.turno_atual ||
+      !user ||
+      processando ||
+      carregando ||
+      erroCarga
+    )
+      return;
     if (apontamentos.length === 0) {
       toast.error("Registre ao menos um apontamento antes de encerrar e gerar o relatório.");
       return;
@@ -205,16 +292,25 @@ function PassagemTurno() {
   }
 
   async function gerarRelatorio() {
-    if (!profile?.setor_atual || !profile.turno_atual || !fechamento || gerando) return;
+    if (
+      !profile?.setor_atual ||
+      !profile.turno_atual ||
+      !fechamento ||
+      gerando ||
+      carregando ||
+      erroCarga
+    )
+      return;
     setGerando(true);
     try {
-      const { data: relatorioId, error } = await (supabase as any).rpc("gerar_relatorio_turno", {
+      const { data: relatorioId, error } = await supabase.rpc("gerar_relatorio_turno", {
         p_setor: profile.setor_atual,
         p_turno: profile.turno_atual,
         p_data: data,
         p_resumo: montarResumo(),
       });
-      if (error || !relatorioId) throw new Error(error?.message || "Não foi possível gerar o relatório.");
+      if (error || !relatorioId)
+        throw new Error(error?.message || "Não foi possível gerar o relatório.");
       await baixarRelatorioPorId(relatorioId);
       toast.success("Relatório PDF gerado com sucesso.");
     } catch (erro) {
@@ -244,12 +340,16 @@ function PassagemTurno() {
   const fechado = fechamento?.status === "fechado";
 
   return (
-    <AppShell title="Fechamento do turno" eyebrow={profile?.setor_atual ? nomeSetor(profile.setor_atual) : undefined}>
+    <AppShell
+      title="Fechamento do turno"
+      eyebrow={profile?.setor_atual ? nomeSetor(profile.setor_atual) : undefined}
+    >
       <div className="mx-auto max-w-5xl space-y-4">
         <div>
           <h2 className="text-2xl font-bold">Passagem e fechamento de turno</h2>
           <p className="text-sm text-muted-foreground">
-            Revise produção, metas e pendências antes de encerrar. Ao fechar, o relatório é gerado e enviado ao grupo automático salvo. O PDF não é baixado automaticamente.
+            Confira os totais por produto e lote antes de encerrar. Ao fechar, o relatório detalhado
+            é gerado e enviado ao grupo automático salvo. O PDF não é baixado automaticamente.
           </p>
         </div>
 
@@ -279,6 +379,17 @@ function PassagemTurno() {
 
         {carregando ? (
           <p className="text-sm text-muted-foreground">Montando revisão do turno...</p>
+        ) : erroCarga ? (
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              <p className="text-sm text-muted-foreground">
+                Não foi possível carregar a revisão completa do turno.
+              </p>
+              <Button variant="outline" onClick={() => void carregar()}>
+                Tentar novamente
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <>
             {fechado && (
@@ -293,38 +404,63 @@ function PassagemTurno() {
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Indicador label="Apontamentos" valor={totais.apontamentos} />
-              <Indicador label="Pendentes" valor={totais.pendentes} destaque={totais.pendentes > 0} />
+              <Indicador
+                label="Pendentes"
+                valor={totais.pendentes}
+                destaque={totais.pendentes > 0}
+              />
               <Indicador label="Lançados" valor={totais.lancados} />
-              <Indicador label="Metas ativas" valor={metas.length} />
+              <Indicador label="OPs / lotes finalizados" valor={opsFinalizadas.length} />
               <Indicador label="PLTs" valor={totais.plts} />
               <Indicador label="Rolos" valor={totais.rolos} />
               <Indicador label="Metragem" valor={`${totais.metragem.toLocaleString("pt-BR")} m`} />
-              <Indicador label="Área" valor={`${totais.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`} />
+              <Indicador
+                label="Área"
+                valor={`${totais.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`}
+              />
             </div>
 
             {totais.pendentes > 0 && !fechado && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-                Há {totais.pendentes} apontamento(s) ainda pendente(s) de confirmação no Protheus. A pendência continuará registrada no relatório.
+                Há {totais.pendentes} apontamento(s) ainda pendente(s) de confirmação no Protheus. A
+                pendência continuará registrada no relatório.
               </div>
             )}
 
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Revisão dos apontamentos</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Totais do turno por produto e lote. Os lançamentos individuais ficam no relatório.
+                </p>
               </CardHeader>
               <CardContent className="space-y-2">
                 {apontamentos.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhum apontamento neste turno.</p>
                 ) : (
-                  apontamentos.map((item) => (
-                    <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm">
-                      <span className="font-medium">
-                        {item.op ? `OP ${item.op} · ` : item.lote ? `Lote ${item.lote} · ` : ""}
-                        {item.produto_nome}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {resumoApontamento(item)} · {item.status === "lancado" ? "Lançado" : "Pendente"}
-                      </span>
+                  revisao.map((grupo) => (
+                    <div key={grupo.chave} className="space-y-2 rounded-xl border p-4 text-sm">
+                      <p className="font-semibold">
+                        {grupo.produtoNome}
+                        {grupo.lote ? ` · Lote ${grupo.lote}` : ""}
+                      </p>
+                      <p className="text-base font-bold">{quantidadeDaRevisao(grupo)}</p>
+                      <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+                        {grupo.ops.length > 0 && (
+                          <span>
+                            {grupo.ops.length === 1 ? "OP" : "OPs"} {grupo.ops.join(", ")}
+                          </span>
+                        )}
+                        <span
+                          className={
+                            grupo.pendentes > 0 ? "font-medium text-amber-700" : "text-green-700"
+                          }
+                        >
+                          {grupo.pendentes > 0
+                            ? `${grupo.pendentes} pendente(s) · ${grupo.lancados} lançado(s)`
+                            : "Todos lançados no Protheus"}
+                        </span>
+                      </div>
                     </div>
                   ))
                 )}
@@ -339,7 +475,9 @@ function PassagemTurno() {
                 <CardContent className="space-y-3 text-sm">
                   <ul className="space-y-1 text-foreground">
                     <li>• {totais.pendentes} apontamento(s) pendente(s) no Protheus</li>
-                    {programadosAbertos !== null && <li>• {programadosAbertos} produto(s) programado(s) não concluído(s)</li>}
+                    {programadosAbertos !== null && (
+                      <li>• {programadosAbertos} produto(s) programado(s) não concluído(s)</li>
+                    )}
                   </ul>
                 </CardContent>
               </Card>
@@ -348,10 +486,16 @@ function PassagemTurno() {
             {!fechado ? (
               <Button
                 className="h-14 w-full text-base"
-                disabled={!profile?.setor_atual || !profile.turno_atual || processando || apontamentos.length === 0}
+                disabled={
+                  !profile?.setor_atual ||
+                  !profile.turno_atual ||
+                  processando ||
+                  apontamentos.length === 0
+                }
                 onClick={fechar}
               >
-                <LockKeyhole /> {processando ? "Encerrando e enviando..." : "Encerrar e enviar relatório"}
+                <LockKeyhole />{" "}
+                {processando ? "Encerrando e enviando..." : "Encerrar e enviar relatório"}
               </Button>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -393,10 +537,16 @@ function PassagemTurno() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {anteriores.map((item) => (
-                    <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm">
-                      <span>{item.data_local} · {item.turno}</span>
+                    <div
+                      key={item.id}
+                      className="flex flex-wrap justify-between gap-2 rounded-md border p-3 text-sm"
+                    >
+                      <span>
+                        {item.data_local} · {item.turno}
+                      </span>
                       <span className="text-muted-foreground">
-                        {item.status === "fechado" ? "Fechado" : "Reaberto"} · {nomes[item.fechado_por] ?? "Usuário"}
+                        {item.status === "fechado" ? "Fechado" : "Reaberto"} ·{" "}
+                        {nomes[item.fechado_por] ?? "Usuário"}
                       </span>
                     </div>
                   ))}
@@ -410,7 +560,15 @@ function PassagemTurno() {
   );
 }
 
-function Indicador({ label, valor, destaque = false }: { label: string; valor: string | number; destaque?: boolean }) {
+function Indicador({
+  label,
+  valor,
+  destaque = false,
+}: {
+  label: string;
+  valor: string | number;
+  destaque?: boolean;
+}) {
   return (
     <Card className={destaque ? "border-amber-400" : undefined}>
       <CardContent className="pt-5">
@@ -419,12 +577,6 @@ function Indicador({ label, valor, destaque = false }: { label: string; valor: s
       </CardContent>
     </Card>
   );
-}
-
-function resumoApontamento(item: Apontamento) {
-  if (item.setor === "fitas") return `${Number(item.area_m2 ?? 0).toLocaleString("pt-BR")} m²`;
-  if (item.setor === "mantas") return `${item.quantidade_plts ?? 0} PLTs · ${Number(item.metragem ?? 0).toLocaleString("pt-BR")} m · ${item.total_rolos ?? 0} rolos`;
-  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} unidades · ${Number(item.metragem ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
 }
 
 function formatar(valor: string) {

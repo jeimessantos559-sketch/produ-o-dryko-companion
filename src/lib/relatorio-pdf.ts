@@ -1,5 +1,14 @@
 import type { Json } from "@/integrations/supabase/types";
-import { nomeCurtoRelatorio, nomesResponsaveisRelatorio, responsaveisDoApontamento } from "./responsaveis-relatorio.ts";
+import {
+  opsFinalizadasNoRelatorio,
+  referenciaFinalizada,
+  type OpFinalizada,
+} from "./fechamento-turno.ts";
+import {
+  nomeCurtoRelatorio,
+  nomesResponsaveisRelatorio,
+  responsaveisDoApontamento,
+} from "./responsaveis-relatorio.ts";
 
 type ResumoRegistro = {
   totais?: Json;
@@ -64,10 +73,7 @@ function semAcentos(valor: string) {
 }
 
 function escaparPdf(valor: string) {
-  return semAcentos(valor)
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)");
+  return semAcentos(valor).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
 function limitar(valor: string, maximo: number) {
@@ -128,7 +134,9 @@ function resumirProdutos(apontamentos: Json[]) {
     atual.area += numero(apontamento.area_m2);
     mapa.set(nome, atual);
   }
-  return [...mapa.values()].sort((a, b) => b.plts - a.plts || b.area - a.area || a.nome.localeCompare(b.nome));
+  return [...mapa.values()].sort(
+    (a, b) => b.plts - a.plts || b.area - a.area || a.nome.localeCompare(b.nome),
+  );
 }
 
 export function linhasDoRelatorio(resumo: Json) {
@@ -149,14 +157,32 @@ export function linhasDoRelatorio(resumo: Json) {
       ? `Producao: ${texto(totais.area)} m2`
       : `PLTs: ${texto(totais.plts)} | Rolos: ${texto(totais.rolos)} | Producao: ${texto(totais.metragem)} ${unidadeMetragem(setor)}`,
     `Registros detalhados: ${apontamentos.length}`,
+    ...opsFinalizadasNoRelatorio(resumo).map(
+      (op) =>
+        `${referenciaFinalizada(op)} | ${op.produto_nome} | ${op.op ? "OP finalizada" : "Lote finalizado"}`,
+    ),
   ];
 }
 
-function comandoTexto(textoValor: string, x: number, y: number, tamanho = 9, negrito = false, cor = "0.12 0.12 0.14") {
+function comandoTexto(
+  textoValor: string,
+  x: number,
+  y: number,
+  tamanho = 9,
+  negrito = false,
+  cor = "0.12 0.12 0.14",
+) {
   return `${cor} rg BT /${negrito ? "F2" : "F1"} ${tamanho} Tf ${x} ${y} Td (${escaparPdf(textoValor)}) Tj ET`;
 }
 
-function comandoRetangulo(x: number, y: number, largura: number, altura: number, preenchimento: string, borda?: string) {
+function comandoRetangulo(
+  x: number,
+  y: number,
+  largura: number,
+  altura: number,
+  preenchimento: string,
+  borda?: string,
+) {
   const partes = [`${preenchimento} rg ${x} ${y} ${largura} ${altura} re f`];
   if (borda) partes.push(`${borda} RG 0.7 w ${x} ${y} ${largura} ${altura} re S`);
   return partes.join("\n");
@@ -176,8 +202,19 @@ function cabecalhoPagina(comandos: string[], titulo: string, subtitulo: string) 
 
 function rodapePagina(comandos: string[], pagina: number, totalPaginas: number) {
   comandos.push(comandoLinha(36, 42, 559, 42));
-  comandos.push(comandoTexto("DRYKO Impermeabilizantes | Aponta Producao", 36, 26, 7.5, false, "0.45 0.47 0.52"));
-  comandos.push(comandoTexto(`Pagina ${pagina} de ${totalPaginas}`, 500, 26, 7.5, true, "0.45 0.47 0.52"));
+  comandos.push(
+    comandoTexto(
+      "DRYKO Impermeabilizantes | Aponta Producao",
+      36,
+      26,
+      7.5,
+      false,
+      "0.45 0.47 0.52",
+    ),
+  );
+  comandos.push(
+    comandoTexto(`Pagina ${pagina} de ${totalPaginas}`, 500, 26, 7.5, true, "0.45 0.47 0.52"),
+  );
 }
 
 const colunasDetalhamento = [
@@ -193,18 +230,20 @@ const colunasDetalhamento = [
 
 // Larguras das fontes Helvetica do PDF, em milésimos de um ponto por tamanho.
 const largurasHelvetica = [
-  [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
-    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
-    1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
-    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
-    333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
-    556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584],
-  [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
-    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
-    975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
-    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
-    333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
-    611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584],
+  [
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
+    556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
+    611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
+    667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
+    222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+  ],
+  [
+    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
+    556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667,
+    611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
+    667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556,
+    278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+  ],
 ];
 
 type TextoCelula = { texto: string; tamanho?: number; negrito?: boolean; cor?: string };
@@ -219,7 +258,7 @@ function quebrarLinhas(valor: string, largura: number, tamanho = 7.5, negrito = 
     let espaco = -1;
     while (fim < restante.length) {
       const caractere = restante.charCodeAt(fim);
-      const medida = (metricas[caractere - 32] ?? 556) * tamanho / 1000;
+      const medida = ((metricas[caractere - 32] ?? 556) * tamanho) / 1000;
       if (usado + medida > largura) break;
       usado += medida;
       if (restante[fim] === " ") espaco = fim;
@@ -247,7 +286,12 @@ function celulasDetalhamento(item: Json, indice: number, fitas: boolean, mantas:
   const responsaveis = responsaveisDoApontamento(item);
   const seqIni = texto(apontamento.sequencia_inicio);
   const seqFim = texto(apontamento.sequencia_fim);
-  const seq = seqIni !== "-" && seqFim !== "-" ? (seqIni === seqFim ? seqIni : `${seqIni}-${seqFim}`) : String(indice + 1);
+  const seq =
+    seqIni !== "-" && seqFim !== "-"
+      ? seqIni === seqFim
+        ? seqIni
+        : `${seqIni}-${seqFim}`
+      : String(indice + 1);
   const producao = fitas
     ? `${formatarNumero(numero(apontamento.area_m2))} m2`
     : `${formatarNumero(numero(apontamento.metragem))} ${mantas ? "m" : "m2"}`;
@@ -263,17 +307,38 @@ function celulasDetalhamento(item: Json, indice: number, fitas: boolean, mantas:
       { texto: formatarDataHora(responsaveis.apontadoEm ?? ""), tamanho: 7, cor: "0.45 0.47 0.52" },
     ],
     [
-      { texto: responsaveis.lancado ? "Lancado" : "Pendente", negrito: true, cor: responsaveis.lancado ? "0.07 0.45 0.23" : "0.55 0.31 0.07" },
-      { texto: responsaveis.lancado ? `${responsaveis.lancador} | ${formatarDataHora(responsaveis.lancadoEm ?? "")}` : "Aguardando lancamento", tamanho: 7, cor: "0.45 0.47 0.52" },
+      {
+        texto: responsaveis.lancado ? "Lancado" : "Pendente",
+        negrito: true,
+        cor: responsaveis.lancado ? "0.07 0.45 0.23" : "0.55 0.31 0.07",
+      },
+      {
+        texto: responsaveis.lancado
+          ? `${responsaveis.lancador} | ${formatarDataHora(responsaveis.lancadoEm ?? "")}`
+          : "Aguardando lancamento",
+        tamanho: 7,
+        cor: "0.45 0.47 0.52",
+      },
     ],
   ];
-  return celulas.map((partes, coluna) => partes.flatMap((parte) =>
-    quebrarLinhas(parte.texto, colunasDetalhamento[coluna]!.largura - 10, parte.tamanho ?? 7.5, parte.negrito)
-      .map((linha) => ({ ...parte, texto: linha }))));
+  return celulas.map((partes, coluna) =>
+    partes.flatMap((parte) =>
+      quebrarLinhas(
+        parte.texto,
+        colunasDetalhamento[coluna]!.largura - 10,
+        parte.tamanho ?? 7.5,
+        parte.negrito,
+      ).map((linha) => ({ ...parte, texto: linha })),
+    ),
+  );
 }
 
 function alturaDetalhamento(item: Json, indice: number, fitas: boolean, mantas: boolean) {
-  return 16 + Math.max(...celulasDetalhamento(item, indice, fitas, mantas).map((linhas) => linhas.length)) * 11;
+  return (
+    16 +
+    Math.max(...celulasDetalhamento(item, indice, fitas, mantas).map((linhas) => linhas.length)) *
+      11
+  );
 }
 
 function desenharLinhaDetalhamento(
@@ -291,9 +356,18 @@ function desenharLinhaDetalhamento(
   celulas.forEach((linhas, indiceColuna) => {
     const coluna = colunasDetalhamento[indiceColuna]!;
     if (coluna.x > 36) comandos.push(comandoLinha(coluna.x, base, coluna.x, y + 12));
-    linhas.forEach((linha, indiceLinha) => comandos.push(comandoTexto(
-      linha.texto, coluna.x + 5, y - indiceLinha * 11, linha.tamanho ?? 7.5, linha.negrito, linha.cor,
-    )));
+    linhas.forEach((linha, indiceLinha) =>
+      comandos.push(
+        comandoTexto(
+          linha.texto,
+          coluna.x + 5,
+          y - indiceLinha * 11,
+          linha.tamanho ?? 7.5,
+          linha.negrito,
+          linha.cor,
+        ),
+      ),
+    );
   });
   return altura;
 }
@@ -302,7 +376,7 @@ function montarPrimeiraPagina(resumo: Json) {
   const raiz = registro(resumo);
   const totais = registro(raiz.totais);
   const apontamentos = Array.isArray(raiz.apontamentos) ? raiz.apontamentos : [];
-  const metas = Array.isArray(raiz.metas) ? raiz.metas : [];
+  const opsFinalizadas = opsFinalizadasNoRelatorio(resumo);
   const produtos = resumirProdutos(apontamentos);
   const setor = texto(raiz.setor);
   const setorChave = setor.toLowerCase();
@@ -313,10 +387,30 @@ function montarPrimeiraPagina(resumo: Json) {
   cabecalhoPagina(comandos, "RELATORIO DE PRODUCAO", "Fechamento operacional de turno");
 
   comandos.push(comandoTexto(formatarData(texto(raiz.data)), 38, 728, 18, true));
-  comandos.push(comandoTexto(`${setor} | ${turnoLegivel(texto(raiz.turno))}`, 38, 711, 10, true, "0.78 0.04 0.06"));
+  comandos.push(
+    comandoTexto(
+      `${setor} | ${turnoLegivel(texto(raiz.turno))}`,
+      38,
+      711,
+      10,
+      true,
+      "0.78 0.04 0.06",
+    ),
+  );
   comandos.push(comandoTexto("RESPONSAVEL PELO RELATORIO", 320, 742, 7, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto(limitar(nomeCurtoRelatorio(raiz.responsavel), 30), 320, 728, 8.2, true));
-  comandos.push(comandoTexto(`Gerado em: ${formatarDataHora(texto(raiz.geradoEm))}`, 320, 711, 8.5, false, "0.42 0.44 0.49"));
+  comandos.push(
+    comandoTexto(limitar(nomeCurtoRelatorio(raiz.responsavel), 30), 320, 728, 8.2, true),
+  );
+  comandos.push(
+    comandoTexto(
+      `Gerado em: ${formatarDataHora(texto(raiz.geradoEm))}`,
+      320,
+      711,
+      8.5,
+      false,
+      "0.42 0.44 0.49",
+    ),
+  );
   comandos.push(comandoLinha(38, 695, 557, 695, "0.15 0.15 0.17"));
 
   const cards: Array<readonly [string, string]> = [
@@ -328,13 +422,40 @@ function montarPrimeiraPagina(resumo: Json) {
   const cardXs = [38, 168, 298, 428];
   cards.forEach(([rotulo, valor], i) => {
     const x = cardXs[i] ?? 38;
-    comandos.push(comandoRetangulo(x, 612, 117, 55, i === 2 && numero(totais.pendentes) > 0 ? "1 0.96 0.94" : "0.97 0.98 0.99", "0.86 0.87 0.89"));
+    comandos.push(
+      comandoRetangulo(
+        x,
+        612,
+        117,
+        55,
+        i === 2 && numero(totais.pendentes) > 0 ? "1 0.96 0.94" : "0.97 0.98 0.99",
+        "0.86 0.87 0.89",
+      ),
+    );
     comandos.push(comandoTexto(rotulo, x + 10, 647, 7.2, true, "0.42 0.44 0.49"));
-    comandos.push(comandoTexto(valor, x + 10, 625, 18, true, i === 2 && numero(totais.pendentes) > 0 ? "0.67 0.14 0.05" : "0.12 0.12 0.14"));
+    comandos.push(
+      comandoTexto(
+        valor,
+        x + 10,
+        625,
+        18,
+        true,
+        i === 2 && numero(totais.pendentes) > 0 ? "0.67 0.14 0.05" : "0.12 0.12 0.14",
+      ),
+    );
   });
 
   comandos.push(comandoRetangulo(38, 543, 247, 53, "0.98 0.96 0.96", "0.91 0.80 0.81"));
-  comandos.push(comandoTexto(fitas ? "PRODUCAO TOTAL" : mantas ? "METRAGEM PRODUZIDA" : "AREA PRODUZIDA", 50, 576, 7.5, true, "0.55 0.24 0.25"));
+  comandos.push(
+    comandoTexto(
+      fitas ? "PRODUCAO TOTAL" : mantas ? "METRAGEM PRODUZIDA" : "AREA PRODUZIDA",
+      50,
+      576,
+      7.5,
+      true,
+      "0.55 0.24 0.25",
+    ),
+  );
   const producao = fitas
     ? `${formatarNumero(numero(totais.area))} m2`
     : `${formatarNumero(numero(totais.metragem))} ${mantas ? "m" : "m2"}`;
@@ -371,30 +492,54 @@ function montarPrimeiraPagina(resumo: Json) {
     y -= 23;
   });
   if (produtos.length > produtosPagina.length) {
-    comandos.push(comandoTexto(`+ ${produtos.length - produtosPagina.length} produto(s) no detalhamento`, 44, y - 3, 8, false, "0.45 0.47 0.52"));
+    comandos.push(
+      comandoTexto(
+        `+ ${produtos.length - produtosPagina.length} produto(s) no detalhamento`,
+        44,
+        y - 3,
+        8,
+        false,
+        "0.45 0.47 0.52",
+      ),
+    );
     y -= 18;
   }
 
-  if (metas.length > 0 && y > 150) {
-    comandos.push(comandoTexto("METAS ATIVAS", 38, y, 10, true));
+  let opsConsumidas = 0;
+  if (opsFinalizadas.length > 0 && y > 150) {
+    y -= 8;
+    comandos.push(comandoTexto(mantas ? "LOTES FINALIZADOS" : "OPS FINALIZADAS", 38, y, 10, true));
     y -= 12;
     comandos.push(comandoLinha(38, y, 557, y));
     y -= 17;
-    metas.slice(0, 4).forEach((item) => {
-      const meta = registro(item);
-      comandos.push(comandoTexto(`OP ${texto(meta.op)} | ${limitar(texto(meta.produto_nome), 28)}`, 44, y, 8.3, true));
-      comandos.push(comandoTexto(`Meta: ${texto(meta.quantidade_meta)} ${texto(meta.unidade)}`, 380, y, 8.3));
-      y -= 18;
-    });
-    if (metas.length > 4) {
-      comandos.push(comandoTexto(`+ ${metas.length - 4} meta(s) ativa(s)`, 44, y, 8, false, "0.45 0.47 0.52"));
+    for (const op of opsFinalizadas) {
+      if (y - 20 < 90) break;
+      desenharOpFinalizada(comandos, op, y);
+      y -= 20;
+      opsConsumidas += 1;
+    }
+    if (opsConsumidas < opsFinalizadas.length) {
+      comandos.push(
+        comandoTexto(
+          "Finalizacoes continuam na pagina seguinte",
+          44,
+          y,
+          8,
+          false,
+          "0.45 0.47 0.52",
+        ),
+      );
       y -= 16;
     }
   }
 
   let consumidos = 0;
   const primeiroApontamento = apontamentos[0];
-  if (primeiroApontamento && y - 56 - alturaDetalhamento(primeiroApontamento, 0, fitas, mantas) >= 66) {
+  if (
+    opsConsumidas === opsFinalizadas.length &&
+    primeiroApontamento &&
+    y - 56 - alturaDetalhamento(primeiroApontamento, 0, fitas, mantas) >= 66
+  ) {
     y -= 8;
     comandos.push(comandoTexto("DETALHAMENTO DO TURNO", 38, y, 10, true));
     y -= 20;
@@ -406,11 +551,54 @@ function montarPrimeiraPagina(resumo: Json) {
       consumidos += 1;
     }
     if (consumidos < apontamentos.length && y > 55) {
-      comandos.push(comandoTexto(`Continua na pagina seguinte (+${apontamentos.length - consumidos} registro(s))`, 40, y, 7.5, false, "0.45 0.47 0.52"));
+      comandos.push(
+        comandoTexto(
+          `Continua na pagina seguinte (+${apontamentos.length - consumidos} registro(s))`,
+          40,
+          y,
+          7.5,
+          false,
+          "0.45 0.47 0.52",
+        ),
+      );
     }
   }
 
-  return { comandos, consumidos };
+  return { comandos, consumidos, opsConsumidas };
+}
+
+function desenharOpFinalizada(comandos: string[], op: OpFinalizada, y: number) {
+  comandos.push(
+    comandoTexto(limitar(`${referenciaFinalizada(op)} | ${op.produto_nome}`, 74), 44, y, 8.3, true),
+  );
+  comandos.push(
+    comandoTexto(op.op ? "Finalizada" : "Finalizado", 495, y, 8.3, true, "0.12 0.42 0.28"),
+  );
+}
+
+function montarPaginasFinalizacoes(resumo: Json, inicio = 0) {
+  const raiz = registro(resumo);
+  const ops = opsFinalizadasNoRelatorio(resumo);
+  const paginas: string[][] = [];
+  while (inicio < ops.length) {
+    const comandos: string[] = [];
+    const titulo = texto(raiz.setor).toLowerCase().includes("manta")
+      ? "LOTES FINALIZADOS"
+      : "OPS FINALIZADAS";
+    cabecalhoPagina(
+      comandos,
+      titulo,
+      `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`,
+    );
+    let y = 730;
+    while (inicio < ops.length && y - 20 >= 66) {
+      desenharOpFinalizada(comandos, ops[inicio]!, y);
+      y -= 20;
+      inicio += 1;
+    }
+    paginas.push(comandos);
+  }
+  return paginas;
 }
 
 function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
@@ -424,7 +612,11 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
   let inicio = inicioDetalhamento;
   while (inicio < apontamentos.length) {
     const comandos: string[] = [];
-    cabecalhoPagina(comandos, "DETALHAMENTO DO TURNO", `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`);
+    cabecalhoPagina(
+      comandos,
+      "DETALHAMENTO DO TURNO",
+      `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`,
+    );
     desenharCabecalhoDetalhamento(comandos, 730, fitas);
 
     let y = 708;
@@ -435,7 +627,8 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
       y -= desenharLinhaDetalhamento(comandos, item, inicio, y, fitas, mantas);
       inicio += 1;
     }
-    if (inicio === inicioPagina) throw new Error("Os dados do responsável excedem o espaço de uma página do relatório.");
+    if (inicio === inicioPagina)
+      throw new Error("Os dados do responsável excedem o espaço de uma página do relatório.");
     paginas.push(comandos);
   }
 
@@ -449,7 +642,9 @@ function montarPdf(paginas: string[][]) {
   const objetos: string[] = [];
   const idsPaginas = paginas.map((_, indice) => 5 + indice * 2);
   objetos.push("<< /Type /Catalog /Pages 2 0 R >>");
-  objetos.push(`<< /Type /Pages /Kids [${idsPaginas.map((id) => `${id} 0 R`).join(" ")}] /Count ${paginas.length} >>`);
+  objetos.push(
+    `<< /Type /Pages /Kids [${idsPaginas.map((id) => `${id} 0 R`).join(" ")}] /Count ${paginas.length} >>`,
+  );
   objetos.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
   objetos.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
 
@@ -457,7 +652,9 @@ function montarPdf(paginas: string[][]) {
     const paginaId = 5 + indice * 2;
     const conteudoId = paginaId + 1;
     const stream = comandos.join("\n");
-    objetos.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${conteudoId} 0 R >>`);
+    objetos.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${conteudoId} 0 R >>`,
+    );
     objetos.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
   });
 
@@ -478,8 +675,9 @@ function montarPdf(paginas: string[][]) {
 
 export function gerarPdfRelatorio(resumo: Json) {
   const primeira = montarPrimeiraPagina(resumo);
+  const finalizacoes = montarPaginasFinalizacoes(resumo, primeira.opsConsumidas);
   const detalhamento = montarPaginasDetalhamento(resumo, primeira.consumidos);
-  return montarPdf([primeira.comandos, ...detalhamento]);
+  return montarPdf([primeira.comandos, ...finalizacoes, ...detalhamento]);
 }
 
 export function arquivoPdf(resumo: Json, nome: string) {
