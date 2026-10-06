@@ -1,7 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  BarChart3,
   Bell,
+  Boxes,
   CalendarDays,
   Copy,
   FileText,
@@ -9,15 +9,15 @@ import {
   History,
   LogOut,
   Menu,
+  MessageSquare,
   Plus,
   Repeat,
   Settings,
   Settings2,
   ShieldCheck,
   TriangleAlert,
-  WifiOff,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { DrykoLogo } from "@/components/dryko/logo";
@@ -49,6 +49,8 @@ const LazySetorTurnoDialog = lazy(() =>
 
 const ITENS = [
   { to: "/programacao", label: "Programação", icon: CalendarDays },
+  { to: "/contagem", label: "Contagem por produto", icon: Boxes },
+  { to: "/ocorrencias", label: "Ocorrências", icon: MessageSquare },
   { to: "/historico", label: "Histórico", icon: History },
   { to: "/passagem-turno", label: "Passagem", icon: Repeat },
   { to: "/relatorios", label: "Relatórios", icon: FileText },
@@ -98,7 +100,6 @@ function Navegacao({
     ...(isAdmin
       ? [{ to: "/administracao", label: "Administração", icon: ShieldCheck } as const]
       : []),
-    ...(isAdmin ? [{ to: "/indicadores", label: "Indicadores", icon: BarChart3 } as const] : []),
   ];
 
   async function sair() {
@@ -219,9 +220,6 @@ function Navegacao({
         >
           <LogOut className="size-5 md:size-4" /> Sair
         </Button>
-        <p className="mt-2 text-center text-[10px] text-sidebar-foreground/45">
-          Versão {__APP_VERSION__}
-        </p>
       </div>
     </div>
   );
@@ -243,24 +241,12 @@ export function AppShell({
   const [carregandoNotificacoes, setCarregandoNotificacoes] = useState(false);
   const [pendenciasInternas, setPendenciasInternas] = useState<PendenciaRapida[]>([]);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
-  const [online, setOnline] = useState(true);
   const { profile, isAutorizado } = useAuth();
   const contexto = profile?.setor_atual
     ? `${nomeSetor(profile.setor_atual)} · ${nomeTurno(profile.turno_atual)}`
     : "Escolher setor e turno";
   const abrirNovo = onApontar ?? (() => setModalRapido("novo"));
   const abrirRepetir = onRepeat ?? (() => setModalRapido("repetir"));
-
-  useEffect(() => {
-    const atualizar = () => setOnline(navigator.onLine);
-    atualizar();
-    window.addEventListener("online", atualizar);
-    window.addEventListener("offline", atualizar);
-    return () => {
-      window.removeEventListener("online", atualizar);
-      window.removeEventListener("offline", atualizar);
-    };
-  }, []);
 
   async function carregarNotificacoesInternas() {
     if (!profile?.setor_atual || !profile.turno_atual) {
@@ -397,15 +383,6 @@ export function AppShell({
               </Button>
             </div>
           </header>
-          {!online && (
-            <div
-              className="sticky top-[57px] z-20 flex items-center justify-center gap-2 border-b border-amber-300 bg-amber-100 px-3 py-2 text-center text-xs font-semibold text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
-              role="status"
-            >
-              <WifiOff className="size-4 shrink-0" /> Sem conexão. Aguarde a internet voltar antes
-              de salvar ou lançar no Protheus.
-            </div>
-          )}
           <main className="mx-auto w-full max-w-[1480px] flex-1 px-2.5 pb-12 pt-3 sm:px-5 sm:pt-4">
             {children}
           </main>
@@ -426,6 +403,9 @@ export function AppShell({
               if (!open) setModalRapido(null);
             }}
             repeatLatest={modalRapido === "repetir"}
+            onSaved={() => {
+              window.dispatchEvent(new Event("apontamento-salvo"));
+            }}
           />
         </Suspense>
       )}

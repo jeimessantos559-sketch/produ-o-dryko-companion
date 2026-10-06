@@ -39,26 +39,218 @@ export type OcorrenciaOperacional = {
   tipo_status: string | null;
   mensagem: string;
   created_at: string;
+  hora_inicio?: string | null;
+  hora_fim?: string | null;
+  duracao_min?: number | null;
+  motivo_parada?: string | null;
+  motivo_outro?: string | null;
+  acao_realizada?: string | null;
+  turno_origem?: string | null;
+  data_origem?: string | null;
+  quantidade_transferencias?: number | null;
+  setor?: string;
+  turno?: string;
+  data_local?: string;
+  criado_por?: string;
 };
 
-export type EquipamentoResumo = { equipamento: string; linhas: string[]; comProblema: boolean };
+export const MOTIVOS_PARADA = [
+  "Mecânica", "Elétrica", "Matéria-prima", "Qualidade", "Operacional",
+  "Setup", "Manutenção", "Limpeza", "Falta de pessoal", "Outro",
+] as const;
+
+export function rotuloMotivo(o: Pick<OcorrenciaOperacional, "motivo_parada" | "motivo_outro">) {
+  if (!o.motivo_parada) return "";
+  return o.motivo_parada === "Outro" && o.motivo_outro?.trim() ? `Outro (${o.motivo_outro.trim()})` : o.motivo_parada;
+}
+
+export type TurnoCod = "T1" | "T2" | "T3";
+
+/** Próximo turno: T1→T2 e T2→T3 no mesmo dia operacional; T3→T1 do dia seguinte (espelho de transferir_ocorrencia). */
+export function proximoTurnoOperacional(turno: TurnoCod, data: string): { turno: TurnoCod; data: string } {
+  if (turno === "T1") return { turno: "T2", data };
+  if (turno === "T2") return { turno: "T3", data };
+  const d = new Date(`${data}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return { turno: "T1", data: d.toISOString().slice(0, 10) };
+}
+
+/** Turno imediatamente anterior: inverso de proximoTurnoOperacional. */
+export function turnoAnteriorOperacional(turno: TurnoCod, data: string): { turno: TurnoCod; data: string } {
+  if (turno === "T3") return { turno: "T2", data };
+  if (turno === "T2") return { turno: "T1", data };
+  const d = new Date(`${data}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return { turno: "T3", data: d.toISOString().slice(0, 10) };
+}
+
+/** Ocorrências que o turno atual deve herdar: só abertas do turno imediatamente anterior, sem repetir id. */
+export function ocorrenciasParaHerdar<T extends OcorrenciaOperacional & { turno: string; data_local: string }>(
+  lista: T[], turnoAtual: TurnoCod, dataAtual: string,
+): T[] {
+  const vistos = new Set<string>();
+  return lista.filter((o) => {
+    if (vistos.has(o.id) || !ocorrenciaEmAndamento(o)) return false;
+    const destino = proximoTurnoOperacional(o.turno as TurnoCod, o.data_local);
+    if (destino.turno !== turnoAtual || destino.data !== dataAtual) return false;
+    vistos.add(o.id);
+    return true;
+  });
+}
+
+/** Espelho puro da transferência: mesma ocorrência, hora inicial preservada, origem só na primeira vez. */
+export function transferirOcorrencia<T extends OcorrenciaOperacional & { turno: string; data_local: string }>(o: T): T {
+  if (!ocorrenciaEmAndamento(o)) throw new Error("Só ocorrências em andamento podem ser transferidas.");
+  const destino = proximoTurnoOperacional(o.turno as TurnoCod, o.data_local);
+  return {
+    ...o,
+    turno_origem: o.turno_origem ?? o.turno,
+    data_origem: o.data_origem ?? o.data_local,
+    turno: destino.turno,
+    data_local: destino.data,
+    quantidade_transferencias: (o.quantidade_transferencias ?? 0) + 1,
+  };
+}
+
+/** Colunas de ocorrencias_turno usadas em todas as telas. */
+export const CAMPOS_OCORRENCIA =
+  "id, setor, turno, data_local, criado_por, equipamento, tipo_status, mensagem, created_at, hora_inicio, hora_fim, duracao_min, motivo_parada, motivo_outro, acao_realizada, turno_origem, data_origem, quantidade_transferencias";
+
+function minutosDoDia(h: string | null | undefined) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(h ?? "").trim());
+  if (!m) return null;
+  const hh = Number(m[1]), mm = Number(m[2]);
+  return hh > 23 || mm > 59 ? null : hh * 60 + mm;
+}
+
+/** Duração em minutos; fim menor que início = atravessou a meia-noite. Incompleto = null. */
+export function calcularDuracaoOcorrencia(inicio: string | null | undefined, fim: string | null | undefined) {
+  const a = minutosDoDia(inicio), b = minutosDoDia(fim);
+  if (a === null || b === null) return null;
+  return b >= a ? b - a : 1440 - a + b;
+}
+
+/** 120 => "2h00", 90 => "1h30", 45 => "45min", 0/null => "". */
+export function formatarDuracaoOcorrencia(minutos: number | null | undefined) {
+  if (!minutos || minutos <= 0) return "";
+  if (minutos < 60) return `${minutos}min`;
+  return `${Math.floor(minutos / 60)}h${String(minutos % 60).padStart(2, "0")}`;
+}
+
+export const hhmm = (h: string | null | undefined) => (h ? String(h).slice(0, 5) : "");
+
+/** Prefixo "2h00 parada · 23:00 às 01:00" (vazio se sem horário). */
+/** Início informado sem fim = ocorrência em andamento (não soma no total parado). */
+export function ocorrenciaEmAndamento(o: Pick<OcorrenciaOperacional, "hora_inicio" | "hora_fim">) {
+  return !!o.hora_inicio && !o.hora_fim;
+}
+
+/** Campos a gravar ao finalizar (só hora_fim e duracao_min); null se horário inválido. */
+export function dadosFinalizacaoOcorrencia(inicio: string | null | undefined, fim: string) {
+  const duracao_min = calcularDuracaoOcorrencia(inicio, fim);
+  return duracao_min === null ? null : { hora_fim: fim, duracao_min };
+}
+
+/** Hora atual HH:MM em America/Sao_Paulo. */
+export function horaAtualSaoPaulo(agora = new Date()) {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(agora);
+}
+
+export function prefixoTempoOcorrencia(o: Pick<OcorrenciaOperacional, "hora_inicio" | "hora_fim" | "duracao_min">) {
+  if (ocorrenciaEmAndamento(o)) return `Em andamento desde ${hhmm(o.hora_inicio)}`;
+  const partes: string[] = [];
+  const dur = formatarDuracaoOcorrencia(o.duracao_min);
+  if (dur) partes.push(`${dur} parada`);
+  if (o.hora_inicio && o.hora_fim) partes.push(`${hhmm(o.hora_inicio)} às ${hhmm(o.hora_fim)}`);
+  return partes.join(" · ");
+}
+
+function comTempo(o: OcorrenciaOperacional, texto: string) {
+  const p = prefixoTempoOcorrencia(o);
+  const extras = [rotuloMotivo(o) && `Motivo: ${rotuloMotivo(o)}`, o.acao_realizada?.trim() && `Ação: ${o.acao_realizada.trim()}`].filter(Boolean);
+  const base = p ? (texto ? `${p} · ${texto}` : p) : texto;
+  return extras.length ? `${base} · ${extras.join(" · ")}` : base;
+}
+
+function descricaoOcorrencia(o: OcorrenciaOperacional) {
+  const mensagem = o.mensagem.trim();
+  if ((o.tipo_status ?? "ocorrencia") === "ocorrencia") return mensagem || "Ocorrência";
+  const situacao = rotuloSituacao(o.tipo_status);
+  return mensagem ? `${situacao}: ${mensagem}` : situacao;
+}
+
+function linhaResumoOcorrencia(o: OcorrenciaOperacional) {
+  if (o.tipo_status === "sem_ocorrencias") return SEM_OCORRENCIAS;
+  const partes = [`• ${descricaoOcorrencia(o)}`];
+  if (ocorrenciaEmAndamento(o)) {
+    partes.push(`desde ${hhmm(o.hora_inicio)}`, "Em andamento");
+  } else {
+    if (o.hora_inicio && o.hora_fim) partes.push(`${hhmm(o.hora_inicio)} às ${hhmm(o.hora_fim)}`);
+    const duracao = formatarDuracaoOcorrencia(o.duracao_min ?? calcularDuracaoOcorrencia(o.hora_inicio, o.hora_fim));
+    if (duracao) partes.push(duracao);
+  }
+  const motivo = rotuloMotivo(o);
+  if (motivo) partes.push(`Motivo: ${motivo}`);
+  if (o.acao_realizada?.trim()) partes.push(`Ação: ${o.acao_realizada.trim()}`);
+  return partes.join(" — ");
+}
+
+function chaveCronologica(o: OcorrenciaOperacional) {
+  const hora = minutosDoDia(o.hora_inicio);
+  if (hora !== null) {
+    const inicioTurno = o.turno === "T2" ? 15 * 60 + 38 : o.turno === "T3" ? 60 : 0;
+    return { semHora: 0, valor: (hora - inicioTurno + 1440) % 1440, desempate: o.created_at };
+  }
+  const criada = new Date(o.created_at).getTime();
+  return { semHora: 1, valor: Number.isNaN(criada) ? Number.MAX_SAFE_INTEGER : criada, desempate: o.created_at };
+}
+
+function ordenarOcorrencias(lista: readonly OcorrenciaOperacional[]) {
+  return [...lista].sort((a, b) => {
+    const ka = chaveCronologica(a), kb = chaveCronologica(b);
+    return ka.semHora - kb.semHora || ka.valor - kb.valor || ka.desempate.localeCompare(kb.desempate);
+  });
+}
+
+function linhasEquipamento(lista: readonly OcorrenciaOperacional[]) {
+  const reais = ordenarOcorrencias(lista.filter((o) => o.tipo_status !== "sem_ocorrencias"));
+  return reais.length ? reais.map(linhaResumoOcorrencia) : [SEM_OCORRENCIAS];
+}
+
+/** Soma de duracao_min por equipamento, ignorando "sem_ocorrencias". */
+export function totalParadoPorEquipamento(lista: OcorrenciaOperacional[]) {
+  const total = new Map<string, number>();
+  for (const o of lista) {
+    if (!o.equipamento || o.tipo_status === "sem_ocorrencias" || ocorrenciaEmAndamento(o) || !o.duracao_min || o.duracao_min <= 0) continue;
+    total.set(o.equipamento, (total.get(o.equipamento) ?? 0) + o.duracao_min);
+  }
+  return total;
+}
+
+export type EquipamentoResumo = { equipamento: string; linhas: string[]; comProblema: boolean; totalMin?: number };
 export type GrupoResumo = { titulo: string; itens: EquipamentoResumo[] };
 
 /** Consolida ocorrências na ordem fixa. Sem registro = "Sem ocorrências". */
 export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
-  const ordenadas = [...lista].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const ordenadas = ordenarOcorrencias(lista);
+  const totais = totalParadoPorEquipamento(ordenadas);
   const grupos: GrupoResumo[] = GRUPOS_OCORRENCIAS.map((grupo) => ({
     titulo: grupo.titulo,
     itens: grupo.equipamentos.map((equipamento) => {
       const doEquip = ordenadas.filter((o) => o.equipamento === equipamento);
-      const reais = doEquip.filter((o) => (o.tipo_status ?? "ocorrencia") === "ocorrencia");
+      const reais = doEquip.filter((o) => o.tipo_status !== "sem_ocorrencias");
       if (reais.length) {
-        return { equipamento, linhas: reais.map((o) => o.mensagem), comProblema: true };
+        return {
+          equipamento,
+          linhas: reais.map(linhaResumoOcorrencia),
+          comProblema: true,
+          totalMin: totais.get(equipamento) ?? 0,
+        };
       }
       const ultimo = doEquip[doEquip.length - 1];
       if (ultimo) {
-        const txt = rotuloSituacao(ultimo.tipo_status);
-        return { equipamento, linhas: [txt], comProblema: ultimo.tipo_status !== "sem_ocorrencias" };
+        const linha = linhaResumoOcorrencia(ultimo);
+        return { equipamento, linhas: [linha], comProblema: ultimo.tipo_status !== "sem_ocorrencias", totalMin: totais.get(equipamento) ?? 0 };
       }
       return { equipamento, linhas: [SEM_OCORRENCIAS], comProblema: false };
     }),
@@ -66,8 +258,21 @@ export function consolidarOcorrencias(lista: OcorrenciaOperacional[]) {
   const conhecidos = new Set<string>(GRUPOS_OCORRENCIAS.flatMap((g) => [...g.equipamentos]));
   const outras = ordenadas
     .filter((o) => !o.equipamento || !conhecidos.has(o.equipamento))
-    .map((o) => (o.equipamento ? `${o.equipamento}: ${o.mensagem}` : o.mensagem));
+    .map((o) => linhaResumoOcorrencia(o));
   return { grupos, outras };
+}
+
+/** Equipamentos opcionais de Mantas (relatório livre, sem preenchimento automático). */
+export const EQUIPAMENTOS_MANTAS = ["Linha 4", "Linha 5", "Rebobinadeira manual L4", "Rebobinadeira automática L5", "Forno"] as const;
+
+export function equipamentosOpcionaisSetor(setor: unknown): readonly string[] {
+  const s = String(setor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return s === "mantas" ? EQUIPAMENTOS_MANTAS : [];
+}
+
+/** Linhas "Equipamento — Total parado: 3h20" para ocorrências livres com equipamento. */
+export function linhasTotalParado(lista: OcorrenciaOperacional[]) {
+  return [...totalParadoPorEquipamento(lista)].map(([eq, min]) => `${eq} — Total parado: ${formatarDuracaoOcorrencia(min)}`);
 }
 
 /** Somente Corte e Fitas usam o padrão estruturado por equipamento. */
@@ -78,17 +283,8 @@ export function usaOcorrenciasEstruturadas(setor: unknown) {
 
 /** Lista simples: somente ocorrências realmente registradas. */
 export function linhasOcorrenciasLivres(lista: OcorrenciaOperacional[]) {
-  return [...lista]
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((o) => {
-      const tipo = o.tipo_status ?? "ocorrencia";
-      const msg = tipo === "ocorrencia" ? o.mensagem : o.mensagem || rotuloSituacao(tipo);
-      const d = new Date(o.created_at);
-      const h = Number.isNaN(d.getTime())
-        ? ""
-        : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(d) + " - ";
-      return h + (o.equipamento ? `${o.equipamento}: ${msg}` : msg);
-    })
+  return ordenarOcorrencias(lista)
+    .map(linhaResumoOcorrencia)
     .filter((l) => l.trim().length > 0);
 }
 
@@ -96,21 +292,55 @@ export function linhasOcorrenciasLivres(lista: OcorrenciaOperacional[]) {
 export function textoOcorrencias(lista: OcorrenciaOperacional[], negrito = true, setor?: unknown) {
   const b = (t: string) => (negrito ? `*${t}*` : t);
   if (setor !== undefined && !usaOcorrenciasEstruturadas(setor)) {
-    const livres = linhasOcorrenciasLivres(lista);
-    return livres.length ? livres.join("\n") : "Sem ocorrências registradas no turno.";
+    if (!lista.length) return "Sem ocorrências registradas no turno.";
+    const ordemPreferida: readonly string[] = setor && String(setor).toLowerCase() === "mantas" ? EQUIPAMENTOS_MANTAS : [];
+    const equipamentos = [...new Set(lista.map((o) => o.equipamento).filter((e): e is string => !!e))]
+      .sort((a, c) => {
+        const ai = ordemPreferida.indexOf(a), ci = ordemPreferida.indexOf(c);
+        if (ai >= 0 || ci >= 0) return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (ci < 0 ? Number.MAX_SAFE_INTEGER : ci);
+        return a.localeCompare(c, "pt-BR");
+      });
+    const linhas: string[] = [];
+    for (const equipamento of equipamentos) {
+      if (linhas.length) linhas.push("");
+      const doEquipamento = lista.filter((o) => o.equipamento === equipamento);
+      linhas.push(b(equipamento), ...linhasEquipamento(doEquipamento));
+      const total = formatarDuracaoOcorrencia(totalParadoPorEquipamento(doEquipamento).get(equipamento));
+      if (total) linhas.push(b(`Tempo total parado: ${total}`));
+    }
+    const gerais = lista.filter((o) => !o.equipamento);
+    if (gerais.length) {
+      if (linhas.length) linhas.push("");
+      linhas.push(b("Ocorrências gerais"), ...linhasEquipamento(gerais));
+    }
+    return linhas.join("\n");
   }
-  const { grupos, outras } = consolidarOcorrencias(lista);
+  const { grupos } = consolidarOcorrencias(lista);
+  const conhecidos = new Set<string>(GRUPOS_OCORRENCIAS.flatMap((g) => [...g.equipamentos]));
+  const outras = lista.filter((o) => !o.equipamento || !conhecidos.has(o.equipamento));
   const linhas: string[] = [];
   grupos.forEach((grupo, i) => {
     if (i > 0) linhas.push("");
     linhas.push(b(grupo.titulo));
     for (const item of grupo.itens) {
+      const total = formatarDuracaoOcorrencia(item.totalMin);
+      if (linhas.at(-1) !== b(grupo.titulo)) linhas.push("");
       linhas.push(b(item.equipamento));
       linhas.push(...item.linhas);
+      if (total) linhas.push(b(`Tempo total parado: ${total}`));
     }
   });
   if (outras.length) {
-    linhas.push("", b("Outras ocorrências"), ...outras);
+    const equipamentos = [...new Set(outras.map((o) => o.equipamento).filter((e): e is string => !!e))];
+    linhas.push("", b("Outras ocorrências"));
+    for (const equipamento of equipamentos) {
+      const doEquipamento = outras.filter((o) => o.equipamento === equipamento);
+      linhas.push("", b(equipamento), ...linhasEquipamento(doEquipamento));
+      const total = formatarDuracaoOcorrencia(totalParadoPorEquipamento(doEquipamento).get(equipamento));
+      if (total) linhas.push(b(`Tempo total parado: ${total}`));
+    }
+    const gerais = outras.filter((o) => !o.equipamento);
+    if (gerais.length) linhas.push("", b("Ocorrências gerais"), ...linhasEquipamento(gerais));
   }
   return linhas.join("\n");
 }
@@ -126,5 +356,58 @@ export function ocorrenciasDoResumo(valor: unknown): OcorrenciaOperacional[] | n
       tipo_status: typeof v["tipo_status"] === "string" ? v["tipo_status"] : null,
       mensagem: String(v["mensagem"] ?? ""),
       created_at: String(v["created_at"] ?? ""),
+      hora_inicio: typeof v["hora_inicio"] === "string" ? v["hora_inicio"] : null,
+      hora_fim: typeof v["hora_fim"] === "string" ? v["hora_fim"] : null,
+      duracao_min: typeof v["duracao_min"] === "number" ? v["duracao_min"] : null,
+      motivo_parada: typeof v["motivo_parada"] === "string" ? v["motivo_parada"] : null,
+      motivo_outro: typeof v["motivo_outro"] === "string" ? v["motivo_outro"] : null,
+      acao_realizada: typeof v["acao_realizada"] === "string" ? v["acao_realizada"] : null,
     }));
+}
+
+/* ---------- Gerencial: paradas ---------- */
+
+export type LinhaRanking = { chave: string; minutos: number; quantidade: number };
+
+/** Ranking de paradas finalizadas (duracao_min válida). Ignora "Sem ocorrências" e abertas. */
+export function rankingParadas(lista: readonly OcorrenciaOperacional[], por: "equipamento" | "motivo" | "turno"): LinhaRanking[] {
+  const mapa = new Map<string, LinhaRanking>();
+  for (const o of lista) {
+    if (o.tipo_status === "sem_ocorrencias" || ocorrenciaEmAndamento(o)) continue;
+    if (typeof o.duracao_min !== "number" || o.duracao_min <= 0) continue;
+    const chave = por === "equipamento" ? o.equipamento || "Ocorrência geral" : por === "motivo" ? o.motivo_parada || "Sem motivo" : o.turno || "—";
+    const atual = mapa.get(chave) ?? { chave, minutos: 0, quantidade: 0 };
+    atual.minutos += o.duracao_min;
+    atual.quantidade += 1;
+    mapa.set(chave, atual);
+  }
+  return [...mapa.values()].sort((a, b) => b.minutos - a.minutos || a.chave.localeCompare(b.chave));
+}
+
+export function resumoParadas(lista: readonly OcorrenciaOperacional[]) {
+  const ranking = rankingParadas(lista, "equipamento");
+  return {
+    totalMin: ranking.reduce((t, r) => t + r.minutos, 0),
+    finalizadas: ranking.reduce((t, r) => t + r.quantidade, 0),
+    emAndamento: lista.filter((o) => ocorrenciaEmAndamento(o)).length,
+    maiorEquipamento: ranking[0] ?? null,
+  };
+}
+
+const csvCampo = (v: unknown) => {
+  const t = v === null || v === undefined ? "" : String(v);
+  return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+
+/** CSV (separador ;, compatível com Excel pt-BR). */
+export function csvOcorrencias(lista: readonly OcorrenciaOperacional[], nomes: Record<string, string> = {}) {
+  const cab = ["Data operacional", "Setor", "Turno atual", "Turno origem", "Equipamento", "Situação", "Motivo", "Descrição",
+    "Hora início", "Hora fim", "Duração (min)", "Duração", "Ação realizada", "Registrado por", "Transferências"];
+  const linhas = lista.map((o) => [
+    o.data_local ?? "", o.setor ?? "", o.turno ?? "", o.turno_origem ?? "", o.equipamento ?? "Ocorrência geral",
+    ocorrenciaEmAndamento(o) ? "Em andamento" : rotuloSituacao(o.tipo_status), rotuloMotivo(o), o.mensagem,
+    hhmm(o.hora_inicio), hhmm(o.hora_fim), o.duracao_min ?? "", formatarDuracaoOcorrencia(o.duracao_min),
+    o.acao_realizada ?? "", (o.criado_por && nomes[o.criado_por]) || "", o.quantidade_transferencias ?? 0,
+  ]);
+  return [cab, ...linhas].map((l) => l.map(csvCampo).join(";")).join("\r\n");
 }

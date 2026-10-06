@@ -9,9 +9,12 @@ import {
   PackageCheck,
   Search,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { agruparProtheus } from "@/lib/protheus";
+import { pltsFechados, sequenciasDoTurno, type ApontamentoTurno } from "@/lib/apontamentos-turno";
+import { CartaoApontamento } from "@/components/dryko/cartao-apontamento";
 import { AppShell, nomeSetor, nomeTurno } from "@/components/dryko/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,17 +28,35 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { chaveAgrupamentoProtheus } from "@/lib/agrupamento-protheus";
 import { useAuth } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
+import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-card";
+import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
 
 const LazyApontamentoRapido = lazy(() =>
   import("@/components/dryko/apontamento-rapido").then((modulo) => ({
     default: modulo.ApontamentoRapido,
   })),
 );
+const LazyCorrigirApontamento = lazy(() =>
+  import("@/components/dryko/corrigir-apontamento").then((m) => ({
+    default: m.CorrigirApontamento,
+  })),
+);
 
-export const Route = createFileRoute("/_authenticated/painel")({ component: Painel });
+export const Route = createFileRoute("/_authenticated/painel")({
+  head: () => ({
+    meta: [
+      { title: "Painel do turno | Aponta Produção DRYKO" },
+      { name: "description", content: "Resumo e apontamentos do turno de produção." },
+      { property: "og:title", content: "Painel do turno | Aponta Produção DRYKO" },
+      { property: "og:description", content: "Resumo e apontamentos do turno de produção." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: Painel,
+});
 
 type Resumo = {
   registros: number;
@@ -47,19 +68,7 @@ type Resumo = {
   area: number;
 };
 
-type Registro = {
-  id: string;
-  op: string | null;
-  lote: string | null;
-  produto_nome: string;
-  quantidade_plts: number | null;
-  total_rolos: number | null;
-  metragem: number | null;
-  area_m2: number | null;
-  status: "pendente" | "lancado";
-  created_at: string;
-  data_hora_producao: string;
-};
+type Registro = ApontamentoTurno;
 
 type Pendencia = Registro & {
   data_local: string;
@@ -94,7 +103,7 @@ const RESUMO_VAZIO: Resumo = {
 };
 
 function Painel() {
-  const { profile, loading, isAutorizado } = useAuth();
+  const { profile, loading, isAutorizado, isAdmin } = useAuth();
   const [resumo, setResumo] = useState<Resumo>(RESUMO_VAZIO);
   const [pendencias, setPendencias] = useState<Pendencia[]>([]);
   const [recentes, setRecentes] = useState<Registro[]>([]);
@@ -105,77 +114,54 @@ function Painel() {
   const [apontarAberto, setApontarAberto] = useState(false);
   const [modoApontamento, setModoApontamento] = useState<"novo" | "repetir">("novo");
   const [confirmandoChave, setConfirmandoChave] = useState<string | null>(null);
+  const [corrigindo, setCorrigindo] = useState<Registro | null>(null);
+  const cargaAtual = useRef(0);
+  const sequencias = useMemo(() => sequenciasDoTurno(recentes), [recentes]);
 
-  const carregarPainel = useCallback(async () => {
-    if (!profile?.setor_atual || !profile.turno_atual) {
-      setRecentes([]);
-      setResumo(RESUMO_VAZIO);
-      setPendencias([]);
-      setErro(false);
-      return;
-    }
+  const carregarPainel = useCallback(
+    async (forcar = false) => {
+      const carga = ++cargaAtual.current;
+      if (!profile?.setor_atual || !profile.turno_atual) {
+        setRecentes([]);
+        setResumo(RESUMO_VAZIO);
+        setPendencias([]);
+        setErro(false);
+        return;
+      }
 
-    setErro(false);
-    const dataAtual = dataOperacional(profile.turno_atual);
-    const rpc = await supabase.rpc("painel_turno", {
-      p_setor: profile.setor_atual,
-      p_turno: profile.turno_atual,
-      p_data: dataAtual,
-    });
+      const setorAtual = profile.setor_atual;
+      const turnoAtual = profile.turno_atual;
+      const dataAtual = dataOperacional(turnoAtual);
+      const chave = `painel:${setorAtual}:${turnoAtual}:${dataAtual}`;
+      // Mostra o último resultado na hora e revalida em segundo plano.
+      const salvo = lerCache<PainelPayload>(chave);
+      if (salvo && !forcar) aplicarPayload(salvo.valor);
 
-    if (!rpc.error) {
-      aplicarPayload((rpc.data ?? {}) as PainelPayload);
-      return;
-    }
+      try {
+        const payload = await consultarComCache<PainelPayload>(
+          chave,
+          15_000,
+          () => buscarPainel(setorAtual, turnoAtual, dataAtual),
+          { forcar },
+        );
+        if (carga !== cargaAtual.current) return;
+        setErro(false);
+        aplicarPayload(payload);
+      } catch {
+        if (carga !== cargaAtual.current) return;
+        setErro(true);
+        setRecentes([]);
+        setResumo(RESUMO_VAZIO);
+        setPendencias([]);
+      }
+    },
+    [profile?.setor_atual, profile?.turno_atual],
+  );
 
-    const [{ data, error }, { data: pendenciasData, error: erroPendencias }] = await Promise.all([
-      supabase
-        .from("apontamentos")
-        .select(
-          "id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao",
-        )
-        .eq("setor", profile.setor_atual)
-        .eq("turno", profile.turno_atual)
-        .eq("data_local", dataAtual)
-        .order("data_hora_producao", { ascending: false })
-        .limit(30),
-      supabase
-        .from("apontamentos")
-        .select(
-          "id, op, lote, produto_nome, quantidade_plts, total_rolos, metragem, area_m2, status, created_at, data_hora_producao, data_local, turno",
-        )
-        .eq("setor", profile.setor_atual)
-        .eq("status", "pendente")
-        .order("data_hora_producao", { ascending: false })
-        .limit(60),
-    ]);
-
-    if (error || erroPendencias) {
-      setErro(true);
-      setRecentes([]);
-      setResumo(RESUMO_VAZIO);
-      setPendencias([]);
-      return;
-    }
-
-    const itens = (data ?? []) as Registro[];
-    setRecentes(itens);
-    setPendencias((pendenciasData ?? []) as Pendencia[]);
-    setResumo(
-      itens.reduce(
-        (acc, item) => ({
-          registros: acc.registros + 1,
-          pendentes: acc.pendentes + (item.status === "pendente" ? 1 : 0),
-          lancados: acc.lancados + (item.status === "lancado" ? 1 : 0),
-          plts: acc.plts + Number(item.quantidade_plts ?? 0),
-          rolos: acc.rolos + Number(item.total_rolos ?? 0),
-          metragem: acc.metragem + Number(item.metragem ?? 0),
-          area: acc.area + Number(item.area_m2 ?? 0),
-        }),
-        { ...RESUMO_VAZIO },
-      ),
-    );
-  }, [profile?.setor_atual, profile?.turno_atual]);
+  const recarregarAposMudanca = useCallback(async () => {
+    invalidarCache("painel:");
+    await carregarPainel(true);
+  }, [carregarPainel]);
 
   function aplicarPayload(payload: PainelPayload) {
     const r = payload.resumo ?? {};
@@ -183,7 +169,7 @@ function Painel() {
       registros: Number(r.registros ?? 0),
       pendentes: Number(r.pendentes ?? 0),
       lancados: Number(r.lancados ?? 0),
-      plts: Number(r.plts ?? 0),
+      plts: (payload.recentes ?? []).reduce((n, item) => n + pltsFechados(item), 0),
       rolos: Number(r.rolos ?? 0),
       metragem: Number(r.metragem ?? 0),
       area: Number(r.area ?? 0),
@@ -200,6 +186,7 @@ function Painel() {
   const setor = profile?.setor_atual ?? "";
   const setorFitas = setor === "fitas";
   const setorMantas = setor === "mantas";
+  const setorCorte = setor === "corte";
   const setorNome = setor ? nomeSetor(setor) : "Setor";
   const turnoNome = nomeTurno(profile?.turno_atual);
 
@@ -257,7 +244,7 @@ function Painel() {
       return;
     }
     toast.success(`${data ?? grupo.ids.length} apontamento(s) lançado(s) no Protheus.`);
-    await carregarPainel();
+    await recarregarAposMudanca();
   }
 
   return (
@@ -278,6 +265,13 @@ function Painel() {
             >
               Não foi possível carregar o painel. Tente novamente.
             </div>
+          )}
+          {profile?.setor_atual && profile.turno_atual && (
+            <OcorrenciasAbertasCard
+              setor={profile.setor_atual}
+              turno={profile.turno_atual}
+              data={dataAtual}
+            />
           )}
 
           {!loading && (!profile?.setor_atual || !profile.turno_atual) && (
@@ -315,17 +309,10 @@ function Painel() {
             />
             <Indicador
               icon={Gauge}
-              label={setorFitas || setorMantas ? "Metragem Protheus" : "Unidades produzidas"}
-              valor={
-                setorFitas
-                  ? formatarNumero(resumo.area)
-                  : setorMantas
-                    ? formatarNumero(resumo.metragem)
-                    : resumo.rolos.toLocaleString("pt-BR")
-              }
-              detalhe={setorFitas ? "m²" : setorMantas ? "m" : "unidades"}
+              label={setorCorte ? "Metragem produzida" : "Metragem Protheus"}
+              valor={setorFitas ? formatarNumero(resumo.area) : formatarNumero(resumo.metragem)}
+              detalhe={setorFitas || setorCorte ? "m²" : "m"}
               tone="slate"
-              destaque={setorFitas || setorMantas}
             />
           </div>
 
@@ -369,9 +356,11 @@ function Painel() {
           )}
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="px-3 pb-2 pt-3">
+            <div className="px-4 pb-3 pt-4">
               <h2 className="text-lg font-extrabold text-slate-950">Apontamentos do turno</h2>
-              <p className="text-xs text-slate-500">Horário e produção de cada registro</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Um registro por apontamento, mesmo quando houver vários PLTs.
+              </p>
             </div>
             <div className="grid grid-cols-[1fr_112px] gap-2 border-b border-slate-100 px-3 pb-3">
               <div className="relative">
@@ -401,24 +390,18 @@ function Painel() {
                   Nenhum apontamento neste turno.
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="space-y-3 py-2">
                   {filtrados.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-2 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-950">
-                          {tituloRegistro(item, setor)}
-                        </p>
-                        <p className="truncate text-xs text-slate-500">
-                          <strong>{horaProducao(item.data_hora_producao)}</strong> ·{" "}
-                          {resumoRegistro(item, setor)}
-                        </p>
-                      </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${item.status === "lancado" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
-                      >
-                        {item.status === "lancado" ? "Lançado" : "Pendente"}
-                      </span>
-                    </div>
+                    <CartaoApontamento
+                      key={item.id}
+                      item={item}
+                      sequencia={sequencias.get(item.id)}
+                      onCorrigir={
+                        item.status === "pendente" || isAdmin
+                          ? () => setCorrigindo(item)
+                          : undefined
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -452,7 +435,17 @@ function Painel() {
             open
             onOpenChange={setApontarAberto}
             repeatLatest={modoApontamento === "repetir"}
-            onSaved={carregarPainel}
+            onSaved={recarregarAposMudanca}
+          />
+        </Suspense>
+      )}
+      {corrigindo && (
+        <Suspense fallback={null}>
+          <LazyCorrigirApontamento
+            key={corrigindo.id}
+            item={corrigindo}
+            onClose={() => setCorrigindo(null)}
+            onSaved={recarregarAposMudanca}
           />
         </Suspense>
       )}
@@ -522,34 +515,25 @@ function Painel() {
   );
 }
 
-function agruparPendencias(itens: Pendencia[], setor: string, incluirTurnoNaChave: boolean) {
-  const mapa = new Map<string, GrupoProtheus>();
-  for (const item of itens) {
-    const sufixoTurno = incluirTurnoNaChave ? `:${item.data_local}:${item.turno}` : "";
-    const chave = chaveAgrupamentoProtheus(item, setor, sufixoTurno);
+async function buscarPainel(setor: string, turno: string, data: string): Promise<PainelPayload> {
+  const rpc = await (supabase.rpc as any)("painel_turno", {
+    p_setor: setor,
+    p_turno: turno,
+    p_data: data,
+  });
+  // Uma lista parcial produz totais e sequências errados; em falha mostramos erro para tentar novamente.
+  if (rpc.error) throw rpc.error;
+  return (rpc.data ?? {}) as PainelPayload;
+}
 
-    const atual = mapa.get(chave);
-    if (!atual) {
-      mapa.set(chave, {
-        chave,
-        ids: [item.id],
-        item,
-        registros: 1,
-        plts: Number(item.quantidade_plts ?? 0),
-        rolos: Number(item.total_rolos ?? 0),
-        metragem: Number(item.metragem ?? 0),
-        area: Number(item.area_m2 ?? 0),
-      });
-      continue;
-    }
-    atual.ids.push(item.id);
-    atual.registros += 1;
-    atual.plts += Number(item.quantidade_plts ?? 0);
-    atual.rolos += Number(item.total_rolos ?? 0);
-    atual.metragem += Number(item.metragem ?? 0);
-    atual.area += Number(item.area_m2 ?? 0);
-  }
-  return [...mapa.values()];
+function agruparPendencias(
+  itens: Pendencia[],
+  setor: string,
+  incluirTurnoNaChave: boolean,
+): GrupoProtheus[] {
+  return agruparProtheus(itens, setor, { incluirTurno: incluirTurnoNaChave }).map(
+    ({ itens: _itens, ...g }) => g,
+  );
 }
 
 function Indicador({
@@ -607,7 +591,7 @@ function resumoRegistro(item: Registro, setor: string) {
   if (setor === "fitas") return `${formatarNumero(Number(item.area_m2 ?? 0))} m² para Protheus`;
   if (setor === "mantas")
     return `${formatarNumero(Number(item.metragem ?? 0))} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
-  return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} unidades`;
+  return `${item.total_rolos ?? 0} unidades · ${formatarNumero(Number(item.metragem ?? 0))} m²`;
 }
 
 function resumoGrupo(grupo: GrupoProtheus, setor: string) {
