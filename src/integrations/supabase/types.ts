@@ -716,11 +716,11 @@ export type Database = {
       }
       programacao_producao: {
         Row: {
-          finalizado_em: string | null
-          finalizado_por: string | null
           created_at: string
           criado_por: string
           data_local: string
+          finalizado_em: string | null
+          finalizado_por: string | null
           global_dia: boolean
           id: string
           lote: string | null
@@ -734,11 +734,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          finalizado_em?: string | null
-          finalizado_por?: string | null
           created_at?: string
           criado_por: string
           data_local: string
+          finalizado_em?: string | null
+          finalizado_por?: string | null
           global_dia?: boolean
           id?: string
           lote?: string | null
@@ -752,11 +752,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          finalizado_em?: string | null
-          finalizado_por?: string | null
           created_at?: string
           criado_por?: string
           data_local?: string
+          finalizado_em?: string | null
+          finalizado_por?: string | null
           global_dia?: boolean
           id?: string
           lote?: string | null
@@ -966,30 +966,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      limpar_tentativas_auth: {
-        Args: { p_acao: string; p_chave: string }
-        Returns: undefined
-      }
-      registrar_tentativa_auth: {
-        Args: { p_acao: string; p_bloqueio_segundos: number; p_chave: string; p_janela_segundos: number; p_max_tentativas: number }
-        Returns: boolean
-      }
-      produtos_da_referencia: {
-        Args: { p_setor: Database["public"]["Enums"]["setor_codigo"]; p_referencia: string }
-        Returns: { produto_id: string }[]
-      }
-      contagem_turno: {
-        Args: { p_setor: Database["public"]["Enums"]["setor_codigo"]; p_turno: Database["public"]["Enums"]["turno_codigo"]; p_data: string }
-        Returns: Json
-      }
-      alterar_status_programacao: {
-        Args: { p_id: string; p_finalizar: boolean }
-        Returns: undefined
-      }
-      finalizar_meta_atingida: {
-        Args: { p_id: string }
-        Returns: undefined
-      }
       ajustar_horario_apontamento: {
         Args: { p_data_hora: string; p_id: string }
         Returns: undefined
@@ -999,6 +975,10 @@ export type Database = {
           p_meta_id: string
           p_status: Database["public"]["Enums"]["meta_status"]
         }
+        Returns: undefined
+      }
+      alterar_status_programacao: {
+        Args: { p_finalizar: boolean; p_id: string }
         Returns: undefined
       }
       atualizar_meu_perfil: {
@@ -1041,6 +1021,14 @@ export type Database = {
       confirmar_apontamentos_protheus: {
         Args: { p_ids: string[] }
         Returns: number
+      }
+      contagem_turno: {
+        Args: {
+          p_data: string
+          p_setor: Database["public"]["Enums"]["setor_codigo"]
+          p_turno: Database["public"]["Enums"]["turno_codigo"]
+        }
+        Returns: Json
       }
       corrigir_apontamento: {
         Args: { p_dados: Json; p_id: string; p_justificativa: string }
@@ -1098,6 +1086,7 @@ export type Database = {
         }
         Returns: string
       }
+      finalizar_meta_atingida: { Args: { p_id: string }; Returns: undefined }
       finalizar_ocorrencia: {
         Args: { p_acao: string; p_hora_fim: string; p_id: string }
         Returns: {
@@ -1195,6 +1184,14 @@ export type Database = {
         }
         Returns: Json
       }
+      plts_fechados: {
+        Args: {
+          p_grupos: Json
+          p_quantidade: number
+          p_setor: Database["public"]["Enums"]["setor_codigo"]
+        }
+        Returns: number
+      }
       pode_acessar_setor: {
         Args: {
           _setor: Database["public"]["Enums"]["setor_codigo"]
@@ -1206,6 +1203,19 @@ export type Database = {
       pode_definir_meta_turno: { Args: { _user_id: string }; Returns: boolean }
       pode_finalizar_meta: { Args: { p_user_id: string }; Returns: boolean }
       pode_gerenciar_produtos: { Args: { _user_id: string }; Returns: boolean }
+      produtos_da_referencia: {
+        Args: {
+          p_referencia: string
+          p_setor: Database["public"]["Enums"]["setor_codigo"]
+        }
+        Returns: {
+          produto_id: string
+        }[]
+      }
+      quantidade_produzida_programacao: {
+        Args: { p: Database["public"]["Tables"]["programacao_producao"]["Row"] }
+        Returns: number
+      }
       reabrir_turno: {
         Args: { p_fechamento_id: string; p_justificativa: string }
         Returns: undefined
