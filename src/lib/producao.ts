@@ -36,7 +36,7 @@ export const HORARIOS_TURNO: Record<TurnoOperacional, string> = {
 
 const HORAS_PRODUTIVAS_PADRAO: Record<TurnoOperacional, number[]> = {
   T1: [6, 7, 8, 9, 10, 11, 12, 13, 14],
-  T2: [16, 17, 18, 19, 20, 21, 22, 23, 0, 1],
+  T2: [16, 17, 18, 19, 20, 21, 22, 23, 0],
   T3: [1, 2, 3, 4, 5],
 };
 
@@ -146,4 +146,14 @@ export function dataOperacional(turno: TurnoOperacional | null | undefined, date
     return meioDiaUtc.toISOString().slice(0, 10);
   }
   return hoje;
+}
+
+/** Espelho da função do banco horario_pertence_turno (T2 e T3 se sobrepõem entre 01:00 e 02:00). */
+export function horarioPertenceTurno(turno: TurnoOperacional, horario: string) {
+  const [h = 0, m = 0] = horario.split(":").map(Number);
+  const min = h * 60 + m;
+  const t = (hh: number, mm = 0) => hh * 60 + mm;
+  if (turno === "T1") return min >= t(6) && min < t(15, 38);
+  if (turno === "T2") return min >= t(15, 38) || min < t(2);
+  return min >= t(1) && min < t(6);
 }
