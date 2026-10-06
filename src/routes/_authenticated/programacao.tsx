@@ -8,13 +8,26 @@ import { AppShell } from "@/components/dryko/app-shell";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { dataOperacional, horaCheiaProducao, horasProdutivasTurno, ordemHoraTurno } from "@/lib/producao";
+import {
+  dataOperacional,
+  horaCheiaProducao,
+  horasProdutivasTurno,
+  ordemHoraTurno,
+} from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 
 export const Route = createFileRoute("/_authenticated/programacao")({
@@ -23,7 +36,10 @@ export const Route = createFileRoute("/_authenticated/programacao")({
       { title: "Programação | Aponta Produção DRYKO" },
       { name: "description", content: "Produção automática hora a hora e programação diária." },
       { property: "og:title", content: "Programação | Aponta Produção DRYKO" },
-      { property: "og:description", content: "Produção automática hora a hora e programação diária." },
+      {
+        property: "og:description",
+        content: "Produção automática hora a hora e programação diária.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -106,6 +122,9 @@ function Programacao() {
   const [horasDigitadas, setHorasDigitadas] = useState("");
   const [produtoId, setProdutoId] = useState("");
   const [quantidadePrevista, setQuantidadePrevista] = useState("");
+  const [programacaoEmEdicao, setProgramacaoEmEdicao] = useState<ProgramacaoItem | null>(null);
+  const [quantidadeEmEdicao, setQuantidadeEmEdicao] = useState("");
+  const [salvandoQuantidade, setSalvandoQuantidade] = useState(false);
   const [erro, setErro] = useState(false);
   const [erroMeta, setErroMeta] = useState(false);
   const [carregandoProgramacao, setCarregandoProgramacao] = useState(false);
@@ -129,6 +148,8 @@ function Programacao() {
     setProdutos([]);
     setProdutoId("");
     setQuantidadePrevista("");
+    setProgramacaoEmEdicao(null);
+    setQuantidadeEmEdicao("");
     cacheProgramacao.current = null;
 
     if (!setor || !turno || !dataAtual) {
@@ -182,7 +203,10 @@ function Programacao() {
     }
 
     const chave = `${setor}:${dataAtual}`;
-    if (cacheProgramacao.current?.chave === chave && Date.now() - cacheProgramacao.current.at < 30_000) {
+    if (
+      cacheProgramacao.current?.chave === chave &&
+      Date.now() - cacheProgramacao.current.at < 30_000
+    ) {
       return;
     }
 
@@ -290,7 +314,8 @@ function Programacao() {
   const metaInformada = numeroDoCampo(metaDigitada);
   const metaSimulada = Number.isFinite(metaInformada) ? metaInformada : 0;
   const horasSimuladas = duracaoDoCampo(horasDigitadas);
-  const metaHoraSimulada = metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
+  const metaHoraSimulada =
+    metaSimulada > 0 && horasSimuladas > 0 ? metaSimulada / horasSimuladas : 0;
 
   const resumoProgramacao = useMemo(() => {
     return programacao.map((item) => {
@@ -346,7 +371,16 @@ function Programacao() {
   }
 
   async function salvarProgramacao() {
-    if (!user || !setor || !turno || !produtoSelecionado || salvandoProgramacao) return;
+    if (
+      !canProgramProduction ||
+      !user ||
+      !setor ||
+      !turno ||
+      !produtoSelecionado ||
+      salvandoProgramacao ||
+      salvandoQuantidade
+    )
+      return;
     const quantidade = numeroDoCampo(quantidadePrevista);
     if (!Number.isFinite(quantidade) || quantidade <= 0) {
       toast.error("Informe produto e quantidade prevista.");
@@ -401,11 +435,70 @@ function Programacao() {
     toast.success("Produto adicionado à programação.");
   }
 
+  function abrirEdicaoQuantidade(item: ProgramacaoItem) {
+    if (!canProgramProduction || salvandoQuantidade || salvandoProgramacao) return;
+    setProgramacaoEmEdicao(item);
+    setQuantidadeEmEdicao(String(item.quantidade_prevista).replace(".", ","));
+  }
+
+  async function salvarQuantidadeProgramacao() {
+    if (
+      !canProgramProduction ||
+      !user ||
+      !setor ||
+      !programacaoEmEdicao ||
+      salvandoQuantidade ||
+      salvandoProgramacao
+    )
+      return;
+    const quantidade = numeroDoCampo(quantidadeEmEdicao);
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      toast.error("Informe uma quantidade prevista maior que zero.");
+      return;
+    }
+
+    const carga = carregamentoAtual.current;
+    setSalvandoQuantidade(true);
+    try {
+      const { data, error } = await supabase
+        .from("programacao_producao")
+        .update({ quantidade_prevista: quantidade, updated_at: new Date().toISOString() })
+        .eq("id", programacaoEmEdicao.id)
+        .eq("setor", setor)
+        .eq("data_local", dataAtual)
+        .eq("global_dia", true)
+        .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+        .single();
+      if (error || !data) {
+        throw new Error(
+          error?.message || "Não foi possível atualizar a quantidade da programação.",
+        );
+      }
+      if (carga !== carregamentoAtual.current) return;
+
+      setProgramacao((atuais) => atuais.map((item) => (item.id === data.id ? data : item)));
+      cacheProgramacao.current = { chave: `${setor}:${dataAtual}`, at: Date.now() };
+      setProgramacaoEmEdicao(null);
+      toast.success("Quantidade da programação atualizada.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar a quantidade da programação.",
+      );
+    } finally {
+      setSalvandoQuantidade(false);
+    }
+  }
+
   async function editarReferencia(id: string, atual: string | null) {
     if (!canProgramProduction) return;
     const coluna = setor === "mantas" ? "lote" : "op";
     const nome = coluna === "lote" ? "Lote" : "OP";
-    const digitado = window.prompt(`${nome} da programação (deixe vazio para limpar):`, atual ?? "");
+    const digitado = window.prompt(
+      `${nome} da programação (deixe vazio para limpar):`,
+      atual ?? "",
+    );
     if (digitado === null) return;
     const valor = digitado.trim() || null;
     const { error } = await (supabase as any)
@@ -416,7 +509,9 @@ function Programacao() {
       toast.error(`Não foi possível atualizar ${coluna === "lote" ? "o lote" : "a OP"}.`);
       return;
     }
-    setProgramacao((atuais) => atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)));
+    setProgramacao((atuais) =>
+      atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)),
+    );
     toast.success(valor ? `${nome} atualizado.` : `${nome} removido.`);
   }
 
@@ -465,10 +560,16 @@ function Programacao() {
 
         <Tabs value={abaAtiva} onValueChange={(valor) => setAbaAtiva(valor as AbaProgramacao)}>
           <TabsList className="grid h-14 w-full grid-cols-2 rounded-2xl p-1.5">
-            <TabsTrigger value="hora" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
+            <TabsTrigger
+              value="hora"
+              className="h-11 touch-manipulation rounded-xl text-sm font-bold"
+            >
               Hora a hora
             </TabsTrigger>
-            <TabsTrigger value="programacao" className="h-11 touch-manipulation rounded-xl text-sm font-bold">
+            <TabsTrigger
+              value="programacao"
+              className="h-11 touch-manipulation rounded-xl text-sm font-bold"
+            >
               Programação
             </TabsTrigger>
           </TabsList>
@@ -482,8 +583,16 @@ function Programacao() {
 
             <div className="grid grid-cols-2 gap-3">
               <ResumoGrande label="Previsto" valor={`${fmt(metaTotal)} ${unidade}`} />
-              <ResumoGrande label="Realizado" valor={`${fmt(realizadoTurno)} ${unidade}`} destaque />
-              <ResumoGrande label="Atingimento" valor={`${fmt(atingimento)}%`} className="col-span-2" />
+              <ResumoGrande
+                label="Realizado"
+                valor={`${fmt(realizadoTurno)} ${unidade}`}
+                destaque
+              />
+              <ResumoGrande
+                label="Atingimento"
+                valor={`${fmt(atingimento)}%`}
+                className="col-span-2"
+              />
             </div>
 
             <Card className="rounded-2xl border-border shadow-sm">
@@ -555,7 +664,9 @@ function Programacao() {
                         <Input
                           inputMode="decimal"
                           value={horasDigitadas}
-                          onChange={(e) => setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))}
+                          onChange={(e) =>
+                            setHorasDigitadas(normalizarDuracaoDigitada(e.target.value))
+                          }
                           placeholder="Ex.: 9:28"
                         />
                       </div>
@@ -564,7 +675,9 @@ function Programacao() {
                       Digite o tempo que quiser, como 9:28, 8:45 ou 7,5 horas.
                     </p>
                     <div className="rounded-xl bg-muted p-3 text-center">
-                      <p className="text-[10px] font-bold uppercase text-muted-foreground">Previsto por hora</p>
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                        Previsto por hora
+                      </p>
                       <p className="mt-1 text-xl font-black text-primary">
                         {fmt(metaHoraSimulada)} {unidade}
                       </p>
@@ -594,7 +707,8 @@ function Programacao() {
                   <Card className="rounded-2xl border-border shadow-sm">
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-base">
-                        <PackageCheck className="size-5 text-primary" /> Produtos que vão rodar no dia
+                        <PackageCheck className="size-5 text-primary" /> Produtos que vão rodar no
+                        dia
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -620,7 +734,10 @@ function Programacao() {
                       <Button
                         className="touch-manipulation sm:col-span-2"
                         disabled={
-                          carregandoProgramacao || salvandoProgramacao || !produtoId || !quantidadePrevista.trim()
+                          carregandoProgramacao ||
+                          salvandoProgramacao ||
+                          !produtoId ||
+                          !quantidadePrevista.trim()
                         }
                         onClick={() => void salvarProgramacao()}
                       >
@@ -651,7 +768,10 @@ function Programacao() {
                       <p className="text-sm text-muted-foreground">Nenhum produto programado.</p>
                     ) : (
                       resumoProgramacao.map((item) => (
-                        <div key={item.id} className="rounded-xl border border-border bg-muted/30 p-3">
+                        <div
+                          key={item.id}
+                          className="rounded-xl border border-border bg-muted/30 p-3"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="font-bold">{item.produto_nome}</p>
@@ -670,7 +790,10 @@ function Programacao() {
                                     type="button"
                                     className="inline-flex items-center gap-1 font-semibold text-primary underline-offset-2 hover:underline"
                                     onClick={() =>
-                                      void editarReferencia(item.id, setor === "mantas" ? item.lote : item.op)
+                                      void editarReferencia(
+                                        item.id,
+                                        setor === "mantas" ? item.lote : item.op,
+                                      )
                                     }
                                   >
                                     <Pencil className="size-3" />
@@ -692,10 +815,35 @@ function Programacao() {
                             )}
                           </div>
                           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                            <Mini label="Programado" valor={`${fmt(item.previsto)} ${item.unidade}`} />
-                            <Mini label="Produzido no dia" valor={`${fmt(item.realizado)} ${item.unidade}`} destaque />
-                            <Mini label="Saldo" valor={`${fmt(item.saldo)} ${item.unidade}`} alerta={item.saldo > 0} />
+                            <Mini
+                              label="Programado"
+                              valor={`${fmt(item.previsto)} ${item.unidade}`}
+                            />
+                            <Mini
+                              label="Produzido no dia"
+                              valor={`${fmt(item.realizado)} ${item.unidade}`}
+                              destaque
+                            />
+                            <Mini
+                              label="Saldo"
+                              valor={`${fmt(item.saldo)} ${item.unidade}`}
+                              alerta={item.saldo > 0}
+                            />
                           </div>
+                          {canProgramProduction && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 h-11 w-full touch-manipulation sm:w-auto"
+                              disabled={salvandoProgramacao || salvandoQuantidade}
+                              onClick={() => abrirEdicaoQuantidade(item)}
+                              aria-label={`Editar quantidade de ${item.produto_nome}`}
+                            >
+                              <Pencil className="size-4" />
+                              Editar quantidade
+                            </Button>
+                          )}
                         </div>
                       ))
                     )}
@@ -706,6 +854,62 @@ function Programacao() {
           </TabsContent>
         </Tabs>
       </div>
+      <Dialog
+        open={programacaoEmEdicao !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto && !salvandoQuantidade) setProgramacaoEmEdicao(null);
+        }}
+      >
+        <DialogContent className="w-[calc(100%-2rem)] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar quantidade</DialogTitle>
+            <DialogDescription>
+              {programacaoEmEdicao?.produto_nome} · programação de {formatarData(dataAtual)}. O
+              saldo será recalculado conforme a produção do dia.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void salvarQuantidadeProgramacao();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="quantidade-programacao">
+                Quantidade prevista ({programacaoEmEdicao?.unidade})
+              </Label>
+              <Input
+                id="quantidade-programacao"
+                inputMode="decimal"
+                value={quantidadeEmEdicao}
+                onChange={(event) => setQuantidadeEmEdicao(event.target.value)}
+                disabled={salvandoQuantidade}
+                autoFocus
+              />
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 touch-manipulation"
+                disabled={salvandoQuantidade}
+                onClick={() => setProgramacaoEmEdicao(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="h-11 touch-manipulation"
+                disabled={salvandoQuantidade || !quantidadeEmEdicao.trim()}
+              >
+                <Save className="size-4" />
+                {salvandoQuantidade ? "Salvando..." : "Salvar quantidade"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
@@ -727,11 +931,15 @@ function HoraCard({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xl font-black text-foreground">{intervaloHora(item.hora)}</p>
-            <p className="mt-2 text-sm font-semibold text-muted-foreground">{resumoProdutosHora(item, setor)}</p>
+            <p className="mt-2 text-sm font-semibold text-muted-foreground">
+              {resumoProdutosHora(item, setor)}
+            </p>
           </div>
           <div className="shrink-0 text-right">
             <p className="text-2xl font-black text-primary">{destaqueHora(item, setor)}</p>
-            <p className="mt-1 text-sm font-bold text-muted-foreground">{secundarioHora(item, setor)}</p>
+            <p className="mt-1 text-sm font-bold text-muted-foreground">
+              {secundarioHora(item, setor)}
+            </p>
           </div>
         </div>
 
@@ -766,20 +974,34 @@ function ResumoGrande({
   className?: string;
 }) {
   return (
-    <Card className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}>
+    <Card
+      className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}
+    >
       <CardContent className="p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}>{valor}</p>
+        <p className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}>
+          {valor}
+        </p>
       </CardContent>
     </Card>
   );
 }
 
-function MetricaHora({ label, valor, negativo = false }: { label: string; valor: string; negativo?: boolean }) {
+function MetricaHora({
+  label,
+  valor,
+  negativo = false,
+}: {
+  label: string;
+  valor: string;
+  negativo?: boolean;
+}) {
   return (
     <div className="min-w-0">
       <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}>
+      <p
+        className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}
+      >
         {valor}
       </p>
     </div>
@@ -804,7 +1026,9 @@ function Mini({
       }`}
     >
       <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
-      <p className={`font-bold ${alerta ? "text-amber-900 dark:text-amber-100" : destaque ? "text-primary" : ""}`}>
+      <p
+        className={`font-bold ${alerta ? "text-amber-900 dark:text-amber-100" : destaque ? "text-primary" : ""}`}
+      >
         {valor}
       </p>
     </div>
@@ -850,12 +1074,19 @@ function unidadeProgramacao(setor: string | null | undefined) {
   return "PLTs";
 }
 
-function valorMetaHora(item: Pick<Hora, "plts" | "metragem" | "area">, setor: string | null | undefined) {
+function valorMetaHora(
+  item: Pick<Hora, "plts" | "metragem" | "area">,
+  setor: string | null | undefined,
+) {
   if (setor === "fitas") return Number(item.area ?? 0);
   return Number(item.metragem ?? 0);
 }
 
-function correspondeProgramacaoItem(registro: Registro, item: ProgramacaoItem, setor: string | null | undefined) {
+function correspondeProgramacaoItem(
+  registro: Registro,
+  item: ProgramacaoItem,
+  setor: string | null | undefined,
+) {
   if (registro.produto_id !== item.produto_id) return false;
   if (setor === "mantas") return true;
   const opItem = normalizar(item.op);
@@ -877,7 +1108,8 @@ function resumoProdutosHora(item: Hora, setor: string | null | undefined) {
   if (!item.produtos.length) return "Sem produção registrada";
   return item.produtos
     .map((produto) => {
-      if (setor === "corte") return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`;
+      if (setor === "corte")
+        return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`;
       if (setor === "mantas") return `${produto.produto}: ${fmt(produto.metragem)} m`;
       if (setor === "fitas") return `${produto.produto}: ${fmt(produto.area)} m²`;
       return `${produto.produto}: ${fmt(produto.plts)}`;
@@ -912,7 +1144,13 @@ function duracaoDoCampo(valor: string) {
     const [horasTexto, minutosTexto = "0"] = limpo.split(":", 2);
     const horas = Number(horasTexto);
     const minutos = Number(minutosTexto);
-    if (!Number.isFinite(horas) || !Number.isFinite(minutos) || horas < 0 || minutos < 0 || minutos >= 60) {
+    if (
+      !Number.isFinite(horas) ||
+      !Number.isFinite(minutos) ||
+      horas < 0 ||
+      minutos < 0 ||
+      minutos >= 60
+    ) {
       return Number.NaN;
     }
     return horas + minutos / 60;
