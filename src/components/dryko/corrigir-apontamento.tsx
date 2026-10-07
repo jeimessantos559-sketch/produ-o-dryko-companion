@@ -106,7 +106,23 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
     item.semi_kg_por_unidade,
   ]);
 
-  const produto = useMemo(() => produtos.find((p) => p.id === produtoId), [produtoId, produtos]);
+  const produto = useMemo(() => {
+    const atual = produtos.find((p) => p.id === produtoId);
+    // O padrão novo do cadastro não converte apontamentos históricos de pouch.
+    return item.setor === "liquidos" &&
+      atual?.id === item.produto_id &&
+      atual.embalagem_liquido === "unidade" &&
+      item.embalagem_liquido === "unidade"
+      ? { ...atual, unidades_por_plt: item.unidades_por_plt, semi_kg_por_unidade: null }
+      : atual;
+  }, [
+    produtoId,
+    produtos,
+    item.setor,
+    item.produto_id,
+    item.embalagem_liquido,
+    item.unidades_por_plt,
+  ]);
   const metrosPorRolo = Number(produto?.metros_por_rolo ?? 10);
   const totalLiquido = calcularLiquidos(produto, quantidadeLiquido);
   const gruposValidos = grupos.every(

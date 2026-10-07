@@ -93,11 +93,12 @@ function Produtos() {
         : setor === "mantas"
           ? Boolean(mantaValida)
           : setor === "liquidos"
-            ? embalagemLiquido === "unidade" ||
+            ? (embalagemLiquido === "unidade" && unidadesPorPlt === 0) ||
               (Number.isSafeInteger(unidadesPorPlt) &&
                 unidadesPorPlt > 0 &&
-                Number.isFinite(semiKgPorUnidade) &&
-                semiKgPorUnidade > 0)
+                unidadesPorPlt <= 2_147_483_647 &&
+                (embalagemLiquido === "unidade" ||
+                  (Number.isFinite(semiKgPorUnidade) && semiKgPorUnidade > 0)))
             : true;
   const valido = Boolean(nome.trim() && categoria.trim() && configuracaoValida);
 
@@ -141,7 +142,9 @@ function Produtos() {
     setMetragemPorPlt(Number(produto.metragem_por_plt ?? 250));
     setMetrosPorRolo(Number(produto.metros_por_rolo ?? 10));
     setEmbalagemLiquido((produto.embalagem_liquido as EmbalagemLiquido | null) ?? "balde");
-    setUnidadesPorPlt(Number(produto.unidades_por_plt ?? 36));
+    setUnidadesPorPlt(
+      Number(produto.unidades_por_plt ?? (produto.embalagem_liquido === "unidade" ? 0 : 36)),
+    );
     setSemiKgPorUnidade(Number(produto.semi_kg_por_unidade ?? 18));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -171,8 +174,7 @@ function Produtos() {
       metragem_por_plt: setor === "mantas" ? metragemPorPlt : null,
       metros_por_rolo: setor === "mantas" ? metrosPorRolo : null,
       embalagem_liquido: setor === "liquidos" ? embalagemLiquido : null,
-      unidades_por_plt:
-        setor === "liquidos" && embalagemLiquido !== "unidade" ? unidadesPorPlt : null,
+      unidades_por_plt: setor === "liquidos" && unidadesPorPlt > 0 ? unidadesPorPlt : null,
       semi_kg_por_unidade:
         setor === "liquidos" && embalagemLiquido !== "unidade" ? semiKgPorUnidade : null,
       ativo: true,
@@ -422,31 +424,43 @@ function Produtos() {
                         id="embalagem-liquido"
                         className="h-12 w-full rounded-xl border border-input bg-background px-3"
                         value={embalagemLiquido}
-                        onChange={(e) => setEmbalagemLiquido(e.target.value as EmbalagemLiquido)}
+                        onChange={(e) => {
+                          const embalagem = e.target.value as EmbalagemLiquido;
+                          setEmbalagemLiquido(embalagem);
+                          if (embalagem === "unidade") setUnidadesPorPlt(0);
+                          else if (!unidadesPorPlt) setUnidadesPorPlt(36);
+                        }}
                       >
                         <option value="balde">Balde</option>
                         <option value="galao">Galão</option>
                         <option value="unidade">Unidade (pouch, sem semi)</option>
                       </select>
                     </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="unidades-liquido">
+                        Unidades por PLT{embalagemLiquido === "unidade" ? "" : " *"}
+                      </Label>
+                      <Input
+                        id="unidades-liquido"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={2_147_483_647}
+                        step={1}
+                        value={unidadesPorPlt || ""}
+                        placeholder={
+                          embalagemLiquido === "unidade" ? "Opcional para pouch" : undefined
+                        }
+                        onChange={(e) => setUnidadesPorPlt(Number(e.target.value))}
+                      />
+                    </div>
                     {embalagemLiquido === "unidade" ? (
                       <p className="text-sm text-muted-foreground sm:col-span-2">
-                        Apontamento somente em unidades, sem consumo de semi.
+                        Informe o padrão para apontar PLTs e picados, sem consumo de semi. Deixe
+                        vazio para apontar somente em unidades.
                       </p>
                     ) : (
                       <>
-                        <div className="space-y-1">
-                          <Label htmlFor="unidades-liquido">Unidades por PLT *</Label>
-                          <Input
-                            id="unidades-liquido"
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            step={1}
-                            value={unidadesPorPlt || ""}
-                            onChange={(e) => setUnidadesPorPlt(Number(e.target.value))}
-                          />
-                        </div>
                         <div className="space-y-1">
                           <Label htmlFor="semi-liquido">Semi por unidade (kg) *</Label>
                           <Input
@@ -595,7 +609,7 @@ function descricaoProduto(produto: Produto) {
     return `${produto.categoria ?? "Sem categoria"} · ${produto.metragem_por_plt} m/PLT · ${produto.rolos_por_plt} rolos/PLT · ${produto.metros_por_rolo} m/rolo`;
   if (produto.setor === "liquidos")
     return produto.embalagem_liquido === "unidade"
-      ? "Unidades · sem consumo de semi"
+      ? `${produto.unidades_por_plt ? `${produto.unidades_por_plt.toLocaleString("pt-BR")} unidades/PLT` : "Unidades"} · sem consumo de semi`
       : `${nomeEmbalagemLiquido(produto.embalagem_liquido)} · ${produto.unidades_por_plt ?? "—"} unidades/PLT · ${Number(produto.semi_kg_por_unidade ?? 0).toLocaleString("pt-BR")} kg de semi/unidade`;
   return `${produto.categoria ?? "Produtos"} · ${produto.ativo ? "Ativo" : "Inativo"}`;
 }

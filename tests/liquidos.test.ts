@@ -38,7 +38,7 @@ test("picados somam unidades e semi, sem aumentar a contagem de PLTs fechados", 
 
 test("pouch conta só unidades mesmo que restem campos de um produto anterior", () => {
   const total = calcularLiquidos(
-    { ...balde, embalagem_liquido: "unidade" },
+    { embalagem_liquido: "unidade", unidades_por_plt: null, semi_kg_por_unidade: null },
     { quantidadePlts: 12, picadoUnidades: 6, unidades: 432 },
   );
   assert.equal(total.valido, true);
@@ -109,6 +109,8 @@ test("contagem, sequência, conferência e Protheus preservam a mesma quantidade
       produto_id: "kal-pouch",
       produto_nome: "Kal pouch",
       embalagem_liquido: "unidade",
+      unidades_por_plt: null,
+      semi_kg_por_unidade: null,
       quantidade_plts: 0,
       total_unidades: 100,
       semi_consumido_kg: 0,
@@ -149,6 +151,8 @@ test("PDF de Líquidos mostra unidades e semi sem metragem nem rolos", () => {
         id: "2",
         produto_nome: "Kal pouch",
         embalagem_liquido: "unidade",
+        unidades_por_plt: null,
+        semi_kg_por_unidade: null,
         quantidade_plts: 0,
         total_unidades: 100,
         semi_consumido_kg: 0,

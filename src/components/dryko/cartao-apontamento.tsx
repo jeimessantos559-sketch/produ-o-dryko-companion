@@ -29,7 +29,8 @@ export function CartaoApontamento({ item, sequencia, onCorrigir }: Props) {
   const padroes = [...new Set(grupos.map((g) => g.rolosPorPlt))];
   const padrao = padroes.length === 1 ? padroes[0] : item.rolos_por_plt;
   const liquidos = item.setor === "liquidos";
-  const unitario = liquidos && item.embalagem_liquido === "unidade";
+  const unitario =
+    liquidos && item.embalagem_liquido === "unidade" && item.unidades_por_plt == null;
   const sequenciaTexto =
     sequencia?.inicio != null
       ? sequencia.inicio === sequencia.fim

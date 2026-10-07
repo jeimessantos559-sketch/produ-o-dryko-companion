@@ -37,7 +37,7 @@ export function CamposLiquidos({ id, produto, quantidade, onChange }: Props) {
         <span>
           Semi:{" "}
           <strong>
-            {total.unitario
+            {!total.consomeSemi
               ? "Não se aplica"
               : produto.semi_kg_por_unidade
                 ? `${numero(produto.semi_kg_por_unidade)} kg/unidade`
@@ -119,18 +119,19 @@ export function CamposLiquidos({ id, produto, quantidade, onChange }: Props) {
       )}
       {!total.configurado && (
         <p role="alert" className="text-xs text-amber-700">
-          Defina a embalagem, as unidades por PLT e os kg de semi por unidade no cadastro do
-          produto.
+          {total.consomeSemi
+            ? "Defina a embalagem, as unidades por PLT e os kg de semi por unidade no cadastro do produto."
+            : "Defina uma quantidade inteira positiva de unidades por PLT no cadastro do produto."}
         </p>
       )}
       <div
         aria-live="polite"
         aria-atomic="true"
-        className={`grid ${total.unitario ? "grid-cols-1" : "grid-cols-3"} gap-1.5 rounded-xl bg-slate-950 p-2.5 text-center text-white`}
+        className={`grid ${total.unitario ? "grid-cols-1" : total.consomeSemi ? "grid-cols-3" : "grid-cols-2"} gap-1.5 rounded-xl bg-slate-950 p-2.5 text-center text-white`}
       >
         {!total.unitario && <Resumo label="PLTs fechados" valor={numero(total.plts)} />}
         <Resumo label="Unidades" valor={total.configurado ? numero(total.unidades) : "—"} />
-        {!total.unitario && (
+        {total.consomeSemi && (
           <Resumo
             label="Semi consumido"
             valor={total.configurado ? `${numero(total.semiKg)} kg` : "—"}

@@ -27,22 +27,21 @@ export function calcularLiquidos(
   produto: ParametrosLiquido | null | undefined,
   quantidade: QuantidadeLiquido,
 ) {
-  const unitario = produto?.embalagem_liquido === "unidade";
+  const pouch = produto?.embalagem_liquido === "unidade";
+  const unitario = pouch && produto.unidades_por_plt == null;
   const padrao = Number(produto?.unidades_por_plt ?? 0);
   const fator = Number(produto?.semi_kg_por_unidade ?? 0);
+  const padraoValido = Number.isSafeInteger(padrao) && padrao > 0 && padrao <= 2_147_483_647;
+  const consomeSemi =
+    produto?.embalagem_liquido === "balde" || produto?.embalagem_liquido === "galao";
   const configurado = Boolean(
     produto &&
-    (unitario ||
-      ((produto.embalagem_liquido === "balde" || produto.embalagem_liquido === "galao") &&
-        Number.isSafeInteger(padrao) &&
-        padrao > 0 &&
-        Number.isFinite(fator) &&
-        fator > 0)),
+    (unitario || (padraoValido && (pouch || (consomeSemi && Number.isFinite(fator) && fator > 0)))),
   );
   const picado = quantidade.picadoUnidades === "" ? 0 : quantidade.picadoUnidades;
   const plts = unitario ? 0 : quantidade.quantidadePlts;
   const unidades = unitario ? quantidade.unidades : plts * padrao + picado;
-  const semiKg = unitario ? 0 : Math.round(unidades * fator * 1000) / 1000;
+  const semiKg = consomeSemi ? Math.round(unidades * fator * 1000) / 1000 : 0;
   const valido =
     configurado &&
     Number.isSafeInteger(unidades) &&
@@ -56,5 +55,14 @@ export function calcularLiquidos(
         Number.isInteger(picado) &&
         picado >= 0 &&
         picado < padrao));
-  return { unitario, configurado, valido, plts, unidades, semiKg, picado: unitario ? 0 : picado };
+  return {
+    unitario,
+    consomeSemi,
+    configurado,
+    valido,
+    plts,
+    unidades,
+    semiKg,
+    picado: unitario ? 0 : picado,
+  };
 }

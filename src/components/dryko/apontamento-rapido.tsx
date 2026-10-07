@@ -392,10 +392,11 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       : 0;
   const mantaRolosValidos = totalRolosManta > 0 && Number.isInteger(totalRolosManta);
   const liquidoCalculado = calcularLiquidos(produto, quantidadeLiquido);
-  const unidadeMeta = setor === "liquidos" && liquidoCalculado.unitario ? "unidades" : "PLTs";
+  const unidadeMeta =
+    meta?.unidade ?? (setor === "liquidos" && liquidoCalculado.unitario ? "unidades" : "PLTs");
   const incrementoMeta =
     setor === "liquidos"
-      ? liquidoCalculado.unitario
+      ? unidadeMeta === "unidades"
         ? liquidoCalculado.unidades
         : liquidoCalculado.plts
       : quantidadePlts;
