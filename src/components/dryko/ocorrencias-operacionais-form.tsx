@@ -1,11 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import { FinalizarOcorrencia } from "@/components/dryko/finalizar-ocorrencia";
 import {
+  CAMPOS_OCORRENCIA,
+  MOTIVOS_PARADA,
+  rotuloMotivo,
+  horaAtualSaoPaulo,
+  ocorrenciaEmAndamento,
+  equipamentosOpcionaisSetor,
+  calcularDuracaoOcorrencia,
+  formatarDuracaoOcorrencia,
+  hhmm,
   GRUPOS_OCORRENCIAS,
   SITUACOES_OCORRENCIA,
   rotuloSituacao,
@@ -22,9 +32,10 @@ type Props = {
   ocorrencias: OcorrenciaOperacional[];
   onChange: (lista: OcorrenciaOperacional[]) => void;
   permitirExcluir?: boolean;
+  ocultarLista?: boolean;
 };
 
-const CAMPOS = "id, equipamento, tipo_status, mensagem, created_at";
+const CAMPOS = CAMPOS_OCORRENCIA;
 const classeCampo =
   "h-12 w-full rounded-xl border border-input bg-background px-3 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
 
@@ -43,24 +54,50 @@ export function OcorrenciasOperacionaisForm({
   ocorrencias,
   onChange,
   permitirExcluir = false,
+  ocultarLista = false,
 }: Props) {
   const [equipamento, setEquipamento] = useState("");
   const [situacao, setSituacao] = useState<TipoStatusOcorrencia | "">("");
   const [descricao, setDescricao] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [horaInicio, setHoraInicio] = useState("");
+  const [horaFim, setHoraFim] = useState("");
 
   const estruturado = usaOcorrenciasEstruturadas(setor);
+  const opcionais = estruturado ? [] : equipamentosOpcionaisSetor(setor);
   const precisaDescricao = !estruturado || situacao === "ocorrencia";
-  const valido = estruturado
+  const mostraHorario = !estruturado || (!!situacao && situacao !== "sem_ocorrencias");
+  const horarioIncompleto = mostraHorario && !horaInicio && !!horaFim;
+  const [finalizando, setFinalizando] = useState<string | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [motivoOutro, setMotivoOutro] = useState("");
+  const situacaoReal = !estruturado || situacao === "ocorrencia";
+  // Ocorrência real: hora inicial já vem com a hora atual de São Paulo (editável).
+  useEffect(() => {
+    if (situacaoReal) setHoraInicio((h) => h || horaAtualSaoPaulo());
+  }, [situacaoReal]);
+  const motivoDados = () =>
+    mostraHorario && motivo
+      ? { motivo_parada: motivo, motivo_outro: motivo === "Outro" ? motivoOutro.trim() || null : null }
+      : { motivo_parada: null, motivo_outro: null };
+  const duracao = mostraHorario ? calcularDuracaoOcorrencia(horaInicio, horaFim) : null;
+  const tempo = () =>
+    duracao !== null
+      ? { hora_inicio: horaInicio, hora_fim: horaFim, duracao_min: duracao }
+      : mostraHorario && horaInicio && !horaFim
+        ? { hora_inicio: horaInicio, hora_fim: null, duracao_min: null }
+        : { hora_inicio: null, hora_fim: null, duracao_min: null };
+  const limparHorario = () => { setHoraInicio(estruturado ? "" : horaAtualSaoPaulo()); setHoraFim(""); setMotivo(""); setMotivoOutro(""); };
+  const valido = !horarioIncompleto && (estruturado
     ? !!equipamento && !!situacao && (!precisaDescricao || descricao.trim().length > 0)
-    : descricao.trim().length > 0;
+    : descricao.trim().length > 0);
 
   async function salvarLivre() {
     if (!userId || !valido || salvando) return;
     setSalvando(true);
     const { data, error } = await (supabase as any)
       .from("ocorrencias_turno")
-      .insert({ setor, turno, data_local: dataLocal, equipamento: null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId })
+      .insert({ setor, turno, data_local: dataLocal, equipamento: opcionais.includes(equipamento) ? equipamento : null, tipo_status: "ocorrencia", mensagem: descricao.trim(), criado_por: userId, ...tempo(), ...motivoDados() })
       .select(CAMPOS)
       .single();
     setSalvando(false);
@@ -69,7 +106,9 @@ export function OcorrenciasOperacionaisForm({
       return;
     }
     onChange([...ocorrencias, data as OcorrenciaOperacional]);
+    setEquipamento("");
     setDescricao("");
+    limparHorario();
     toast.success("Ocorrência registrada.");
   }
 
@@ -80,8 +119,9 @@ export function OcorrenciasOperacionaisForm({
     setSalvando(true);
     let base = ocorrencias;
     if (!precisaDescricao) {
+      // Status simples substitui o status simples anterior do mesmo equipamento.
       const anteriores = ocorrencias.filter(
-        (o) => o.equipamento === equipamento && o.tipo_status && o.tipo_status !== "ocorrencia",
+        (o) => o.equipamento === equipamento && o.tipo_status && o.tipo_status !== "ocorrencia" && !ocorrenciaEmAndamento(o),
       );
       if (anteriores.length) {
         const { error } = await (supabase as any)
@@ -101,6 +141,8 @@ export function OcorrenciasOperacionaisForm({
         tipo_status: situacao,
         mensagem,
         criado_por: userId,
+        ...tempo(),
+        ...motivoDados(),
       })
       .select(CAMPOS)
       .single();
@@ -127,29 +169,49 @@ export function OcorrenciasOperacionaisForm({
   return (
     <div className="space-y-3">
       {estruturado && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="oc-equip">Equipamento</Label>
-            <select id="oc-equip" className={classeCampo} value={equipamento} onChange={(e) => setEquipamento(e.target.value)}>
-              <option value="">Selecione…</option>
-              {GRUPOS_OCORRENCIAS.map((g) => (
-                <optgroup key={g.titulo} label={g.titulo}>
-                  {g.equipamentos.map((eq) => (
-                    <option key={eq} value={eq}>{eq}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="oc-sit">Situação</Label>
-            <select id="oc-sit" className={classeCampo} value={situacao} onChange={(e) => setSituacao(e.target.value as TipoStatusOcorrencia | "")}>
-              <option value="">Selecione…</option>
-              {SITUACOES_OCORRENCIA.map((s) => (
-                <option key={s.valor} value={s.valor}>{s.rotulo}</option>
-              ))}
-            </select>
-          </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="oc-equip">Equipamento</Label>
+          <select id="oc-equip" className={classeCampo} value={equipamento} onChange={(e) => setEquipamento(e.target.value)}>
+            <option value="">Selecione…</option>
+            {GRUPOS_OCORRENCIAS.map((g) => (
+              <optgroup key={g.titulo} label={g.titulo}>
+                {g.equipamentos.map((eq) => (
+                  <option key={eq} value={eq}>
+                    {eq}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="oc-sit">Situação</Label>
+          <select
+            id="oc-sit"
+            className={classeCampo}
+            value={situacao}
+            onChange={(e) => setSituacao(e.target.value as TipoStatusOcorrencia | "")}
+          >
+            <option value="">Selecione…</option>
+            {SITUACOES_OCORRENCIA.map((s) => (
+              <option key={s.valor} value={s.valor}>
+                {s.rotulo}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      )}
+      {opcionais.length > 0 && (
+        <div className="space-y-1">
+          <Label htmlFor="oc-equip-opc">Equipamento (opcional)</Label>
+          <select id="oc-equip-opc" className={classeCampo} value={equipamento} onChange={(e) => setEquipamento(e.target.value)}>
+            <option value="">Ocorrência geral</option>
+            {opcionais.map((eq) => (
+              <option key={eq} value={eq}>{eq}</option>
+            ))}
+          </select>
         </div>
       )}
       {precisaDescricao && (
@@ -166,23 +228,100 @@ export function OcorrenciasOperacionaisForm({
           />
         </div>
       )}
+      {mostraHorario && (
+        <div className="space-y-1">
+          <Label htmlFor="oc-motivo">Motivo da parada{situacaoReal ? "" : " (opcional)"}</Label>
+          <select id="oc-motivo" className={classeCampo} value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+            <option value="">Não informado</option>
+            {MOTIVOS_PARADA.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+          {motivo === "Outro" && (
+            <input className={classeCampo} maxLength={200} value={motivoOutro} onChange={(e) => setMotivoOutro(e.target.value)} placeholder="Qual motivo? (opcional)" aria-label="Outro motivo" />
+          )}
+        </div>
+      )}
+      {mostraHorario && (
+        <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="oc-ini">Hora inicial</Label>
+              <input id="oc-ini" type="time" className={classeCampo} value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="oc-fim">Hora final</Label>
+              <input id="oc-fim" type="time" className={classeCampo} value={horaFim} onChange={(e) => setHoraFim(e.target.value)} />
+            </div>
+          </div>
+          {horarioIncompleto ? (
+            <p className="text-xs font-semibold text-destructive">Preencha a hora inicial.</p>
+          ) : duracao !== null ? (
+            <p className="text-xs text-muted-foreground">Duração: {formatarDuracaoOcorrencia(duracao) || "0 min"}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">{horaInicio ? "A hora final pode ser registrada depois." : "Horários opcionais. A hora final pode ser registrada depois."}</p>
+          )}
+        </div>
+      )}
       <Button className="h-12 w-full touch-manipulation" disabled={!valido || salvando} onClick={() => void salvar()}>
         <Save className="size-4" />
         {salvando ? "Salvando..." : "Registrar"}
       </Button>
 
-      {ocorrencias.length > 0 && (
+      {!ocultarLista && ocorrencias.length > 0 && (
         <div className="space-y-2">
           {ocorrencias.map((item) => {
             const tipo = item.tipo_status ?? "ocorrencia";
             return (
               <div key={item.id} className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-primary">{hora(item.created_at)} · {item.equipamento ?? "Ocorrência geral"}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm">{tipo === "ocorrencia" ? item.mensagem : rotuloSituacao(tipo)}</p>
+                  <p className="text-xs font-bold text-primary">
+                    {hora(item.created_at)} · {item.equipamento ?? "Ocorrência geral"}
+                  </p>
+                  {ocorrenciaEmAndamento(item) ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                      <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 font-bold text-amber-700 dark:text-amber-300">Em andamento</span>
+                      <span className="text-muted-foreground">desde {hhmm(item.hora_inicio)}</span>
+                    </p>
+                  ) : (item.hora_inicio && item.hora_fim) || formatarDuracaoOcorrencia(item.duracao_min) ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                      {formatarDuracaoOcorrencia(item.duracao_min) && (
+                        <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 font-bold text-destructive">{formatarDuracaoOcorrencia(item.duracao_min)} parada</span>
+                      )}
+                      {item.hora_inicio && item.hora_fim && <span className="text-muted-foreground">{hhmm(item.hora_inicio)} às {hhmm(item.hora_fim)}</span>}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 whitespace-pre-wrap text-sm">
+                    {tipo === "ocorrencia" ? item.mensagem : rotuloSituacao(tipo)}
+                  </p>
+                  {(rotuloMotivo(item) || item.acao_realizada) && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {[rotuloMotivo(item) && `Motivo: ${rotuloMotivo(item)}`, item.acao_realizada && `Ação: ${item.acao_realizada}`].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  {ocorrenciaEmAndamento(item) && (finalizando === item.id ? (
+                    <FinalizarOcorrencia
+                      item={item}
+                      onCancelar={() => setFinalizando(null)}
+                      onFinalizada={(atual) => {
+                        onChange(ocorrencias.map((o) => (o.id === atual.id ? atual : o)));
+                        setFinalizando(null);
+                      }}
+                    />
+                  ) : (
+                    <Button variant="outline" className="mt-2 h-11 w-full touch-manipulation" onClick={() => setFinalizando(item.id)}>
+                      Finalizar ocorrência
+                    </Button>
+                  ))}
                 </div>
                 {permitirExcluir && (
-                  <Button size="icon" variant="ghost" className="size-9 shrink-0 text-destructive" onClick={() => void excluir(item.id)} aria-label="Excluir ocorrência">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-9 shrink-0 text-destructive"
+                    onClick={() => void excluir(item.id)}
+                    aria-label="Excluir ocorrência"
+                  >
                     <Trash2 className="size-4" />
                   </Button>
                 )}

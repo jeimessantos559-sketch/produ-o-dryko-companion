@@ -31,30 +31,34 @@ async function carregarPerfilAcesso(userId: string, forcar = false) {
   return perfil;
 }
 
+async function carregarPerfilFresco(userId: string) {
+  cacheAcesso = null;
+  return carregarPerfilAcesso(userId, true);
+}
+
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ location }) => {
     const { data, error } = await supabase.auth.getSession();
     if (error || !data.session?.user) throw redirect({ to: "/auth" });
 
-    let perfilOperacional = await carregarPerfilAcesso(data.session.user.id);
+    const perfilOperacional = await carregarPerfilAcesso(data.session.user.id);
     if (!perfilOperacional?.ativo) {
       cacheAcesso = null;
       await supabase.auth.signOut();
       throw redirect({ to: "/auth" });
     }
-
-    // Estes dois estados mudam durante o primeiro acesso. Antes de redirecionar,
-    // revalida no banco para não usar o cache antigo por até 30 segundos.
-    if (perfilOperacional.deve_alterar_senha || (!perfilOperacional.onboarding_concluido && location.pathname !== "/selecionar")) {
-      perfilOperacional = await carregarPerfilAcesso(data.session.user.id, true);
-    }
-
-    if (perfilOperacional?.deve_alterar_senha) {
-      throw redirect({ to: "/alterar-senha" });
-    }
-    if (!perfilOperacional?.onboarding_concluido && location.pathname !== "/selecionar") {
-      throw redirect({ to: "/selecionar" });
+    // Revalida no banco antes de redirecionar por senha/onboarding,
+    // evitando cache de 30s antigo logo após salvar setor/turno ou trocar senha.
+    if (perfilOperacional.deve_alterar_senha || perfilOperacional.onboarding_concluido === false) {
+      const fresco = await carregarPerfilFresco(data.session.user.id);
+      if (!fresco) throw redirect({ to: "/auth" });
+      if (fresco.deve_alterar_senha) {
+        throw redirect({ to: "/alterar-senha" });
+      }
+      if (!fresco.onboarding_concluido && location.pathname !== "/selecionar") {
+        throw redirect({ to: "/selecionar" });
+      }
     }
     return { user: data.session.user };
   },

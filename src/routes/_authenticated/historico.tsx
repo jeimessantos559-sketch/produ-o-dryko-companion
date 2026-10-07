@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Edit3, History as HistoryIcon, Plus, Trash2, X } from "lucide-react";
+import { ChevronRight, Edit3, History as HistoryIcon, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -10,11 +10,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { consultarComCache } from "@/lib/cache-consultas";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataHoraProducaoFormatada, dataOperacional, type GrupoCorte } from "@/lib/producao";
 
-export const Route = createFileRoute("/_authenticated/historico")({ component: Historico });
+const PAGINA = 100;
+
+export const Route = createFileRoute("/_authenticated/historico")({
+  head: () => ({
+    meta: [
+      { title: "Histórico de OP e lote | Aponta Produção DRYKO" },
+      { name: "description", content: "Consulta detalhada de apontamentos por OP ou lote, turno e situação." },
+      { property: "og:title", content: "Histórico de OP e lote | Aponta Produção DRYKO" },
+      { property: "og:description", content: "Consulta detalhada de apontamentos por OP ou lote, turno e situação." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: Historico,
+});
 
 type ApontamentoBase = Database["public"]["Tables"]["apontamentos"]["Row"];
 type Apontamento = ApontamentoBase & {
@@ -41,7 +56,8 @@ function Historico() {
   const [dataFim, setDataFim] = useState(() => dataOperacional(profile?.turno_atual));
   const [turno, setTurno] = useState("");
   const [status, setStatus] = useState("");
-  const [op, setOp] = useState("");
+  const [referencia, setReferencia] = useState("");
+  const [referenciaAberta, setReferenciaAberta] = useState<string | null>(null);
   const [produto, setProduto] = useState("");
   const [facilitador, setFacilitador] = useState("");
   const [itens, setItens] = useState<Apontamento[]>([]);
@@ -64,9 +80,12 @@ function Historico() {
     setDataFim(dataAtual);
   }, [profile?.turno_atual]);
 
+  const [limite, setLimite] = useState(PAGINA);
+  useEffect(() => setLimite(PAGINA), [dataFim, dataInicio, setor]);
+
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const [{ data: registros, error }, { data: trilha }, { data: perfis }] = await Promise.all([
+    const [{ data: registros, error }, { data: trilha }, perfis] = await Promise.all([
       supabase
         .from("apontamentos")
         .select("*")
@@ -74,21 +93,21 @@ function Historico() {
         .gte("data_local", dataInicio)
         .lte("data_local", dataFim)
         .order("data_hora_producao", { ascending: false })
-        .limit(500),
+        .limit(limite),
       supabase
         .from("apontamento_auditoria")
         .select("*")
         .eq("setor", setor)
         .order("created_at", { ascending: false })
         .limit(1000),
-      supabase.from("profiles").select("id, nome"),
+      consultarComCache("perfis:nomes", 5 * 60_000, async () => (await supabase.from("profiles").select("id, nome")).data ?? []),
     ]);
     if (error) toast.error("Não foi possível carregar o histórico.");
     setItens((registros ?? []) as Apontamento[]);
     setAuditorias(trilha ?? []);
-    setNomes(Object.fromEntries((perfis ?? []).map((item) => [item.id, item.nome || "Sem nome"])));
+    setNomes(Object.fromEntries(perfis.map((item) => [item.id, item.nome || "Sem nome"])));
     setCarregando(false);
-  }, [dataFim, dataInicio, setor]);
+  }, [dataFim, dataInicio, setor, limite]);
 
   useEffect(() => {
     void carregar();
@@ -99,18 +118,36 @@ function Historico() {
     [itens],
   );
   const facilitadores = useMemo(() => [...new Set(itens.map((item) => item.usuario_id))], [itens]);
-  const visiveis = useMemo(
+  const baseVisiveis = useMemo(
     () =>
       itens.filter(
         (item) =>
           (!turno || item.turno === turno) &&
           (!status || item.status === status) &&
-          (!op.trim() || item.op?.toLowerCase().includes(op.trim().toLowerCase())) &&
           (!produto || item.produto_nome === produto) &&
           (!facilitador || item.usuario_id === facilitador),
       ),
-    [facilitador, itens, op, produto, status, turno],
+    [facilitador, itens, produto, status, turno],
   );
+  const grupos = useMemo(() => {
+    const mapa = new Map<string, { referencia: string; registros: number; turnos: Set<string>; pendentes: number }>();
+    for (const item of baseVisiveis) {
+      const chave = referenciaApontamento(item, setor);
+      if (!chave) continue;
+      const atual = mapa.get(chave) ?? { referencia: chave, registros: 0, turnos: new Set<string>(), pendentes: 0 };
+      atual.registros += 1;
+      atual.turnos.add(item.turno);
+      atual.pendentes += item.status === "pendente" ? 1 : 0;
+      mapa.set(chave, atual);
+    }
+    return [...mapa.values()].sort((a, b) => a.referencia.localeCompare(b.referencia, "pt-BR", { numeric: true }));
+  }, [baseVisiveis, setor]);
+  const visiveis = useMemo(() => {
+    const termo = referencia.trim().toLocaleLowerCase("pt-BR");
+    if (referenciaAberta) return baseVisiveis.filter((item) => referenciaApontamento(item, setor) === referenciaAberta);
+    if (!termo) return baseVisiveis;
+    return baseVisiveis.filter((item) => referenciaApontamento(item, setor).toLocaleLowerCase("pt-BR").includes(termo));
+  }, [baseVisiveis, referencia, referenciaAberta, setor]);
 
   function abrirEdicao(item: Apontamento) {
     const grupos = Array.isArray(item.grupos)
@@ -222,7 +259,7 @@ function Historico() {
                 <option value="">Todas</option><option value="pendente">Pendente</option><option value="lancado">Lançado</option>
               </select>
             </Campo>
-            <Campo label="OP"><Input value={op} onChange={(e) => setOp(e.target.value)} placeholder="Buscar OP" /></Campo>
+            <Campo label={setor === "mantas" ? "Lote" : "OP"}><Input value={referencia} onChange={(e) => { setReferencia(e.target.value); setReferenciaAberta(null); }} placeholder={setor === "mantas" ? "Buscar lote" : "Buscar OP"} /></Campo>
             <Campo label="Produto">
               <select className="h-10 w-full rounded-md border bg-background px-3" value={produto} onChange={(e) => setProduto(e.target.value)}>
                 <option value="">Todos</option>{produtos.map((item) => <option key={item}>{item}</option>)}
@@ -236,8 +273,28 @@ function Historico() {
           </CardContent>
         </Card>
 
-        {carregando ? (
-          <p className="text-sm text-muted-foreground">Carregando histórico...</p>
+        <section className="rounded-xl border bg-card p-3 shadow-sm">
+          <div className="mb-3">
+            <h2 className="font-bold text-foreground">{setor === "mantas" ? "Lotes no período" : "OPs no período"}</h2>
+            <p className="text-xs text-muted-foreground">Abra uma referência para consultar seus apontamentos completos.</p>
+          </div>
+          {grupos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma referência encontrada com os filtros atuais.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {grupos.map((grupo) => (
+                <Button key={grupo.referencia} type="button" variant={referenciaAberta === grupo.referencia ? "secondary" : "outline"} className="h-auto min-h-14 justify-between px-3 py-2 text-left" onClick={() => { const proxima = referenciaAberta === grupo.referencia ? null : grupo.referencia; setReferenciaAberta(proxima); setReferencia(proxima ?? ""); }}>
+                  <span className="min-w-0"><span className="block truncate font-bold">{setor === "mantas" ? "Lote" : "OP"} {grupo.referencia}</span><span className="block text-xs font-normal text-muted-foreground">{grupo.registros} apontamento(s) · {[...grupo.turnos].sort().join(", ")} · {grupo.pendentes} pendente(s)</span></span>
+                  <ChevronRight className="size-4 shrink-0" />
+                </Button>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">Ocorrências não possuem vínculo automático com OP ou lote no cadastro atual; por isso não são associadas por aproximação.</p>
+        </section>
+
+        {carregando && itens.length === 0 ? (
+          <div className="space-y-2" aria-label="Carregando histórico">{[0, 1, 2].map((i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div>
         ) : visiveis.length === 0 ? (
           <Card><CardContent className="pt-6 text-sm text-muted-foreground">Nenhum apontamento encontrado no período.</CardContent></Card>
         ) : (
@@ -326,6 +383,11 @@ function Historico() {
             );
           })
         )}
+        {itens.length >= limite && (
+          <Button variant="outline" className="w-full" disabled={carregando} onClick={() => setLimite((v) => v + PAGINA)}>
+            {carregando ? "Carregando..." : "Carregar mais"}
+          </Button>
+        )}
       </div>
     </AppShell>
   );
@@ -392,8 +454,12 @@ function resumo(item: Apontamento) {
     return `${Number(item.area_m2 ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m² · tempo ${item.tempo} · velocidade ${item.velocidade}`;
   }
   const lote = item.lote ? ` · Lote ${item.lote}` : "";
-  const metragem = item.metragem ? ` · ${Number(item.metragem).toLocaleString("pt-BR")} m` : "";
+  const metragem = item.metragem ? ` · ${Number(item.metragem).toLocaleString("pt-BR")} ${item.setor === "corte" ? "m²" : "m"}` : "";
   return `${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos${metragem}${lote}`;
+}
+
+function referenciaApontamento(item: Apontamento, setor: SetorCodigo) {
+  return (setor === "mantas" ? item.lote : item.op)?.trim() ?? "";
 }
 
 function formatar(valor: string) {

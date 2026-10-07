@@ -1,4 +1,4 @@
--- Documenta mudancas JA APLICADAS manualmente no banco (idempotente).
+-- Documenta mudancas JA APLICADAS manualmente no banco (idempotente). Nao executar automaticamente.
 
 create or replace function public.forcar_horario_atual_apontamento()
 returns trigger language plpgsql security definer set search_path to 'public'

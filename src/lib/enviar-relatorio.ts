@@ -5,14 +5,23 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { gerarPdfRelatorio } from "@/lib/relatorio-pdf";
 
+type RuntimeBindings = Record<string, unknown>;
+function lerVariavelServidor(nome: string): string | undefined {
+  const valorProcesso = process.env[nome];
+  if (typeof valorProcesso === "string" && valorProcesso.length > 0) return valorProcesso;
+  const bindings = (globalThis as typeof globalThis & { __env__?: unknown }).__env__;
+  if (!bindings || typeof bindings !== "object" || Array.isArray(bindings)) return undefined;
+  const valorRuntime = (bindings as RuntimeBindings)[nome];
+  return typeof valorRuntime === "string" && valorRuntime.length > 0 ? valorRuntime : undefined;
+}
 const entrada = z.object({
   relatorioId: z.string().uuid(),
   destinatarios: z.array(z.string().email()).min(1).max(10),
 });
 
 function configuracao() {
-  const url = process.env["APPS_SCRIPT_WEB_APP_URL"];
-  const token = process.env["APPS_SCRIPT_API_TOKEN"];
+  const url = lerVariavelServidor("APPS_SCRIPT_WEB_APP_URL");
+  const token = lerVariavelServidor("APPS_SCRIPT_API_TOKEN");
   if (!url || !token) {
     throw new Error("A integração com o Apps Script ainda não está configurada no Lovable.");
   }
@@ -34,9 +43,7 @@ function configuracao() {
 }
 
 function normalizarDestinatarios(destinatarios: string[]) {
-  return [
-    ...new Set(destinatarios.map((email) => email.trim().toLowerCase()).filter(Boolean)),
-  ].slice(0, 10);
+  return [...new Set(destinatarios.map((email) => email.trim().toLowerCase()).filter(Boolean))].slice(0, 10);
 }
 
 function dataExibicao(valor: string) {
@@ -52,9 +59,7 @@ function turnoExibicao(valor: string) {
 }
 
 function limparErro(erro: unknown) {
-  return (erro instanceof Error ? erro.message : "Falha desconhecida no envio.")
-    .replace(/[\r\n]+/g, " ")
-    .slice(0, 500);
+  return (erro instanceof Error ? erro.message : "Falha desconhecida no envio.").replace(/[\r\n]+/g, " ").slice(0, 500);
 }
 
 const NOMES_SETOR: Record<string, string> = {
@@ -69,25 +74,19 @@ const NOMES_SETOR: Record<string, string> = {
 };
 
 function campo(obj: unknown, chave: string): unknown {
-  return obj && typeof obj === "object" && !Array.isArray(obj)
-    ? (obj as Record<string, unknown>)[chave]
-    : undefined;
+  return obj && typeof obj === "object" && !Array.isArray(obj) ? (obj as Record<string, unknown>)[chave] : undefined;
 }
 
 function txt(valor: unknown) {
   if (valor === null || valor === undefined || valor === "") return "—";
   if (typeof valor === "number") return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-  if (typeof valor === "object")
-    return String(campo(valor, "nome") ?? campo(valor, "email") ?? "—");
+  if (typeof valor === "object") return String(campo(valor, "nome") ?? campo(valor, "email") ?? "—");
   return String(valor);
 }
 
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
 const b64txt = (s: string) => b64(new TextEncoder().encode(s));
-const cabecalho = (v: string) =>
-  [...v].every((caractere) => (caractere.codePointAt(0) ?? 0) <= 0x7f)
-    ? v
-    : `=?UTF-8?B?${b64txt(v)}?=`;
+const cabecalho = (v: string) => (/^[\x00-\x7F]*$/.test(v) ? v : `=?UTF-8?B?${b64txt(v)}?=`);
 
 async function enviarViaGmail(opts: {
   to: string[];
@@ -96,9 +95,13 @@ async function enviarViaGmail(opts: {
   pdf: Uint8Array;
   fileName: string;
 }) {
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  const gmailKey = process.env["GOOGLE_MAIL_API_KEY"] ?? process.env["GOOGLE_MAIL_API_KEY_1"];
-  if (!lovableKey || !gmailKey) throw new Error("GMAIL_NAO_CONFIGURADO");
+  const lovableKey = lerVariavelServidor("LOVABLE_API_KEY");
+  const gmailKey = lerVariavelServidor("GOOGLE_MAIL_API_KEY") ?? lerVariavelServidor("GOOGLE_MAIL_API_KEY_1");
+  if (!lovableKey || !gmailKey) {
+    const ausentes = [...(!lovableKey ? ["LOVABLE_API_KEY"] : []), ...(!gmailKey ? ["GOOGLE_MAIL_API_KEY"] : [])];
+    console.error(`[Gmail] Bindings indisponíveis no runtime: ${ausentes.join(", ")}`);
+    throw new Error("GMAIL_NAO_CONFIGURADO");
+  }
   const boundary = `dryko_${crypto.randomUUID()}`;
   const anexo = b64(opts.pdf).replace(/.{76}/g, "$&\r\n");
   const mime = [
@@ -121,27 +124,21 @@ async function enviarViaGmail(opts: {
     `--${boundary}--`,
   ].join("\r\n");
   const raw = b64txt(mime).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  const resp = await fetch(
-    "https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableKey}`,
-        "X-Connection-Api-Key": gmailKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ raw }),
+  const resp = await fetch("https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableKey}`,
+      "X-Connection-Api-Key": gmailKey,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({ raw }),
+  });
   if (!resp.ok) {
     const corpo = await resp.text();
     console.error(`Gmail falhou [${resp.status}]: ${corpo}`);
     if (resp.status === 401 || resp.status === 403)
-      throw new Error(
-        `O Gmail recusou o envio (autorização). Reconecte a conta Gmail. [${resp.status}]`,
-      );
-    if (resp.status === 429)
-      throw new Error("Limite de envios do Gmail atingido. Tente novamente em alguns minutos.");
+      throw new Error(`O Gmail recusou o envio (autorização). Reconecte a conta Gmail. [${resp.status}]`);
+    if (resp.status === 429) throw new Error("Limite de envios do Gmail atingido. Tente novamente em alguns minutos.");
     throw new Error(`O Gmail não conseguiu enviar o e-mail [${resp.status}].`);
   }
 }
@@ -180,9 +177,7 @@ async function enviarViaAppsScript(opts: {
     /* tratado abaixo */
   }
   if (!resposta.ok || retorno.ok !== true) {
-    throw new Error(
-      retorno.error || `Apps Script respondeu com status ${resposta.status} ou conteúdo inválido.`,
-    );
+    throw new Error(retorno.error || `Apps Script respondeu com status ${resposta.status} ou conteúdo inválido.`);
   }
 }
 
@@ -200,30 +195,6 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
       .single();
     if (error || !relatorio) throw new Error("Relatório não encontrado ou sem permissão.");
 
-    if (relatorio.status_envio === "enviando") {
-      const inicioAnterior = new Date(relatorio.updated_at).getTime();
-      const envioTravado =
-        Number.isFinite(inicioAnterior) && Date.now() - inicioAnterior > 10 * 60 * 1000;
-      if (!envioTravado) {
-        throw new Error(
-          "Este relatório já está sendo enviado. Aguarde alguns segundos e tente novamente.",
-        );
-      }
-
-      // Recupera um lock deixado para trás por queda do servidor ou da conexão.
-      const { error: erroRecuperacao } = await context.supabase
-        .from("relatorios")
-        .update({
-          status_envio: "falhou",
-          erro_envio: "O envio anterior foi interrompido e liberado para nova tentativa.",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", relatorio.id)
-        .eq("status_envio", "enviando")
-        .eq("updated_at", relatorio.updated_at);
-      if (erroRecuperacao) throw new Error("Não foi possível liberar o envio interrompido.");
-    }
-
     const { data: bloqueio, error: erroBloqueio } = await context.supabase
       .from("relatorios")
       .update({
@@ -239,9 +210,7 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
       .maybeSingle();
 
     if (erroBloqueio || !bloqueio) {
-      throw new Error(
-        "Este relatório já está sendo enviado. Aguarde alguns segundos e tente novamente.",
-      );
+      throw new Error("Este relatório já está sendo enviado. Aguarde alguns segundos e tente novamente.");
     }
 
     try {
@@ -284,7 +253,7 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
         if (
           erroGmail instanceof Error &&
           erroGmail.message === "GMAIL_NAO_CONFIGURADO" &&
-          process.env["APPS_SCRIPT_WEB_APP_URL"]
+          lerVariavelServidor("APPS_SCRIPT_WEB_APP_URL")
         ) {
           await enviarViaAppsScript(envio);
         } else if (erroGmail instanceof Error && erroGmail.message === "GMAIL_NAO_CONFIGURADO") {

@@ -40,25 +40,21 @@ function Selecionar() {
   async function salvar() {
     if (!user || !setor || !turno || salvando) return;
     setSalvando(true);
-
     const { error } = await supabase
       .from("profiles")
       .update({ setor_atual: setor, turno_atual: turno, onboarding_concluido: true })
       .eq("id", user.id);
-
     if (error) {
       setSalvando(false);
       toast.error("Não foi possível salvar. Tente novamente.");
       return;
     }
-
+    await refresh();
     try {
-      await refresh();
-      toast.success("Setor e turno salvos.");
       await navigate({ to: "/painel", replace: true });
     } catch {
       setSalvando(false);
-      toast.error("Setor e turno foram salvos, mas não foi possível abrir o painel. Tente novamente.");
+      toast.error("Setor e turno salvos, mas não foi possível abrir o painel. Atualize a página.");
     }
   }
 
@@ -83,7 +79,7 @@ function Selecionar() {
               className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/10"
               value={setor ?? ""}
               onChange={(e) => setSetor(e.target.value as SetorCodigo)}
-              disabled={carregando || salvando}
+              disabled={carregando}
             >
               <option value="">{carregando ? "Carregando..." : "Selecione o setor"}</option>
               {setores.map((item) => <option key={item.codigo} value={item.codigo}>{item.nome}</option>)}
@@ -100,7 +96,6 @@ function Selecionar() {
                     key={item}
                     type="button"
                     onClick={() => setTurno(item)}
-                    disabled={salvando}
                     className={`flex h-12 items-center justify-center gap-1 rounded-xl border text-sm font-bold transition ${ativo ? "border-primary bg-primary text-white" : "border-slate-200 bg-slate-50 text-slate-700"}`}
                   >
                     {ativo && <Check className="size-4" />}{indice + 1}º turno
@@ -110,7 +105,11 @@ function Selecionar() {
             </div>
           </div>
 
-          <Button className="h-12 w-full rounded-xl text-base font-bold" disabled={!setor || !turno || salvando} onClick={salvar}>
+          <Button
+            className="h-12 w-full rounded-xl text-base font-bold"
+            disabled={!setor || !turno || salvando}
+            onClick={() => void salvar()}
+          >
             {salvando ? "Salvando e abrindo painel..." : profile?.onboarding_concluido ? "Salvar alteração" : "Continuar"}
           </Button>
         </div>

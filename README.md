@@ -1,24 +1,12 @@
 # Produção Dryko Companion
 
-## Documentação oficial
-
-- [Prompt mestre e narrativa funcional](docs/PROMPT_MESTRE_APONTA_PRODUCAO.md)
-- [Guia de migração, implantação e backup](docs/GUIA_MIGRACAO_E_BACKUP.md)
-- [Auditoria e melhorias recomendadas](docs/AUDITORIA_E_MELHORIAS.md)
-
-Valide a portabilidade com `bun run verify:portability` e o aplicativo com `bun run build`. As migrações SQL ficam em `drizzle/migrations` e devem ser executadas em ordem.
-
-## Estado atual da aplicação
+## Estado da réplica no Lovable
 
 Esta aplicação replica o fluxo operacional mais recente validado no Floot, preservando os dados já existentes no projeto Lovable. Estão implementados: autenticação administrada, perfis e permissões, seleção de setor/turno, Corte, Fitas, Mantas, metas por OP e produto, controle de lançamento manual no Protheus, correções auditadas, fechamento/reabertura de turno, relatórios PDF, envio protegido por e-mail, problemas com fotografia e cadastros administrativos.
 
-Observação de precedência: o prompt mestre acima e o código atual substituem o texto histórico abaixo quando houver divergência. No fluxo vigente, **Mantas não usa OP**: usa lote, produto, PLTs, metragem e rolos automáticos. Corte e Fitas usam OP. As regras de Asfox, Misturadores, Líquidos, Pós e Avulsos continuam aguardando definição.
+Observação de precedência: a configuração mais recente do Floot substitui o texto histórico abaixo no ponto em que divergir. Em especial, **Mantas também usa OP**, além de lote, produto, PLTs, metragem e rolos automáticos, e possui “Repetir último” e meta opcional. As regras de Asfox, Misturadores, Líquidos, Pós e Avulsos continuam aguardando definição.
 
-O envio de e-mail usa o conector Gmail do Lovable quando disponível e aceita `APPS_SCRIPT_WEB_APP_URL` + `APPS_SCRIPT_API_TOKEN` como alternativa para relatórios. Não há integração automática com o Protheus nesta fase; a confirmação permanece manual e auditada.
-
-## Especificação histórica
-
-O conteúdo abaixo foi mantido como registro da evolução inicial. Para nova implantação ou alteração, use a documentação oficial no início deste arquivo.
+O envio de e-mail exige as variáveis seguras `APPS_SCRIPT_WEB_APP_URL` e `APPS_SCRIPT_API_TOKEN`. Não há integração automática com o Protheus nesta fase; a confirmação permanece manual e auditada.
 
 # Prompt inicial — Projeto paralelo Aponta Produção DRYKO
 

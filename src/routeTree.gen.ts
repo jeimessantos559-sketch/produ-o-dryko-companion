@@ -24,6 +24,7 @@ import { Route as AuthenticatedIndicadoresRouteImport } from './routes/_authenti
 import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedOcorrenciasRouteImport } from './routes/_authenticated/ocorrencias'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
+import { Route as AuthenticatedParadasRouteImport } from './routes/_authenticated/paradas'
 import { Route as AuthenticatedPassagemTurnoRouteImport } from './routes/_authenticated/passagem-turno'
 import { Route as AuthenticatedProdutosRouteImport } from './routes/_authenticated/produtos'
 import { Route as AuthenticatedProgramacaoRouteImport } from './routes/_authenticated/programacao'
@@ -112,6 +113,11 @@ const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
   path: '/painel',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedParadasRoute = AuthenticatedParadasRouteImport.update({
+  id: '/paradas',
+  path: '/paradas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPassagemTurnoRoute =
   AuthenticatedPassagemTurnoRouteImport.update({
     id: '/passagem-turno',
@@ -172,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/metas': typeof AuthenticatedMetasRoute
   '/ocorrencias': typeof AuthenticatedOcorrenciasRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/paradas': typeof AuthenticatedParadasRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/produtos': typeof AuthenticatedProdutosRoute
   '/programacao': typeof AuthenticatedProgramacaoRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByTo {
   '/metas': typeof AuthenticatedMetasRoute
   '/ocorrencias': typeof AuthenticatedOcorrenciasRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/paradas': typeof AuthenticatedParadasRoute
   '/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/produtos': typeof AuthenticatedProdutosRoute
   '/programacao': typeof AuthenticatedProgramacaoRoute
@@ -222,6 +230,7 @@ export interface FileRoutesById {
   '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/ocorrencias': typeof AuthenticatedOcorrenciasRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
+  '/_authenticated/paradas': typeof AuthenticatedParadasRoute
   '/_authenticated/passagem-turno': typeof AuthenticatedPassagemTurnoRoute
   '/_authenticated/produtos': typeof AuthenticatedProdutosRoute
   '/_authenticated/programacao': typeof AuthenticatedProgramacaoRoute
@@ -248,6 +257,7 @@ export interface FileRouteTypes {
     | '/metas'
     | '/ocorrencias'
     | '/painel'
+    | '/paradas'
     | '/passagem-turno'
     | '/produtos'
     | '/programacao'
@@ -272,6 +282,7 @@ export interface FileRouteTypes {
     | '/metas'
     | '/ocorrencias'
     | '/painel'
+    | '/paradas'
     | '/passagem-turno'
     | '/produtos'
     | '/programacao'
@@ -297,6 +308,7 @@ export interface FileRouteTypes {
     | '/_authenticated/metas'
     | '/_authenticated/ocorrencias'
     | '/_authenticated/painel'
+    | '/_authenticated/paradas'
     | '/_authenticated/passagem-turno'
     | '/_authenticated/produtos'
     | '/_authenticated/programacao'
@@ -422,6 +434,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPainelRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/paradas': {
+      id: '/_authenticated/paradas'
+      path: '/paradas'
+      fullPath: '/paradas'
+      preLoaderRoute: typeof AuthenticatedParadasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/passagem-turno': {
       id: '/_authenticated/passagem-turno'
       path: '/passagem-turno'
@@ -492,6 +511,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedOcorrenciasRoute: typeof AuthenticatedOcorrenciasRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
+  AuthenticatedParadasRoute: typeof AuthenticatedParadasRoute
   AuthenticatedPassagemTurnoRoute: typeof AuthenticatedPassagemTurnoRoute
   AuthenticatedProdutosRoute: typeof AuthenticatedProdutosRoute
   AuthenticatedProgramacaoRoute: typeof AuthenticatedProgramacaoRoute
@@ -514,6 +534,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedOcorrenciasRoute: AuthenticatedOcorrenciasRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
+  AuthenticatedParadasRoute: AuthenticatedParadasRoute,
   AuthenticatedPassagemTurnoRoute: AuthenticatedPassagemTurnoRoute,
   AuthenticatedProdutosRoute: AuthenticatedProdutosRoute,
   AuthenticatedProgramacaoRoute: AuthenticatedProgramacaoRoute,

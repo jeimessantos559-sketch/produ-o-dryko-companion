@@ -1,3 +1,4 @@
+import { StatusRedeAtualizacao } from "@/components/dryko/status-rede-atualizacao";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -8,7 +9,6 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { toast } from "sonner";
 
 import { PwaInstallPrompt } from "@/components/dryko/pwa-install-prompt";
 import { Toaster } from "@/components/ui/sonner";
@@ -22,14 +22,16 @@ function NotFoundComponent() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Página não encontrada</h2>
-        <p className="mt-2 text-sm text-muted-foreground">O endereço não existe ou foi alterado.</p>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
         <div className="mt-6">
           <Link
             to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Voltar ao início
+            Go home
           </Link>
         </div>
       </div>
@@ -37,7 +39,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -48,10 +50,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Não foi possível carregar esta tela
+          This page didn't load
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          O erro foi registrado. Tente novamente ou volte ao início.
+          Something went wrong on our end. You can try refreshing or head back home.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -61,13 +63,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Tentar novamente
+            Try again
           </button>
           <a
             href="/"
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
-            Voltar ao início
+            Go home
           </a>
         </div>
       </div>
@@ -144,58 +146,20 @@ function RootComponent() {
     document.documentElement.classList.toggle("dark", tema === "dark");
     document.documentElement.style.colorScheme = tema;
 
-    let recarregando = false;
-    const aoTrocarControlador = () => {
-      if (recarregando) return;
-      recarregando = true;
-      window.location.reload();
-    };
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("controllerchange", aoTrocarControlador);
-      void navigator.serviceWorker
-        .register("/sw.js?v=7")
-        .then((registro) => {
-          const avisarAtualizacao = () => {
-            if (!registro.waiting || !navigator.serviceWorker.controller) return;
-            toast.info("Nova versão disponível", {
-              id: "dryko-pwa-update",
-              description: "Atualize quando terminar o apontamento em andamento.",
-              duration: Infinity,
-              action: {
-                label: "Atualizar",
-                onClick: () => registro.waiting?.postMessage({ type: "SKIP_WAITING" }),
-              },
-            });
-          };
-
-          avisarAtualizacao();
-          registro.addEventListener("updatefound", () => {
-            const instalando = registro.installing;
-            instalando?.addEventListener("statechange", () => {
-              if (instalando.state === "installed") avisarAtualizacao();
-            });
-          });
-        })
-        .catch(() => undefined);
-    }
 
     const antesDeInstalar = (evento: Event) => {
       evento.preventDefault();
-      window.__drykoInstallPrompt = evento;
+      (window as any).__drykoInstallPrompt = evento;
       window.dispatchEvent(new Event("dryko-pwa-ready"));
     };
 
     const instalado = () => {
-      window.__drykoInstallPrompt = null;
+      (window as any).__drykoInstallPrompt = null;
     };
 
     window.addEventListener("beforeinstallprompt", antesDeInstalar);
     window.addEventListener("appinstalled", instalado);
     return () => {
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.removeEventListener("controllerchange", aoTrocarControlador);
-      }
       window.removeEventListener("beforeinstallprompt", antesDeInstalar);
       window.removeEventListener("appinstalled", instalado);
     };
@@ -207,6 +171,7 @@ function RootComponent() {
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <PwaInstallPrompt />
+        <StatusRedeAtualizacao />
         <Toaster position="top-center" richColors />
       </AuthProvider>
     </QueryClientProvider>

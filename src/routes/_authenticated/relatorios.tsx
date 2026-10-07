@@ -57,6 +57,8 @@ function Relatorios() {
   const [enviandoId, setEnviandoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
 
+  const [limite, setLimite] = useState(50);
+
   const carregar = useCallback(async () => {
     if (!profile?.setor_atual) {
       setCarregando(false);
@@ -70,7 +72,7 @@ function Relatorios() {
         .eq("setor", profile.setor_atual)
         .order("data_local", { ascending: false })
         .order("turno", { ascending: false })
-        .limit(40),
+        .limit(limite),
       (supabase as any)
         .from("grupos_email_relatorio")
         .select("id, nome, emails, automatico, ativo")
@@ -93,7 +95,7 @@ function Relatorios() {
       return atual;
     });
     setCarregando(false);
-  }, [profile?.setor_atual]);
+  }, [profile?.setor_atual, limite]);
 
   useEffect(() => {
     void carregar();
@@ -307,6 +309,11 @@ function Relatorios() {
               );
             })}
           </div>
+        )}
+        {relatorios.length >= limite && (
+          <Button variant="outline" className="w-full" disabled={carregando} onClick={() => setLimite((v) => v + 50)}>
+            {carregando ? "Carregando..." : "Carregar mais"}
+          </Button>
         )}
       </div>
     </AppShell>

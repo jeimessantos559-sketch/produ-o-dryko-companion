@@ -5,11 +5,7 @@ type Props = {
   compact?: boolean;
 };
 
-/**
- * A data/hora do apontamento é registrada automaticamente pelo sistema.
- * O componente permanece como compatibilidade temporária com os formulários,
- * mas não exibe nenhum controle editável para o usuário.
- */
+/** Data/hora da produção é definida pelo sistema; campo não é exibido nos formulários. */
 export function HoraProducaoField(_props: Props) {
   return null;
 }

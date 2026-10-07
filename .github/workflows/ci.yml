@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    env:
+      # Valores públicos de exemplo: o CI não usa segredos de produção.
+      VITE_SUPABASE_URL: https://example.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+      VITE_SUPABASE_PROJECT_ID: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Instalar pelo lockfile
+        run: bun install --frozen-lockfile
+      - name: Portabilidade
+        run: bun run verify:portability
+      - name: Testes das regras industriais
+        run: bun run test
+      - name: Build
+        run: bun run build
+      - name: Lint (informativo, dívida histórica)
+        run: bun run lint
+        continue-on-error: true

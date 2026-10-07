@@ -4,20 +4,23 @@
 //     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
 //     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
+import { execSync } from "node:child_process";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-const versao =
-  process.env["GITHUB_SHA"] ??
-  process.env["CF_PAGES_COMMIT_SHA"] ??
-  process.env["VERCEL_GIT_COMMIT_SHA"] ??
-  process.env["COMMIT_SHA"] ??
-  process.env["SOURCE_VERSION"] ??
-  new Date().toISOString().slice(0, 10).replaceAll("-", "");
+function commitAtual() {
+  if (process.env["GITHUB_SHA"]) return process.env["GITHUB_SHA"].slice(0, 7);
+  try {
+    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  } catch {
+    return "local";
+  }
+}
 
 export default defineConfig({
   vite: {
     define: {
-      __APP_VERSION__: JSON.stringify(versao.slice(0, 8)),
+      __APP_COMMIT__: JSON.stringify(commitAtual()),
+      __APP_BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")),
     },
   },
   tanstackStart: {
@@ -26,3 +29,4 @@ export default defineConfig({
     server: { entry: "server" },
   },
 });
+

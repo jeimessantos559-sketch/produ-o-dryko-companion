@@ -17,14 +17,14 @@ export function PwaInstallPrompt() {
     const instalado = window.matchMedia("(display-mode: standalone)").matches;
     if (instalado) return;
 
-    const existente = window.__drykoInstallPrompt as PromptInstalacao | undefined;
+    const existente = (window as any).__drykoInstallPrompt as PromptInstalacao | undefined;
     if (existente) {
       setPrompt(existente);
       setVisivel(true);
     }
 
     function pronto() {
-      const evento = window.__drykoInstallPrompt as PromptInstalacao | undefined;
+      const evento = (window as any).__drykoInstallPrompt as PromptInstalacao | undefined;
       if (evento) {
         setPrompt(evento);
         setVisivel(true);
@@ -55,7 +55,7 @@ export function PwaInstallPrompt() {
         toast.success("Aplicativo instalado no celular.");
         setVisivel(false);
         setPrompt(null);
-        window.__drykoInstallPrompt = null;
+        (window as any).__drykoInstallPrompt = null;
       }
     } catch {
       toast.error("Não foi possível abrir a instalação. Tente pelo menu do navegador.");
@@ -75,9 +75,7 @@ export function PwaInstallPrompt() {
         />
         <div className="min-w-0 flex-1">
           <p className="font-bold text-foreground">Instalar Aponta Produção</p>
-          <p className="text-xs text-muted-foreground">
-            Use como aplicativo, sem precisar abrir o navegador.
-          </p>
+          <p className="text-xs text-muted-foreground">Use como aplicativo, sem precisar abrir o navegador.</p>
         </div>
         <button
           type="button"
