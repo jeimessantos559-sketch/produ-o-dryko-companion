@@ -76,6 +76,8 @@ type PendenciaRapida = {
   total_rolos: number | null;
   metragem: number | null;
   area_m2: number | null;
+  total_unidades?: number | null;
+  semi_consumido_kg?: number | null;
   data_local: string;
   turno: "T1" | "T2" | "T3";
 };
@@ -495,6 +497,8 @@ export function AppShell({
 }
 
 function resumoPendencia(item: PendenciaRapida) {
+  if (item.total_unidades != null)
+    return `${Number(item.total_unidades).toLocaleString("pt-BR")} unidades${Number(item.semi_consumido_kg ?? 0) > 0 ? ` · ${Number(item.semi_consumido_kg).toLocaleString("pt-BR")} kg de semi` : ""}`;
   if (Number(item.area_m2 ?? 0) > 0)
     return `${Number(item.area_m2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`;
   if (Number(item.metragem ?? 0) > 0)

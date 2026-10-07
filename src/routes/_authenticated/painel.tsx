@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth";
+import { useAuth, type SetorCodigo, type TurnoCodigo } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
 import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-card";
 import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
@@ -66,6 +66,8 @@ type Resumo = {
   rolos: number;
   metragem: number;
   area: number;
+  unidades: number;
+  semiKg: number;
 };
 
 type Registro = ApontamentoTurno;
@@ -90,6 +92,8 @@ type GrupoProtheus = {
   rolos: number;
   metragem: number;
   area: number;
+  unidades: number;
+  semiKg: number;
 };
 
 const RESUMO_VAZIO: Resumo = {
@@ -100,6 +104,8 @@ const RESUMO_VAZIO: Resumo = {
   rolos: 0,
   metragem: 0,
   area: 0,
+  unidades: 0,
+  semiKg: 0,
 };
 
 function Painel() {
@@ -173,6 +179,14 @@ function Painel() {
       rolos: Number(r.rolos ?? 0),
       metragem: Number(r.metragem ?? 0),
       area: Number(r.area ?? 0),
+      unidades: (payload.recentes ?? []).reduce(
+        (n, item) => n + Number(item.total_unidades ?? 0),
+        0,
+      ),
+      semiKg: (payload.recentes ?? []).reduce(
+        (n, item) => n + Number(item.semi_consumido_kg ?? 0),
+        0,
+      ),
     });
     setRecentes(payload.recentes ?? []);
     setPendencias(payload.pendencias ?? []);
@@ -187,6 +201,7 @@ function Painel() {
   const setorFitas = setor === "fitas";
   const setorMantas = setor === "mantas";
   const setorCorte = setor === "corte";
+  const setorLiquidos = setor === "liquidos";
   const setorNome = setor ? nomeSetor(setor) : "Setor";
   const turnoNome = nomeTurno(profile?.turno_atual);
 
@@ -309,11 +324,28 @@ function Painel() {
             />
             <Indicador
               icon={Gauge}
-              label={setorCorte ? "Metragem produzida" : "Metragem Protheus"}
-              valor={setorFitas ? formatarNumero(resumo.area) : formatarNumero(resumo.metragem)}
-              detalhe={setorFitas || setorCorte ? "m²" : "m"}
+              label={
+                setorLiquidos
+                  ? "Semi consumido"
+                  : setorCorte
+                    ? "Metragem produzida"
+                    : "Metragem Protheus"
+              }
+              valor={formatarNumero(
+                setorLiquidos ? resumo.semiKg : setorFitas ? resumo.area : resumo.metragem,
+              )}
+              detalhe={setorLiquidos ? "kg neste turno" : setorFitas || setorCorte ? "m²" : "m"}
               tone="slate"
             />
+            {setorLiquidos && (
+              <Indicador
+                icon={Boxes}
+                label="Unidades produzidas"
+                valor={formatarNumero(resumo.unidades)}
+                detalhe="neste turno"
+                tone="slate"
+              />
+            )}
           </div>
 
           {isAutorizado && gruposProtheus.length > 0 && (
@@ -516,9 +548,9 @@ function Painel() {
 }
 
 async function buscarPainel(setor: string, turno: string, data: string): Promise<PainelPayload> {
-  const rpc = await (supabase.rpc as any)("painel_turno", {
-    p_setor: setor,
-    p_turno: turno,
+  const rpc = await supabase.rpc("painel_turno", {
+    p_setor: setor as SetorCodigo,
+    p_turno: turno as TurnoCodigo,
     p_data: data,
   });
   // Uma lista parcial produz totais e sequências errados; em falha mostramos erro para tentar novamente.
@@ -588,6 +620,8 @@ function tituloGrupo(grupo: GrupoProtheus, setor: string) {
 }
 
 function resumoRegistro(item: Registro, setor: string) {
+  if (setor === "liquidos")
+    return `${formatarNumero(Number(item.total_unidades ?? 0))} unidades${Number(item.semi_consumido_kg ?? 0) > 0 ? ` · ${formatarNumero(Number(item.semi_consumido_kg))} kg de semi` : ""}`;
   if (setor === "fitas") return `${formatarNumero(Number(item.area_m2 ?? 0))} m² para Protheus`;
   if (setor === "mantas")
     return `${formatarNumero(Number(item.metragem ?? 0))} m · ${item.quantidade_plts ?? 0} PLTs · ${item.total_rolos ?? 0} rolos`;
@@ -595,6 +629,8 @@ function resumoRegistro(item: Registro, setor: string) {
 }
 
 function resumoGrupo(grupo: GrupoProtheus, setor: string) {
+  if (setor === "liquidos")
+    return `${formatarNumero(grupo.unidades)} unidades${grupo.semiKg > 0 ? ` · ${formatarNumero(grupo.semiKg)} kg de semi` : ""}${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
   if (setor === "fitas")
     return `${formatarNumero(grupo.area)} m² para lançar${grupo.registros > 1 ? ` · ${grupo.registros} registros` : ""}`;
   if (setor === "mantas")

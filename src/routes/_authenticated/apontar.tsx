@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/dryko/app-shell";
+import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { EmDefinicao } from "@/components/dryko/em-definicao";
 import { HoraProducaoField } from "@/components/dryko/hora-producao-field";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
@@ -73,11 +74,43 @@ function Apontar() {
   if (profile?.setor_atual === "corte") return <ApontarCorte />;
   if (profile?.setor_atual === "fitas") return <ApontarFitas />;
   if (profile?.setor_atual === "mantas") return <ApontarMantas />;
+  if (profile?.setor_atual === "liquidos") return <ApontarLiquidos />;
   return (
     <AppShell>
       <EmDefinicao
         titulo="Apontar produção"
         descricao="As regras deste setor ainda aguardam definição. Nenhum campo ou cálculo foi inventado."
+      />
+    </AppShell>
+  );
+}
+
+function ApontarLiquidos() {
+  const [aberto, setAberto] = useState(true);
+  const [repetir, setRepetir] = useState(false);
+  function abrir(repetirUltimo = false) {
+    setRepetir(repetirUltimo);
+    setAberto(true);
+  }
+  return (
+    <AppShell title="Apontar produção" onApontar={() => abrir()} onRepeat={() => abrir(true)}>
+      <Card className="mx-auto max-w-xl rounded-2xl">
+        <CardHeader>
+          <CardTitle>Apontamento de Líquidos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button className="h-12 w-full" onClick={() => abrir()}>
+            <Plus /> Novo apontamento
+          </Button>
+        </CardContent>
+      </Card>
+      <ApontamentoRapido
+        open={aberto}
+        onOpenChange={setAberto}
+        repeatLatest={repetir}
+        onSaved={() => {
+          window.dispatchEvent(new Event("apontamento-salvo"));
+        }}
       />
     </AppShell>
   );
@@ -260,7 +293,8 @@ function mensagemApontamento(error: { message?: string } | null) {
   if (normalizada.includes("turno esta fechado")) {
     return "Este turno está fechado. Peça a reabertura ao administrador.";
   }
-  if (normalizada.includes("horario") && normalizada.includes("turno")) return "A hora real informada não pertence ao turno selecionado.";
+  if (normalizada.includes("horario") && normalizada.includes("turno"))
+    return "A hora real informada não pertence ao turno selecionado.";
   if (normalizada.includes("futuro")) return "A hora real da produção não pode estar no futuro.";
   return "Não foi possível salvar o apontamento. Revise os dados e tente novamente.";
 }
@@ -292,7 +326,13 @@ function ApontarCorte() {
           grupo.pltPicadoRolos < grupo.rolosPorPlt)),
   );
   const valido = Boolean(
-    dataHoraProducao && op.trim() && produto && gruposValidos && quantidade >= 1 && quantidade <= 20 && rolos > 0,
+    dataHoraProducao &&
+    op.trim() &&
+    produto &&
+    gruposValidos &&
+    quantidade >= 1 &&
+    quantidade <= 20 &&
+    rolos > 0,
   );
 
   function escolherProduto(id: string) {
@@ -417,7 +457,11 @@ function ApontarCorte() {
         )}
 
         <section className="space-y-3">
-          <HoraProducaoField id="hora-producao-corte" value={dataHoraProducao} onChange={setDataHoraProducao} />
+          <HoraProducaoField
+            id="hora-producao-corte"
+            value={dataHoraProducao}
+            onChange={setDataHoraProducao}
+          />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="op" className="text-xs font-bold uppercase">
@@ -735,7 +779,13 @@ function ApontarMantas() {
         )}
         <Card>
           <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
-            <div className="sm:col-span-2"><HoraProducaoField id="hora-producao-mantas" value={dataHoraProducao} onChange={setDataHoraProducao} /></div>
+            <div className="sm:col-span-2">
+              <HoraProducaoField
+                id="hora-producao-mantas"
+                value={dataHoraProducao}
+                onChange={setDataHoraProducao}
+              />
+            </div>
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="op-manta">OP *</Label>
               <Input
@@ -849,7 +899,15 @@ function ApontarFitas() {
   }
 
   async function salvar() {
-    if (!user || !profile?.turno_atual || !produto || !op.trim() || !dataHoraProducao || area <= 0 || enviando.current)
+    if (
+      !user ||
+      !profile?.turno_atual ||
+      !produto ||
+      !op.trim() ||
+      !dataHoraProducao ||
+      area <= 0 ||
+      enviando.current
+    )
       return;
     if (!confirmarExcessoDaMeta(meta, apontado, area)) return;
     enviando.current = true;
@@ -917,7 +975,13 @@ function ApontarFitas() {
         )}
         <Card>
           <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
-            <div className="sm:col-span-2"><HoraProducaoField id="hora-producao-fitas" value={dataHoraProducao} onChange={setDataHoraProducao} /></div>
+            <div className="sm:col-span-2">
+              <HoraProducaoField
+                id="hora-producao-fitas"
+                value={dataHoraProducao}
+                onChange={setDataHoraProducao}
+              />
+            </div>
             <div className="space-y-1">
               <Label>OP *</Label>
               <Input value={op} onChange={(e) => setOp(e.target.value)} />

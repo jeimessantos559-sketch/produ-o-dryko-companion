@@ -197,8 +197,20 @@ function PassagemTurno() {
           rolos: acc.rolos + (item.total_rolos ?? 0),
           metragem: acc.metragem + Number(item.metragem ?? 0),
           area: acc.area + Number(item.area_m2 ?? 0),
+          unidades: acc.unidades + Number(item.total_unidades ?? 0),
+          semiKg: acc.semiKg + Number(item.semi_consumido_kg ?? 0),
         }),
-        { apontamentos: 0, pendentes: 0, lancados: 0, plts: 0, rolos: 0, metragem: 0, area: 0 },
+        {
+          apontamentos: 0,
+          pendentes: 0,
+          lancados: 0,
+          plts: 0,
+          rolos: 0,
+          metragem: 0,
+          area: 0,
+          unidades: 0,
+          semiKg: 0,
+        },
       ),
     [apontamentos],
   );
@@ -412,12 +424,27 @@ function PassagemTurno() {
               <Indicador label="Lançados" valor={totais.lancados} />
               <Indicador label="OPs / lotes finalizados" valor={opsFinalizadas.length} />
               <Indicador label="PLTs" valor={totais.plts} />
-              <Indicador label="Rolos" valor={totais.rolos} />
-              <Indicador label="Metragem" valor={`${totais.metragem.toLocaleString("pt-BR")} m`} />
-              <Indicador
-                label="Área"
-                valor={`${totais.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`}
-              />
+              {profile?.setor_atual === "liquidos" ? (
+                <>
+                  <Indicador label="Unidades" valor={totais.unidades.toLocaleString("pt-BR")} />
+                  <Indicador
+                    label="Semi consumido"
+                    valor={`${totais.semiKg.toLocaleString("pt-BR")} kg`}
+                  />
+                </>
+              ) : (
+                <>
+                  <Indicador label="Rolos" valor={totais.rolos} />
+                  <Indicador
+                    label="Metragem"
+                    valor={`${totais.metragem.toLocaleString("pt-BR")} m`}
+                  />
+                  <Indicador
+                    label="Área"
+                    valor={`${totais.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`}
+                  />
+                </>
+              )}
             </div>
 
             {totais.pendentes > 0 && !fechado && (

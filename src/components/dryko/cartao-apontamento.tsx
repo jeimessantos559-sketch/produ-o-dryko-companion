@@ -28,12 +28,14 @@ export function CartaoApontamento({ item, sequencia, onCorrigir }: Props) {
   const picado = grupos.reduce((n, g) => n + Number(g.pltPicadoRolos ?? 0), 0);
   const padroes = [...new Set(grupos.map((g) => g.rolosPorPlt))];
   const padrao = padroes.length === 1 ? padroes[0] : item.rolos_por_plt;
+  const liquidos = item.setor === "liquidos";
+  const unitario = liquidos && item.embalagem_liquido === "unidade";
   const sequenciaTexto =
     sequencia?.inicio != null
       ? sequencia.inicio === sequencia.fim
         ? `PLT ${sequencia.inicio}`
         : `PLTs ${sequencia.inicio} a ${sequencia.fim}`
-      : item.setor === "corte"
+      : item.setor === "corte" || (liquidos && !unitario)
         ? "PLT picado · 0 PLT fechado"
         : "";
   return (
@@ -61,24 +63,34 @@ export function CartaoApontamento({ item, sequencia, onCorrigir }: Props) {
           {numero(Number(item.area_m2 ?? 0))} m² · {numero(Number(item.tempo ?? 0))} min
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-slate-50 p-3">
-            <p className="text-xs text-slate-500">Quantidade</p>
-            <p className="mt-1 font-bold text-slate-950">{numero(pltsFechados(item))} PLTs</p>
-          </div>
+        <div className={`grid ${unitario ? "grid-cols-1" : "grid-cols-2"} gap-3`}>
+          {!unitario && (
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-xs text-slate-500">Quantidade</p>
+              <p className="mt-1 font-bold text-slate-950">{numero(pltsFechados(item))} PLTs</p>
+            </div>
+          )}
           <div className="rounded-xl bg-slate-50 p-3">
             <p className="text-xs text-slate-500">Total</p>
             <p className="mt-1 font-bold text-slate-950">
-              {numero(Number(item.total_rolos ?? 0))} rolos
+              {numero(Number(liquidos ? (item.total_unidades ?? 0) : (item.total_rolos ?? 0)))}{" "}
+              {liquidos ? "unidades" : "rolos"}
             </p>
           </div>
         </div>
       )}
-      {item.setor !== "fitas" && (
+      {item.setor !== "fitas" && !unitario && (
         <p className="mt-2 text-xs leading-relaxed text-slate-500">
           {[
             sequenciaTexto,
-            padrao ? `${numero(padrao)} rolos/PLT` : "",
+            liquidos && item.unidades_por_plt
+              ? `${numero(item.unidades_por_plt)} unidades/PLT`
+              : padrao
+                ? `${numero(padrao)} rolos/PLT`
+                : "",
+            liquidos && item.picado_unidades
+              ? `${numero(item.picado_unidades)} unidades no picado`
+              : "",
             picado > 0 ? `${numero(picado)} rolos no picado` : "",
           ]
             .filter(Boolean)

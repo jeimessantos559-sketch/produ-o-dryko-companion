@@ -11,6 +11,8 @@ export type GrupoRevisao = {
   plts: number;
   picados: number;
   unidadesPicadas: number;
+  unidades: number;
+  semiKg: number;
   area: number;
   pendentes: number;
   lancados: number;
@@ -33,6 +35,8 @@ export function agruparRevisaoDoTurno(itens: readonly ApontamentoTurno[]): Grupo
       plts: 0,
       picados: 0,
       unidadesPicadas: 0,
+      unidades: 0,
+      semiKg: 0,
       area: 0,
       pendentes: 0,
       lancados: 0,
@@ -41,8 +45,14 @@ export function agruparRevisaoDoTurno(itens: readonly ApontamentoTurno[]): Grupo
     if (op && !grupo.ops.includes(op)) grupo.ops.push(op);
     grupo.plts += pltsFechados(item);
     grupo.area += Number(item.area_m2 ?? 0);
+    grupo.unidades += Number(item.total_unidades ?? 0);
+    grupo.semiKg += Number(item.semi_consumido_kg ?? 0);
     grupo.pendentes += item.status === "pendente" ? 1 : 0;
     grupo.lancados += item.status === "lancado" ? 1 : 0;
+    if (item.setor === "liquidos" && Number(item.picado_unidades ?? 0) > 0) {
+      grupo.picados += 1;
+      grupo.unidadesPicadas += Number(item.picado_unidades);
+    }
     if (item.setor === "corte") {
       const grupos = gruposFechados(item.grupos);
       const picados = grupos.filter((g) => Number(g.pltPicadoRolos ?? 0) > 0);
@@ -65,6 +75,8 @@ export function agruparRevisaoDoTurno(itens: readonly ApontamentoTurno[]): Grupo
 export function quantidadeDaRevisao(grupo: GrupoRevisao) {
   const numero = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
   if (grupo.setor === "fitas") return `${numero(grupo.area)} m²`;
+  if (grupo.setor === "liquidos" && grupo.plts === 0 && grupo.picados === 0)
+    return `${numero(grupo.unidades)} unidades`;
   const partes: string[] = [];
   if (grupo.plts > 0 || grupo.picados === 0)
     partes.push(`${numero(grupo.plts)} ${grupo.plts === 1 ? "PLT" : "PLTs"}`);

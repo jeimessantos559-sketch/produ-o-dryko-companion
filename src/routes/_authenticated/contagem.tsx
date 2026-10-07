@@ -186,12 +186,27 @@ function Contagem() {
                   >
                     <h3 className="font-mono text-sm font-bold text-slate-600">{total.nome}</h3>
                     <p className="mt-3 text-3xl font-extrabold text-slate-950">
-                      {numero(setor === "fitas" ? total.area : total.metragem)}{" "}
-                      {setor === "mantas" ? "m" : "m²"}
+                      {numero(
+                        setor === "liquidos"
+                          ? total.unidades
+                          : setor === "fitas"
+                            ? total.area
+                            : total.metragem,
+                      )}{" "}
+                      {setor === "liquidos" ? "unidades" : setor === "mantas" ? "m" : "m²"}
                     </p>
                     {setor !== "fitas" && (
                       <p className="mt-1 text-sm text-slate-500">
-                        {numero(total.plts)} PLTs · {numero(total.rolos)} rolos
+                        {setor === "liquidos"
+                          ? [
+                              total.plts > 0 ? `${numero(total.plts)} PLTs` : "",
+                              total.semiKg > 0
+                                ? `${numero(total.semiKg)} kg de semi consumido`
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")
+                          : `${numero(total.plts)} PLTs · ${numero(total.rolos)} rolos`}
                       </p>
                     )}
                     {programacoes.map((p) => {

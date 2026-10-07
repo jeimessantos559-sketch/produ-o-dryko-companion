@@ -60,6 +60,12 @@ export type Database = {
       }
       apontamentos: {
         Row: {
+          embalagem_liquido: string | null
+          unidades_por_plt: number | null
+          semi_kg_por_unidade: number | null
+          total_unidades: number | null
+          semi_consumido_kg: number | null
+          picado_unidades: number | null
           apontado_por_nome: string | null
           area_m2: number | null
           created_at: string
@@ -90,6 +96,12 @@ export type Database = {
           velocidade: number | null
         }
         Insert: {
+          embalagem_liquido?: string | null
+          unidades_por_plt?: number | null
+          semi_kg_por_unidade?: number | null
+          total_unidades?: number | null
+          semi_consumido_kg?: number | null
+          picado_unidades?: number | null
           apontado_por_nome?: string | null
           area_m2?: number | null
           created_at?: string
@@ -120,6 +132,12 @@ export type Database = {
           velocidade?: number | null
         }
         Update: {
+          embalagem_liquido?: string | null
+          unidades_por_plt?: number | null
+          semi_kg_por_unidade?: number | null
+          total_unidades?: number | null
+          semi_consumido_kg?: number | null
+          picado_unidades?: number | null
           apontado_por_nome?: string | null
           area_m2?: number | null
           created_at?: string
@@ -575,6 +593,9 @@ export type Database = {
       }
       produtos: {
         Row: {
+          embalagem_liquido: string | null
+          unidades_por_plt: number | null
+          semi_kg_por_unidade: number | null
           ativo: boolean
           categoria: string | null
           created_at: string
@@ -587,6 +608,9 @@ export type Database = {
           setor: Database["public"]["Enums"]["setor_codigo"]
         }
         Insert: {
+          embalagem_liquido?: string | null
+          unidades_por_plt?: number | null
+          semi_kg_por_unidade?: number | null
           ativo?: boolean
           categoria?: string | null
           created_at?: string
@@ -599,6 +623,9 @@ export type Database = {
           setor: Database["public"]["Enums"]["setor_codigo"]
         }
         Update: {
+          embalagem_liquido?: string | null
+          unidades_por_plt?: number | null
+          semi_kg_por_unidade?: number | null
           ativo?: boolean
           categoria?: string | null
           created_at?: string

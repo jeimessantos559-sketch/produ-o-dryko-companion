@@ -57,7 +57,16 @@ export function contagemPorProduto(
 ) {
   const mapa = new Map<
     string,
-    { produtoId: string; nome: string; plts: number; rolos: number; metragem: number; area: number }
+    {
+      produtoId: string;
+      nome: string;
+      plts: number;
+      rolos: number;
+      metragem: number;
+      area: number;
+      unidades: number;
+      semiKg: number;
+    }
   >();
   for (const item of itens) {
     if (item.setor !== setor || item.turno !== turno || item.data_local !== data) continue;
@@ -68,11 +77,15 @@ export function contagemPorProduto(
       rolos: 0,
       metragem: 0,
       area: 0,
+      unidades: 0,
+      semiKg: 0,
     };
     total.plts += pltsFechados(item);
     total.rolos += Number(item.total_rolos ?? 0);
     total.metragem += Number(item.metragem ?? 0);
     total.area += Number(item.area_m2 ?? 0);
+    total.unidades += Number(item.total_unidades ?? 0);
+    total.semiKg += Number(item.semi_consumido_kg ?? 0);
     mapa.set(item.produto_id, total);
   }
   return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));

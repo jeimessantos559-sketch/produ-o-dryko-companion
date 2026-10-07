@@ -15,6 +15,8 @@ export type ItemProtheus = {
   total_rolos?: number | null;
   metragem?: number | null;
   area_m2?: number | null;
+  total_unidades?: number | null;
+  semi_consumido_kg?: number | null;
 };
 
 export type GrupoProtheusBase<T extends ItemProtheus> = {
@@ -27,6 +29,8 @@ export type GrupoProtheusBase<T extends ItemProtheus> = {
   rolos: number;
   metragem: number;
   area: number;
+  unidades: number;
+  semiKg: number;
 };
 
 export function normalizarChaveProtheus(valor: string | null | undefined) {
@@ -42,9 +46,14 @@ export function chaveProtheus(
   if (opcoes.somentePendentes && item.status !== "pendente") return unitario;
   const produto = normalizarChaveProtheus(item.produto_nome);
   const sufixo = opcoes.incluirTurno ? `:${item.data_local ?? ""}:${item.turno ?? ""}` : "";
-  if (setor === "mantas" && item.lote) return `manta:${produto}:${normalizarChaveProtheus(item.lote)}${sufixo}`;
-  if (setor === "corte" && item.op) return `corte:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
-  if (setor === "fitas" && item.op) return `fitas:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
+  if (setor === "mantas" && item.lote)
+    return `manta:${produto}:${normalizarChaveProtheus(item.lote)}${sufixo}`;
+  if (setor === "corte" && item.op)
+    return `corte:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
+  if (setor === "fitas" && item.op)
+    return `fitas:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
+  if (setor === "liquidos" && item.op)
+    return `liquidos:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   return unitario;
 }
 
@@ -57,7 +66,17 @@ export function agruparProtheus<T extends ItemProtheus>(
   for (const item of itens) {
     const chave = chaveProtheus(item, setor, opcoes);
     const atual = mapa.get(chave) ?? {
-      chave, ids: [], item, itens: [], registros: 0, plts: 0, rolos: 0, metragem: 0, area: 0,
+      chave,
+      ids: [],
+      item,
+      itens: [],
+      registros: 0,
+      plts: 0,
+      rolos: 0,
+      metragem: 0,
+      area: 0,
+      unidades: 0,
+      semiKg: 0,
     };
     atual.ids.push(item.id);
     atual.itens.push(item);
@@ -66,6 +85,8 @@ export function agruparProtheus<T extends ItemProtheus>(
     atual.rolos += Number(item.total_rolos ?? 0);
     atual.metragem += Number(item.metragem ?? 0);
     atual.area += Number(item.area_m2 ?? 0);
+    atual.unidades += Number(item.total_unidades ?? 0);
+    atual.semiKg += Number(item.semi_consumido_kg ?? 0);
     mapa.set(chave, atual);
   }
   return [...mapa.values()];

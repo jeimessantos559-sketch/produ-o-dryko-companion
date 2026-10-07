@@ -132,7 +132,15 @@ function RelatorioDetalhado() {
     const opsFinalizadas = opsFinalizadasNoRelatorio(relatorio?.resumo);
     const produtos = new Map<
       string,
-      { apontamentos: number; plts: number; rolos: number; metragem: number; area: number }
+      {
+        apontamentos: number;
+        plts: number;
+        rolos: number;
+        metragem: number;
+        area: number;
+        unidades: number;
+        semiKg: number;
+      }
     >();
     for (const item of apontamentos) {
       const nome = texto(item.produto_nome);
@@ -142,12 +150,16 @@ function RelatorioDetalhado() {
         rolos: 0,
         metragem: 0,
         area: 0,
+        unidades: 0,
+        semiKg: 0,
       };
       atual.apontamentos += 1;
       atual.plts += numero(item.quantidade_plts);
       atual.rolos += numero(item.total_rolos);
       atual.metragem += numero(item.metragem);
       atual.area += numero(item.area_m2);
+      atual.unidades += numero(item["total_unidades"]);
+      atual.semiKg += numero(item["semi_consumido_kg"]);
       produtos.set(nome, atual);
     }
     return {
@@ -185,6 +197,7 @@ function RelatorioDetalhado() {
   const nomeArquivo = `relatorio-${relatorio.setor}-${relatorio.data_local}-${relatorio.turno}.pdf`;
   const fitas = relatorio.setor === "fitas";
   const mantas = relatorio.setor === "mantas";
+  const liquidos = relatorio.setor === "liquidos";
   const metragem = fitas ? numero(dados.totais.area) : numero(dados.totais.metragem);
   const unidade = mantas ? "m" : "m²";
 
@@ -360,8 +373,12 @@ function RelatorioDetalhado() {
               />
               <Indicador
                 icon={Ruler}
-                titulo={fitas ? "Produção" : "Metragem produzida"}
-                valor={`${formatarNumero(metragem)} ${unidade}`}
+                titulo={liquidos ? "Semi consumido" : fitas ? "Produção" : "Metragem produzida"}
+                valor={
+                  liquidos
+                    ? `${formatarNumero(numero(dados.totais["semiKg"]), 3)} kg`
+                    : `${formatarNumero(metragem)} ${unidade}`
+                }
                 destaque
               />
               <Indicador
@@ -370,6 +387,13 @@ function RelatorioDetalhado() {
                 valor={`${formatarNumero(numero(dados.totais.pendentes), 0)} / ${formatarNumero(numero(dados.totais.lancados), 0)}`}
                 alerta={numero(dados.totais.pendentes) > 0}
               />
+              {liquidos && (
+                <Indicador
+                  icon={Boxes}
+                  titulo="Unidades produzidas"
+                  valor={formatarNumero(numero(dados.totais["unidades"]), 0)}
+                />
+              )}
             </section>
 
             <Secao titulo="Resumo por produto">
@@ -387,12 +411,17 @@ function RelatorioDetalhado() {
                       {total.plts} PLTs
                     </span>
                     <span className="hidden self-center text-slate-600 sm:block">
-                      {formatarNumero(total.rolos, 0)} rolos
+                      {formatarNumero(liquidos ? total.unidades : total.rolos, 0)}{" "}
+                      {liquidos ? "unidades" : "rolos"}
                     </span>
                     <strong className="self-center text-right text-slate-900">
-                      {fitas
-                        ? `${formatarNumero(total.area)} m²`
-                        : `${formatarNumero(total.metragem)} ${unidade}`}
+                      {liquidos
+                        ? total.semiKg > 0
+                          ? `${formatarNumero(total.semiKg, 3)} kg de semi`
+                          : "—"
+                        : fitas
+                          ? `${formatarNumero(total.area)} m²`
+                          : `${formatarNumero(total.metragem)} ${unidade}`}
                     </strong>
                   </div>
                 ))}
@@ -407,6 +436,7 @@ function RelatorioDetalhado() {
                 apontamentos={dados.apontamentos}
                 fitas={fitas}
                 unidade={unidade}
+                liquidos={liquidos}
               />
             </Secao>
 

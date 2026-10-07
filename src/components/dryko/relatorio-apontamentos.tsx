@@ -33,10 +33,12 @@ export function RelatorioApontamentos({
   apontamentos,
   fitas,
   unidade,
+  liquidos = false,
 }: {
   apontamentos: Json[];
   fitas: boolean;
   unidade: string;
+  liquidos?: boolean;
 }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -58,8 +60,8 @@ export function RelatorioApontamentos({
               "OP / Lote",
               "Produto",
               "PLTs",
-              "Rolos",
-              "Produção",
+              liquidos ? "Unidades" : "Rolos",
+              liquidos ? "Semi (kg)" : "Produção",
               "Apontado por",
               "Protheus / Lançado por",
             ].map((titulo) => (
@@ -81,9 +83,13 @@ export function RelatorioApontamentos({
                   ? inicio
                   : `${inicio}–${fim}`
                 : String(indice + 1);
-            const producao = fitas
-              ? `${formatarNumero(numero(item["area_m2"]))} m²`
-              : `${formatarNumero(numero(item["metragem"]))} ${unidade}`;
+            const producao = liquidos
+              ? item["embalagem_liquido"] === "unidade"
+                ? "—"
+                : `${formatarNumero(numero(item["semi_consumido_kg"]), 3)} kg`
+              : fitas
+                ? `${formatarNumero(numero(item["area_m2"]))} m²`
+                : `${formatarNumero(numero(item["metragem"]))} ${unidade}`;
             return (
               <tr
                 key={texto(item["id"]) === "—" ? indice : texto(item["id"])}
@@ -100,7 +106,7 @@ export function RelatorioApontamentos({
                   {formatarNumero(numero(item["quantidade_plts"]), 0)}
                 </td>
                 <td className="px-3 py-3 text-slate-600">
-                  {formatarNumero(numero(item["total_rolos"]), 0)}
+                  {formatarNumero(numero(item[liquidos ? "total_unidades" : "total_rolos"]), 0)}
                 </td>
                 <td className="break-words px-3 py-3 text-slate-600">{producao}</td>
                 <td className="px-3 py-3">

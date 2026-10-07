@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
+import type { ParametrosLiquido } from "@/lib/liquidos";
 
-export type ProdutoCatalogo = {
+export type ProdutoCatalogo = ParametrosLiquido & {
   id: string;
   nome: string;
   categoria: string | null;
@@ -30,7 +31,9 @@ export async function obterProdutosAtivos(setor: string) {
   const requisicao = Promise.all([
     supabase
       .from("produtos")
-      .select("id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo")
+      .select(
+        "id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo, embalagem_liquido, unidades_por_plt, semi_kg_por_unidade",
+      )
       .eq("setor", setor as never)
       .eq("ativo", true),
     supabase

@@ -30,7 +30,7 @@ type Responsavel = {
   em?: string | null;
 };
 
-const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas"];
+const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas", "liquidos"];
 
 type GrupoLancamento = {
   chave: string;
@@ -41,6 +41,8 @@ type GrupoLancamento = {
   rolos: number;
   metragem: number;
   area: number;
+  unidades: number;
+  semiKg: number;
   apontadores: Responsavel[];
   lancadores: Responsavel[];
 };
@@ -405,6 +407,8 @@ function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo) {
         rolos: Number(item.total_rolos ?? 0),
         metragem: Number(item.metragem ?? 0),
         area: Number(item.area_m2 ?? 0),
+        unidades: Number(item.total_unidades ?? 0),
+        semiKg: Number(item.semi_consumido_kg ?? 0),
         apontadores: [apontador],
         lancadores: lancador ? [lancador] : [],
       });
@@ -417,6 +421,8 @@ function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo) {
     atual.rolos += Number(item.total_rolos ?? 0);
     atual.metragem += Number(item.metragem ?? 0);
     atual.area += Number(item.area_m2 ?? 0);
+    atual.unidades += Number(item.total_unidades ?? 0);
+    atual.semiKg += Number(item.semi_consumido_kg ?? 0);
     if (!atual.apontadores.some((responsavel) => responsavel.id === apontador.id))
       atual.apontadores.push(apontador);
     if (lancador && !atual.lancadores.some((responsavel) => responsavel.id === lancador.id))
@@ -440,12 +446,15 @@ function tituloGrupo(grupo: GrupoLancamento, setor: SetorCodigo) {
 }
 
 function resumoPrincipal(grupo: GrupoLancamento, setor: SetorCodigo) {
+  if (setor === "liquidos") return `${fmt(grupo.unidades)} unidades`;
   if (setor === "fitas") return `${fmt(grupo.area)} m²`;
   if (setor === "mantas") return `${fmt(grupo.metragem)} m`;
   return `${grupo.plts} PLTs`;
 }
 
 function resumoApoio(grupo: GrupoLancamento, setor: SetorCodigo) {
+  if (setor === "liquidos")
+    return `${grupo.plts > 0 ? `${grupo.plts} PLTs · ` : ""}${grupo.semiKg > 0 ? `${fmt(grupo.semiKg)} kg de semi · ` : ""}${grupo.quantidadeRegistros} apontamento(s)`;
   if (setor === "fitas") return `${grupo.quantidadeRegistros} apontamento(s) agrupado(s)`;
   if (setor === "mantas")
     return `${grupo.plts} PLTs · ${grupo.rolos} rolos · ${grupo.quantidadeRegistros} apontamento(s)`;

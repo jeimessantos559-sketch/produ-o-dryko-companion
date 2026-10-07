@@ -32,5 +32,8 @@ export function chaveAgrupamentoProtheus(
   if (setor === "fitas" && item.op) {
     return `fitas:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   }
+  if (setor === "liquidos" && item.op) {
+    return `liquidos:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
+  }
   return `item:${item.id}${sufixo}`;
 }

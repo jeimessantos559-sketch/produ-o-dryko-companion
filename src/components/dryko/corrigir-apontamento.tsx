@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { ProdutoSelect } from "@/components/dryko/produto-select";
+import { CamposLiquidos } from "@/components/dryko/campos-liquidos";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +22,7 @@ import { invalidarCache } from "@/lib/cache-consultas";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 import { totalPlts, totalRolos, type GrupoCorte } from "@/lib/producao";
 import { bloquearSeOffline } from "@/lib/rede";
+import { calcularLiquidos, quantidadeLiquidoInicial } from "@/lib/liquidos";
 
 type Props = { item: ApontamentoTurno; onClose: () => void; onSaved: () => void | Promise<void> };
 
@@ -45,6 +47,11 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
         ];
   });
   const [quantidadePlts, setQuantidadePlts] = useState(item.quantidade_plts ?? 1);
+  const [quantidadeLiquido, setQuantidadeLiquido] = useState(() => ({
+    quantidadePlts: item.quantidade_plts ?? 1,
+    picadoUnidades: item.picado_unidades || ("" as const),
+    unidades: item.total_unidades ?? 0,
+  }));
   const [metragem, setMetragem] = useState(Number(item.metragem ?? 0));
   const [tempo, setTempo] = useState(Number(item.tempo ?? 60));
   const [velocidade, setVelocidade] = useState(Number(item.velocidade ?? 25));
@@ -72,6 +79,9 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
                   largura: item.largura,
                   metragem_por_plt: null,
                   metros_por_rolo: null,
+                  embalagem_liquido: item.embalagem_liquido,
+                  unidades_por_plt: item.unidades_por_plt,
+                  semi_kg_por_unidade: item.semi_kg_por_unidade,
                 },
               ],
         );
@@ -85,10 +95,20 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
     return () => {
       ativo = false;
     };
-  }, [item.setor, item.produto_id, item.produto_nome, item.rolos_por_plt, item.largura]);
+  }, [
+    item.setor,
+    item.produto_id,
+    item.produto_nome,
+    item.rolos_por_plt,
+    item.largura,
+    item.embalagem_liquido,
+    item.unidades_por_plt,
+    item.semi_kg_por_unidade,
+  ]);
 
   const produto = useMemo(() => produtos.find((p) => p.id === produtoId), [produtoId, produtos]);
   const metrosPorRolo = Number(produto?.metros_por_rolo ?? 10);
+  const totalLiquido = calcularLiquidos(produto, quantidadeLiquido);
   const gruposValidos = grupos.every(
     (g) =>
       Number.isInteger(g.quantidadePlts) &&
@@ -109,12 +129,14 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
     motivo.trim().length >= 3 &&
     (item.setor === "corte"
       ? gruposValidos && totalPlts(grupos) <= 20 && totalRolos(grupos) > 0
-      : item.setor === "fitas"
-        ? tempo > 0 && velocidade > 0 && largura > 0
-        : Number.isInteger(quantidadePlts) &&
-          quantidadePlts > 0 &&
-          metragem > 0 &&
-          Number.isInteger(metragem / metrosPorRolo));
+      : item.setor === "liquidos"
+        ? totalLiquido.valido
+        : item.setor === "fitas"
+          ? tempo > 0 && velocidade > 0 && largura > 0
+          : Number.isInteger(quantidadePlts) &&
+            quantidadePlts > 0 &&
+            metragem > 0 &&
+            Number.isInteger(metragem / metrosPorRolo));
 
   function atualizarGrupo(indice: number, dados: Partial<GrupoCorte>) {
     setGrupos((atuais) => atuais.map((g, i) => (i === indice ? { ...g, ...dados } : g)));
@@ -128,9 +150,16 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
       updated_at_anterior: item.updated_at,
       ...(item.setor === "corte"
         ? { op: referencia.trim(), grupos: grupos as unknown as Json }
-        : item.setor === "fitas"
-          ? { op: referencia.trim(), tempo, velocidade, largura }
-          : { lote: referencia.trim(), quantidade_plts: quantidadePlts, metragem }),
+        : item.setor === "liquidos"
+          ? {
+              op: referencia.trim(),
+              quantidade_plts: totalLiquido.plts,
+              picado_unidades: totalLiquido.picado,
+              total_unidades: totalLiquido.unidades,
+            }
+          : item.setor === "fitas"
+            ? { op: referencia.trim(), tempo, velocidade, largura }
+            : { lote: referencia.trim(), quantidade_plts: quantidadePlts, metragem }),
     };
     try {
       const { error } = await supabase.rpc("corrigir_apontamento", {
@@ -202,6 +231,8 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
                 const escolhido = produtos.find((p) => p.id === id);
                 if (item.setor === "fitas" && escolhido?.largura)
                   setLargura(Number(escolhido.largura));
+                if (item.setor === "liquidos" && id !== produtoId)
+                  setQuantidadeLiquido(quantidadeLiquidoInicial());
               }}
             />
           </div>
@@ -272,6 +303,14 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
                 rolos
               </p>
             </>
+          )}
+          {item.setor === "liquidos" && produto && (
+            <CamposLiquidos
+              id="correcao-liquidos"
+              produto={produto}
+              quantidade={quantidadeLiquido}
+              onChange={setQuantidadeLiquido}
+            />
           )}
           {item.setor === "fitas" && (
             <div className="grid gap-3 sm:grid-cols-3">
