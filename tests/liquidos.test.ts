@@ -36,16 +36,16 @@ test("picados somam unidades e semi, sem aumentar a contagem de PLTs fechados", 
   assert.equal(isolado.semiKg, 108);
 });
 
-test("pouch conta só unidades mesmo que restem campos de um produto anterior", () => {
+test("pouch sem padrão por PLT conta unidades e calcula o semi pelo peso", () => {
   const total = calcularLiquidos(
-    { embalagem_liquido: "unidade", unidades_por_plt: null, semi_kg_por_unidade: null },
+    { embalagem_liquido: "unidade", unidades_por_plt: null, semi_kg_por_unidade: 1 },
     { quantidadePlts: 12, picadoUnidades: 6, unidades: 432 },
   );
   assert.equal(total.valido, true);
   assert.equal(total.unidades, 432);
   assert.equal(total.plts, 0);
   assert.equal(total.picado, 0);
-  assert.equal(total.semiKg, 0);
+  assert.equal(total.semiKg, 432);
 });
 
 test("configuração incompleta, quantidades fracionadas, negativas e picado cheio são rejeitados", () => {
@@ -62,7 +62,7 @@ test("configuração incompleta, quantidades fracionadas, negativas e picado che
     assert.equal(calcularLiquidos(balde, quantidade).valido, false);
   for (const unidades of [-1, 0, 0.5, Infinity, 2_147_483_648])
     assert.equal(
-      calcularLiquidos({ embalagem_liquido: "unidade" }, { ...qtd, unidades }).valido,
+      calcularLiquidos({ embalagem_liquido: "unidade", semi_kg_por_unidade: 1 }, { ...qtd, unidades }).valido,
       false,
     );
   assert.equal(calcularLiquidos({ ...balde, semi_kg_por_unidade: NaN }, qtd).valido, false);
@@ -166,4 +166,37 @@ test("PDF de Líquidos mostra unidades e semi sem metragem nem rolos", () => {
   assert.match(pdf, /Prikol BD/);
   assert.match(pdf, /Kal pouch/);
   assert.doesNotMatch(pdf, /ROLOS PRODUZIDOS|AREA PRODUZIDA|\(Rolos\)|0 m2/);
+});
+
+test("PDF detalha o semi de pouch novo e preserva o registro histórico sem peso", () => {
+  const novo = registro({
+    produto_nome: "Kal pouch",
+    embalagem_liquido: "unidade",
+    unidades_por_plt: 648,
+    semi_kg_por_unidade: 1,
+    quantidade_plts: 1,
+    total_unidades: 648,
+    semi_consumido_kg: 648,
+  });
+  const galao = registro({
+    id: "2", produto_nome: "Prikol GL", embalagem_liquido: "galao",
+    unidades_por_plt: 144, semi_kg_por_unidade: 3.6,
+    quantidade_plts: 1, total_unidades: 144, semi_consumido_kg: 518.4,
+  });
+  const antigo = registro({
+    id: "3", produto_nome: "Pouch historico", embalagem_liquido: "unidade",
+    unidades_por_plt: null, semi_kg_por_unidade: null,
+    quantidade_plts: 0, total_unidades: 100, semi_consumido_kg: 0,
+  });
+  const pdf = new TextDecoder().decode(gerarPdfRelatorio({
+    setor: "Líquidos", turno: "T2", data: "2026-10-07", responsavel: "Jeimes Santos",
+    totais: { apontamentos: 3, plts: 2, unidades: 892, semiKg: 1166.4, pendentes: 3, lancados: 0 },
+    apontamentos: [novo, galao, antigo],
+  } as unknown as Json));
+  const detalhe = pdf.slice(pdf.indexOf("APONTADO POR"));
+  assert.match(detalhe, /648 kg/);
+  assert.match(detalhe, /518,4 kg/);
+  assert.match(detalhe, /Pouch historico/);
+  assert.equal(antigo.semi_kg_por_unidade, null);
+  assert.equal(antigo.semi_consumido_kg, 0);
 });

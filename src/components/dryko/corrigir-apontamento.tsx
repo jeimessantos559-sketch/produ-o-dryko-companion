@@ -63,8 +63,25 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
   useEffect(() => {
     let ativo = true;
     void obterProdutosAtivos(item.setor)
-      .then((lista) => {
+      .then(async (lista) => {
         if (!ativo) return;
+        // Produtos inativos também precisam do peso atual para a correção de Líquidos.
+        if (item.setor === "liquidos" && !lista.some((p) => p.id === item.produto_id)) {
+          const { data: historico, error } = await supabase
+            .from("produtos")
+            .select(
+              "id, nome, categoria, rolos_por_plt, largura, metragem_por_plt, metros_por_rolo, embalagem_liquido, unidades_por_plt, semi_kg_por_unidade",
+            )
+            .eq("id", item.produto_id)
+            .maybeSingle();
+          if (!ativo) return;
+          if (error || !historico) {
+            setErroProdutos(true);
+            return;
+          }
+          setProdutos([...lista, historico]);
+          return;
+        }
         // Um produto histórico inativo continua disponível para corrigir só a quantidade.
         setProdutos(
           lista.some((p) => p.id === item.produto_id)
@@ -113,7 +130,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
       atual?.id === item.produto_id &&
       atual.embalagem_liquido === "unidade" &&
       item.embalagem_liquido === "unidade"
-      ? { ...atual, unidades_por_plt: item.unidades_por_plt, semi_kg_por_unidade: null }
+      ? { ...atual, unidades_por_plt: item.unidades_por_plt }
       : atual;
   }, [
     produtoId,

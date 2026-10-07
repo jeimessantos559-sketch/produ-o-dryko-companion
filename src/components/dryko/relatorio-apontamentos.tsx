@@ -84,7 +84,9 @@ export function RelatorioApontamentos({
                   : `${inicio}–${fim}`
                 : String(indice + 1);
             const producao = liquidos
-              ? item["embalagem_liquido"] === "unidade"
+              ? item["embalagem_liquido"] === "unidade" &&
+                item["semi_kg_por_unidade"] == null &&
+                numero(item["semi_consumido_kg"]) === 0
                 ? "—"
                 : `${formatarNumero(numero(item["semi_consumido_kg"]), 3)} kg`
               : fitas

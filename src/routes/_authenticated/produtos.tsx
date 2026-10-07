@@ -14,7 +14,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import { rolosManta } from "@/lib/producao";
-import { nomeEmbalagemLiquido, type EmbalagemLiquido } from "@/lib/liquidos";
+import { nomeEmbalagemLiquido, pesoLiquidoKg, type EmbalagemLiquido } from "@/lib/liquidos";
 
 export const Route = createFileRoute("/_authenticated/produtos")({ component: Produtos });
 
@@ -48,7 +48,9 @@ function Produtos() {
   const [metrosPorRolo, setMetrosPorRolo] = useState(10);
   const [embalagemLiquido, setEmbalagemLiquido] = useState<EmbalagemLiquido>("balde");
   const [unidadesPorPlt, setUnidadesPorPlt] = useState(36);
-  const [semiKgPorUnidade, setSemiKgPorUnidade] = useState(18);
+  const [pesoPorUnidade, setPesoPorUnidade] = useState("");
+  const semiKgPorUnidade = pesoLiquidoKg(pesoPorUnidade);
+  const pesoValido = semiKgPorUnidade != null;
 
   async function carregarProdutos(setorSelecionado: SetorCodigo) {
     setCarregando(true);
@@ -93,12 +95,11 @@ function Produtos() {
         : setor === "mantas"
           ? Boolean(mantaValida)
           : setor === "liquidos"
-            ? (embalagemLiquido === "unidade" && unidadesPorPlt === 0) ||
-              (Number.isSafeInteger(unidadesPorPlt) &&
-                unidadesPorPlt > 0 &&
-                unidadesPorPlt <= 2_147_483_647 &&
-                (embalagemLiquido === "unidade" ||
-                  (Number.isFinite(semiKgPorUnidade) && semiKgPorUnidade > 0)))
+            ? pesoValido &&
+              ((embalagemLiquido === "unidade" && unidadesPorPlt === 0) ||
+                (Number.isSafeInteger(unidadesPorPlt) &&
+                  unidadesPorPlt > 0 &&
+                  unidadesPorPlt <= 2_147_483_647))
             : true;
   const valido = Boolean(nome.trim() && categoria.trim() && configuracaoValida);
 
@@ -112,7 +113,7 @@ function Produtos() {
     setMetrosPorRolo(10);
     setEmbalagemLiquido("balde");
     setUnidadesPorPlt(36);
-    setSemiKgPorUnidade(18);
+    setPesoPorUnidade("");
   }
 
   function trocarSetor(novoSetor: SetorCodigo) {
@@ -145,7 +146,11 @@ function Produtos() {
     setUnidadesPorPlt(
       Number(produto.unidades_por_plt ?? (produto.embalagem_liquido === "unidade" ? 0 : 36)),
     );
-    setSemiKgPorUnidade(Number(produto.semi_kg_por_unidade ?? 18));
+    setPesoPorUnidade(
+      produto.semi_kg_por_unidade == null
+        ? ""
+        : String(produto.semi_kg_por_unidade).replace(".", ","),
+    );
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -175,8 +180,7 @@ function Produtos() {
       metros_por_rolo: setor === "mantas" ? metrosPorRolo : null,
       embalagem_liquido: setor === "liquidos" ? embalagemLiquido : null,
       unidades_por_plt: setor === "liquidos" && unidadesPorPlt > 0 ? unidadesPorPlt : null,
-      semi_kg_por_unidade:
-        setor === "liquidos" && embalagemLiquido !== "unidade" ? semiKgPorUnidade : null,
+      semi_kg_por_unidade: setor === "liquidos" ? semiKgPorUnidade : null,
       ativo: true,
     };
 
@@ -433,7 +437,7 @@ function Produtos() {
                       >
                         <option value="balde">Balde</option>
                         <option value="galao">Galão</option>
-                        <option value="unidade">Unidade (pouch, sem semi)</option>
+                        <option value="unidade">Pouch / unidade</option>
                       </select>
                     </div>
                     <div className="space-y-1">
@@ -454,26 +458,30 @@ function Produtos() {
                         onChange={(e) => setUnidadesPorPlt(Number(e.target.value))}
                       />
                     </div>
-                    {embalagemLiquido === "unidade" ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="peso-liquido">Peso por unidade (kg) *</Label>
+                      <Input
+                        id="peso-liquido"
+                        type="text"
+                        inputMode="decimal"
+                        value={pesoPorUnidade}
+                        placeholder="Ex.: 1 ou 3,6"
+                        onChange={(e) => setPesoPorUnidade(e.target.value)}
+                      />
+                      {pesoPorUnidade && !pesoValido && (
+                        <p className="text-xs text-destructive" role="alert">
+                          Informe um peso positivo com até três casas decimais.
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground sm:col-span-2">
+                      O semi consumido será calculado pelas unidades produzidas × peso por unidade.
+                    </p>
+                    {embalagemLiquido === "unidade" && (
                       <p className="text-sm text-muted-foreground sm:col-span-2">
-                        Informe o padrão para apontar PLTs e picados, sem consumo de semi. Deixe
-                        vazio para apontar somente em unidades.
+                        Informe o padrão para apontar PLTs e picados. Deixe vazio para apontar
+                        somente em unidades.
                       </p>
-                    ) : (
-                      <>
-                        <div className="space-y-1">
-                          <Label htmlFor="semi-liquido">Semi por unidade (kg) *</Label>
-                          <Input
-                            id="semi-liquido"
-                            type="number"
-                            inputMode="decimal"
-                            min={0.001}
-                            step={0.001}
-                            value={semiKgPorUnidade || ""}
-                            onChange={(e) => setSemiKgPorUnidade(Number(e.target.value))}
-                          />
-                        </div>
-                      </>
                     )}
                   </>
                 )}
@@ -608,8 +616,6 @@ function descricaoProduto(produto: Produto) {
   if (produto.setor === "mantas")
     return `${produto.categoria ?? "Sem categoria"} · ${produto.metragem_por_plt} m/PLT · ${produto.rolos_por_plt} rolos/PLT · ${produto.metros_por_rolo} m/rolo`;
   if (produto.setor === "liquidos")
-    return produto.embalagem_liquido === "unidade"
-      ? `${produto.unidades_por_plt ? `${produto.unidades_por_plt.toLocaleString("pt-BR")} unidades/PLT` : "Unidades"} · sem consumo de semi`
-      : `${nomeEmbalagemLiquido(produto.embalagem_liquido)} · ${produto.unidades_por_plt ?? "—"} unidades/PLT · ${Number(produto.semi_kg_por_unidade ?? 0).toLocaleString("pt-BR")} kg de semi/unidade`;
+    return `${nomeEmbalagemLiquido(produto.embalagem_liquido)} · ${produto.unidades_por_plt ? `${produto.unidades_por_plt.toLocaleString("pt-BR")} unidades/PLT` : "Contagem em unidades"} · ${Number(produto.semi_kg_por_unidade ?? 0).toLocaleString("pt-BR")} kg/unidade`;
   return `${produto.categoria ?? "Produtos"} · ${produto.ativo ? "Ativo" : "Inativo"}`;
 }

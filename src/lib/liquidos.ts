@@ -22,6 +22,15 @@ export function nomeEmbalagemLiquido(embalagem: string | null | undefined) {
   return embalagem === "balde" ? "Balde" : embalagem === "galao" ? "Galão" : "Unidade";
 }
 
+/** Aceita o peso digitado ou colado com vírgula ou ponto, até a precisão do cadastro. */
+export function pesoLiquidoKg(valor: string): number | null {
+  const normalizado = valor.trim().replace(",", ".");
+  const peso = Number(normalizado);
+  return /^\d+(?:\.\d{1,3})?$/.test(normalizado) && peso > 0 && peso <= 999_999_999.999
+    ? peso
+    : null;
+}
+
 /** O cadastro define a conversão; o nome do produto nunca determina a conta. */
 export function calcularLiquidos(
   produto: ParametrosLiquido | null | undefined,
@@ -33,10 +42,9 @@ export function calcularLiquidos(
   const fator = Number(produto?.semi_kg_por_unidade ?? 0);
   const padraoValido = Number.isSafeInteger(padrao) && padrao > 0 && padrao <= 2_147_483_647;
   const consomeSemi =
-    produto?.embalagem_liquido === "balde" || produto?.embalagem_liquido === "galao";
+    pouch || produto?.embalagem_liquido === "balde" || produto?.embalagem_liquido === "galao";
   const configurado = Boolean(
-    produto &&
-    (unitario || (padraoValido && (pouch || (consomeSemi && Number.isFinite(fator) && fator > 0)))),
+    produto && consomeSemi && Number.isFinite(fator) && fator > 0 && (unitario || padraoValido),
   );
   const picado = quantidade.picadoUnidades === "" ? 0 : quantidade.picadoUnidades;
   const plts = unitario ? 0 : quantidade.quantidadePlts;

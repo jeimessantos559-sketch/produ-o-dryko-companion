@@ -320,7 +320,9 @@ function celulasDetalhamento(
         : `${seqIni}-${seqFim}`
       : String(indice + 1);
   const producao = liquidos
-    ? apontamento["embalagem_liquido"] === "unidade"
+    ? apontamento["embalagem_liquido"] === "unidade" &&
+      apontamento["semi_kg_por_unidade"] == null &&
+      numero(apontamento["semi_consumido_kg"]) === 0
       ? "-"
       : `${formatarNumero(numero(apontamento["semi_consumido_kg"]), 3)} kg`
     : fitas
