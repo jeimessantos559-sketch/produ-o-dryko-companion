@@ -22,7 +22,7 @@ import { invalidarCache } from "@/lib/cache-consultas";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 import { totalPlts, totalRolos, type GrupoCorte } from "@/lib/producao";
 import { bloquearSeOffline } from "@/lib/rede";
-import { calcularLiquidos, quantidadeLiquidoInicial } from "@/lib/liquidos";
+import { calcularLiquidos, quantidadeLiquidoInicial, setorComConsumoSemi } from "@/lib/liquidos";
 
 type Props = { item: ApontamentoTurno; onClose: () => void; onSaved: () => void | Promise<void> };
 
@@ -65,8 +65,8 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
     void obterProdutosAtivos(item.setor)
       .then(async (lista) => {
         if (!ativo) return;
-        // Produtos inativos também precisam do peso atual para a correção de Líquidos.
-        if (item.setor === "liquidos" && !lista.some((p) => p.id === item.produto_id)) {
+        // Produtos inativos também precisam do peso atual para a correção do semi.
+        if (setorComConsumoSemi(item.setor) && !lista.some((p) => p.id === item.produto_id)) {
           const { data: historico, error } = await supabase
             .from("produtos")
             .select(
@@ -162,7 +162,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
     motivo.trim().length >= 3 &&
     (item.setor === "corte"
       ? gruposValidos && totalPlts(grupos) <= 20 && totalRolos(grupos) > 0
-      : item.setor === "liquidos"
+      : setorComConsumoSemi(item.setor)
         ? totalLiquido.valido
         : item.setor === "fitas"
           ? tempo > 0 && velocidade > 0 && largura > 0
@@ -183,7 +183,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
       updated_at_anterior: item.updated_at,
       ...(item.setor === "corte"
         ? { op: referencia.trim(), grupos: grupos as unknown as Json }
-        : item.setor === "liquidos"
+        : setorComConsumoSemi(item.setor)
           ? {
               op: referencia.trim(),
               quantidade_plts: totalLiquido.plts,
@@ -264,7 +264,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
                 const escolhido = produtos.find((p) => p.id === id);
                 if (item.setor === "fitas" && escolhido?.largura)
                   setLargura(Number(escolhido.largura));
-                if (item.setor === "liquidos" && id !== produtoId)
+                if (setorComConsumoSemi(item.setor) && id !== produtoId)
                   setQuantidadeLiquido(quantidadeLiquidoInicial());
               }}
             />
@@ -337,7 +337,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
               </p>
             </>
           )}
-          {item.setor === "liquidos" && produto && (
+          {setorComConsumoSemi(item.setor) && produto && (
             <CamposLiquidos
               id="correcao-liquidos"
               produto={produto}

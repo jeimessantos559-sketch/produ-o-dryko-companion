@@ -20,6 +20,7 @@ import { invalidarCache } from "@/lib/cache-consultas";
 import { dataOperacional } from "@/lib/producao";
 import { bloquearSeOffline } from "@/lib/rede";
 import { nomeCurtoRelatorio } from "@/lib/responsaveis-relatorio";
+import { setorComConsumoSemi } from "@/lib/liquidos";
 
 export const Route = createFileRoute("/_authenticated/contagem")({
   head: () => ({ meta: [{ title: "Contagem por produto | Aponta Produção DRYKO" }] }),
@@ -187,17 +188,17 @@ function Contagem() {
                     <h3 className="font-mono text-sm font-bold text-slate-600">{total.nome}</h3>
                     <p className="mt-3 text-3xl font-extrabold text-slate-950">
                       {numero(
-                        setor === "liquidos"
+                        setorComConsumoSemi(setor)
                           ? total.unidades
                           : setor === "fitas"
                             ? total.area
                             : total.metragem,
                       )}{" "}
-                      {setor === "liquidos" ? "unidades" : setor === "mantas" ? "m" : "m²"}
+                      {setorComConsumoSemi(setor) ? "unidades" : setor === "mantas" ? "m" : "m²"}
                     </p>
                     {setor !== "fitas" && (
                       <p className="mt-1 text-sm text-slate-500">
-                        {setor === "liquidos"
+                        {setorComConsumoSemi(setor)
                           ? [
                               total.plts > 0 ? `${numero(total.plts)} PLTs` : "",
                               total.semiKg > 0

@@ -1,6 +1,7 @@
 // Regras puras de agrupamento para lançamento manual no Protheus.
 // Apontamentos continuam unitários no banco; o agrupamento serve apenas para lançar.
 // Corte: OP + produto · Fitas: OP + produto · Mantas: lote + produto.
+import { setorComConsumoSemi } from "./liquidos.ts";
 
 export type ItemProtheus = {
   id: string;
@@ -52,8 +53,8 @@ export function chaveProtheus(
     return `corte:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   if (setor === "fitas" && item.op)
     return `fitas:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
-  if (setor === "liquidos" && item.op)
-    return `liquidos:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
+  if (setorComConsumoSemi(setor) && item.op)
+    return `${setor}:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   return unitario;
 }
 

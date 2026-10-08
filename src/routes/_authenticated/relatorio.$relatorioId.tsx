@@ -24,6 +24,7 @@ import { enviarRelatorio } from "@/lib/enviar-relatorio";
 import { opsFinalizadasNoRelatorio, referenciaFinalizada } from "@/lib/fechamento-turno";
 import { baixarPdf, compartilharPdf, imprimirPdf } from "@/lib/relatorio-pdf";
 import { completarResponsaveisRelatorio, nomeCurtoRelatorio } from "@/lib/responsaveis-relatorio";
+import { setorComConsumoSemi } from "@/lib/liquidos";
 
 export const Route = createFileRoute("/_authenticated/relatorio/$relatorioId")({
   component: RelatorioDetalhado,
@@ -197,7 +198,7 @@ function RelatorioDetalhado() {
   const nomeArquivo = `relatorio-${relatorio.setor}-${relatorio.data_local}-${relatorio.turno}.pdf`;
   const fitas = relatorio.setor === "fitas";
   const mantas = relatorio.setor === "mantas";
-  const liquidos = relatorio.setor === "liquidos";
+  const liquidos = setorComConsumoSemi(relatorio.setor);
   const metragem = fitas ? numero(dados.totais.area) : numero(dados.totais.metragem);
   const unidade = mantas ? "m" : "m²";
 

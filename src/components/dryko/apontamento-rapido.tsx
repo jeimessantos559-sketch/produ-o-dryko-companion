@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { produtoUnicoDaReferencia } from "@/lib/apontamentos-turno";
-import { calcularLiquidos, quantidadeLiquidoInicial } from "@/lib/liquidos";
+import { calcularLiquidos, quantidadeLiquidoInicial, setorComConsumoSemi } from "@/lib/liquidos";
 import { invalidarCache } from "@/lib/cache-consultas";
 import {
   preencherLoteProgramacaoMantas,
@@ -111,7 +111,8 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   }
 
   useEffect(() => {
-    if (!open || !setor || !["corte", "fitas", "mantas", "liquidos"].includes(setor)) return;
+    if (!open || !setor || !["corte", "fitas", "mantas", "liquidos", "asfox"].includes(setor))
+      return;
     let ativo = true;
     setCarregando(true);
     limparFormulario();
@@ -120,6 +121,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       .then(async (lista) => {
         if (!ativo) return;
         setProdutos(lista);
+        if (setor === "asfox" && lista.length === 1) setProdutoId(lista[0]!.id);
         if (!repeatLatest || !user || !turno) return;
 
         const { data, error } = await supabase
@@ -164,7 +166,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           setQuantidadePlts(qtdFechados);
           setRolosPorPlt(Number(primeiro.rolosPorPlt ?? data.rolos_por_plt ?? 1));
           setPltPicado(picadoOriginal ?? "");
-        } else if (setor === "liquidos") {
+        } else if (setorComConsumoSemi(setor)) {
           setOp(data.op ?? "");
           setQuantidadeLiquido({
             quantidadePlts: data.quantidade_plts ?? 1,
@@ -198,7 +200,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   useEffect(() => {
     let ativo = true;
 
-    if (!open || (setor !== "corte" && setor !== "liquidos") || !op.trim() || !produtoId) {
+    if (!open || (setor !== "corte" && !setorComConsumoSemi(setor)) || !op.trim() || !produtoId) {
       setMeta(null);
       setApontadoMeta(0);
       setProgramadoDia(null);
@@ -309,7 +311,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       setRolosPorPlt(escolhido.rolos_por_plt ?? 1);
       setPltPicado("");
       setQuantidadePlts(1);
-    } else if (setor === "liquidos") {
+    } else if (setorComConsumoSemi(setor)) {
       setQuantidadeLiquido(quantidadeLiquidoInicial());
     } else if (setor === "fitas") {
       setTempo(60);
@@ -323,7 +325,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
   function alterarReferencia(valor: string) {
     escolhaReferencia.current += 1;
-    setProdutoId("");
+    setProdutoId(setor === "asfox" && produtos.length === 1 ? produtos[0]!.id : "");
     setInfoReferencia("");
     if (setor === "mantas") setLote(valor);
     else setOp(valor.replace(/\D/g, ""));
@@ -332,6 +334,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   useEffect(() => {
     const referencia = (setor === "mantas" ? lote : op).trim();
     if (!open || !setor || !referencia || carregando || produtos.length === 0) return;
+    if (setor === "asfox" && produtos.length === 1) return;
     let ativo = true;
     const escolha = escolhaReferencia.current;
     const timer = window.setTimeout(() => {
@@ -393,13 +396,13 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   const mantaRolosValidos = totalRolosManta > 0 && Number.isInteger(totalRolosManta);
   const liquidoCalculado = calcularLiquidos(produto, quantidadeLiquido);
   const unidadeMeta =
-    meta?.unidade ?? (setor === "liquidos" && liquidoCalculado.unitario ? "unidades" : "PLTs");
-  const incrementoMeta =
-    setor === "liquidos"
-      ? unidadeMeta === "unidades"
-        ? liquidoCalculado.unidades
-        : liquidoCalculado.plts
-      : quantidadePlts;
+    meta?.unidade ??
+    (setorComConsumoSemi(setor) && liquidoCalculado.unitario ? "unidades" : "PLTs");
+  const incrementoMeta = setorComConsumoSemi(setor)
+    ? unidadeMeta === "unidades"
+      ? liquidoCalculado.unidades
+      : liquidoCalculado.plts
+    : quantidadePlts;
 
   const valido = Boolean(
     user &&
@@ -415,7 +418,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       totalRolosCorte > 0 &&
       (pltPicado === "" || (pltPicado > 0 && pltPicado < rolosPorPlt)) &&
       (quantidadePlts > 0 || pltPicado !== "")) ||
-      (setor === "liquidos" &&
+      (setorComConsumoSemi(setor) &&
         op.trim() &&
         liquidoCalculado.valido &&
         Number.isInteger(metaNova) &&
@@ -430,7 +433,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   );
 
   function confirmarMetaOp() {
-    if (setor !== "corte" && setor !== "liquidos") return true;
+    if (setor !== "corte" && !setorComConsumoSemi(setor)) return true;
     const limite =
       programadoDia != null
         ? programadoDia
@@ -451,7 +454,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
   async function salvarMetaOp() {
     if (
-      (setor !== "corte" && setor !== "liquidos") ||
+      (setor !== "corte" && !setorComConsumoSemi(setor)) ||
       !user ||
       !produto ||
       meta ||
@@ -520,10 +523,10 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
             ? "PLT picado registrado sem contabilizar pallet fechado."
             : "Apontamento de Corte salvo.",
         );
-      } else if (setor === "liquidos") {
+      } else if (setorComConsumoSemi(setor)) {
         const { error } = await supabase.from("apontamentos").insert({
           usuario_id: user.id,
-          setor: "liquidos",
+          setor,
           turno,
           data_hora_producao: dataHoraProducao,
           op: op.trim(),
@@ -535,7 +538,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
         });
         if (error) throw error;
         await salvarMetaOp();
-        toast.success("Apontamento de Líquidos salvo.");
+        toast.success(`Apontamento de ${nomeSetorRapido(setor)} salvo.`);
       } else if (setor === "fitas") {
         const { data: salvoFitas, error } = await supabase
           .from("apontamentos")
@@ -617,7 +620,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           </DialogDescription>
         </DialogHeader>
 
-        {!setor || !["corte", "fitas", "mantas", "liquidos"].includes(setor) ? (
+        {!setor || !["corte", "fitas", "mantas", "liquidos", "asfox"].includes(setor) ? (
           <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
             Este setor ainda não possui formulário rápido configurado.
           </div>
@@ -825,7 +828,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
               </>
             )}
 
-            {setor === "liquidos" && produto && (
+            {setorComConsumoSemi(setor) && produto && (
               <>
                 <CamposLiquidos
                   id="rapido-liquidos"
@@ -1023,6 +1026,7 @@ function nomeSetorRapido(setor: string) {
   if (setor === "fitas") return "Fitas";
   if (setor === "mantas") return "Mantas";
   if (setor === "liquidos") return "Líquidos";
+  if (setor === "asfox") return "Asfox";
   return setor;
 }
 

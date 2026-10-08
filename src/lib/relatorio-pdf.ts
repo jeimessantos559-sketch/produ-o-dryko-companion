@@ -151,7 +151,7 @@ export function linhasDoRelatorio(resumo: Json) {
   const apontamentos = Array.isArray(raiz.apontamentos) ? raiz.apontamentos : [];
   const setor = texto(raiz.setor).toLowerCase();
   const fitas = setor.includes("fita");
-  const liquidos = semAcentos(setor).includes("liquid");
+  const liquidos = semAcentos(setor).includes("liquid") || setor.includes("asfox");
   const responsaveis = nomesResponsaveisRelatorio(resumo);
   return [
     `DRYKO - Relatorio de Producao`,
@@ -428,7 +428,7 @@ function montarPrimeiraPagina(resumo: Json) {
   const setorChave = setor.toLowerCase();
   const fitas = setorChave.includes("fita");
   const mantas = setorChave.includes("manta");
-  const liquidos = semAcentos(setorChave).includes("liquid");
+  const liquidos = semAcentos(setorChave).includes("liquid") || setorChave.includes("asfox");
   const comandos: string[] = [];
 
   cabecalhoPagina(comandos, "RELATORIO DE PRODUCAO", "Fechamento operacional de turno");
@@ -694,7 +694,7 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
   const setor = texto(raiz.setor).toLowerCase();
   const fitas = setor.includes("fita");
   const mantas = setor.includes("manta");
-  const liquidos = semAcentos(setor).includes("liquid");
+  const liquidos = semAcentos(setor).includes("liquid") || setor.includes("asfox");
   const paginas: string[][] = [];
 
   let inicio = inicioDetalhamento;

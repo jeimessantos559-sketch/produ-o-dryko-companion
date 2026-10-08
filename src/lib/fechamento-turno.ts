@@ -1,6 +1,7 @@
 import type { Json } from "@/integrations/supabase/types";
 import { gruposFechados, pltsFechados, type ApontamentoTurno } from "./apontamentos-turno.ts";
 import { dataOperacional, type TurnoOperacional } from "./producao.ts";
+import { setorComConsumoSemi } from "./liquidos.ts";
 
 export type GrupoRevisao = {
   chave: string;
@@ -49,7 +50,7 @@ export function agruparRevisaoDoTurno(itens: readonly ApontamentoTurno[]): Grupo
     grupo.semiKg += Number(item.semi_consumido_kg ?? 0);
     grupo.pendentes += item.status === "pendente" ? 1 : 0;
     grupo.lancados += item.status === "lancado" ? 1 : 0;
-    if (item.setor === "liquidos" && Number(item.picado_unidades ?? 0) > 0) {
+    if (setorComConsumoSemi(item.setor) && Number(item.picado_unidades ?? 0) > 0) {
       grupo.picados += 1;
       grupo.unidadesPicadas += Number(item.picado_unidades);
     }
@@ -75,7 +76,7 @@ export function agruparRevisaoDoTurno(itens: readonly ApontamentoTurno[]): Grupo
 export function quantidadeDaRevisao(grupo: GrupoRevisao) {
   const numero = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
   if (grupo.setor === "fitas") return `${numero(grupo.area)} m²`;
-  if (grupo.setor === "liquidos" && grupo.plts === 0 && grupo.picados === 0)
+  if (setorComConsumoSemi(grupo.setor) && grupo.plts === 0 && grupo.picados === 0)
     return `${numero(grupo.unidades)} unidades`;
   const partes: string[] = [];
   if (grupo.plts > 0 || grupo.picados === 0)

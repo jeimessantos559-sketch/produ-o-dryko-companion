@@ -1,4 +1,10 @@
-export type EmbalagemLiquido = "balde" | "galao" | "unidade";
+export type EmbalagemLiquido = "balde" | "galao" | "unidade" | "saco";
+
+export function setorComConsumoSemi(
+  setor: string | null | undefined,
+): setor is "liquidos" | "asfox" {
+  return setor === "liquidos" || setor === "asfox";
+}
 
 export type ParametrosLiquido = {
   embalagem_liquido?: string | null;
@@ -19,7 +25,13 @@ export const quantidadeLiquidoInicial = (): QuantidadeLiquido => ({
 });
 
 export function nomeEmbalagemLiquido(embalagem: string | null | undefined) {
-  return embalagem === "balde" ? "Balde" : embalagem === "galao" ? "Galão" : "Unidade";
+  return embalagem === "saco"
+    ? "Saco"
+    : embalagem === "balde"
+      ? "Balde"
+      : embalagem === "galao"
+        ? "Galão"
+        : "Unidade";
 }
 
 /** Aceita o peso digitado ou colado com vírgula ou ponto, até a precisão do cadastro. */
@@ -42,7 +54,10 @@ export function calcularLiquidos(
   const fator = Number(produto?.semi_kg_por_unidade ?? 0);
   const padraoValido = Number.isSafeInteger(padrao) && padrao > 0 && padrao <= 2_147_483_647;
   const consomeSemi =
-    pouch || produto?.embalagem_liquido === "balde" || produto?.embalagem_liquido === "galao";
+    pouch ||
+    produto?.embalagem_liquido === "balde" ||
+    produto?.embalagem_liquido === "galao" ||
+    produto?.embalagem_liquido === "saco";
   const configurado = Boolean(
     produto && consomeSemi && Number.isFinite(fator) && fator > 0 && (unitario || padraoValido),
   );

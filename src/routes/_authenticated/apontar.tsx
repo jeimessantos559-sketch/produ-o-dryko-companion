@@ -3,7 +3,7 @@ import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { AppShell } from "@/components/dryko/app-shell";
+import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
 import { ApontamentoRapido } from "@/components/dryko/apontamento-rapido";
 import { EmDefinicao } from "@/components/dryko/em-definicao";
 import { HoraProducaoField } from "@/components/dryko/hora-producao-field";
@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
+import { setorComConsumoSemi } from "@/lib/liquidos";
 import {
   areaFitas,
   dataHoraProducaoPadrao,
@@ -74,7 +75,7 @@ function Apontar() {
   if (profile?.setor_atual === "corte") return <ApontarCorte />;
   if (profile?.setor_atual === "fitas") return <ApontarFitas />;
   if (profile?.setor_atual === "mantas") return <ApontarMantas />;
-  if (profile?.setor_atual === "liquidos") return <ApontarLiquidos />;
+  if (setorComConsumoSemi(profile?.setor_atual)) return <ApontarLiquidos />;
   return (
     <AppShell>
       <EmDefinicao
@@ -86,6 +87,7 @@ function Apontar() {
 }
 
 function ApontarLiquidos() {
+  const { profile } = useAuth();
   const [aberto, setAberto] = useState(true);
   const [repetir, setRepetir] = useState(false);
   function abrir(repetirUltimo = false) {
@@ -96,7 +98,7 @@ function ApontarLiquidos() {
     <AppShell title="Apontar produção" onApontar={() => abrir()} onRepeat={() => abrir(true)}>
       <Card className="mx-auto max-w-xl rounded-2xl">
         <CardHeader>
-          <CardTitle>Apontamento de Líquidos</CardTitle>
+          <CardTitle>Apontamento de {nomeSetor(profile?.setor_atual ?? "liquidos")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Button className="h-12 w-full" onClick={() => abrir()}>

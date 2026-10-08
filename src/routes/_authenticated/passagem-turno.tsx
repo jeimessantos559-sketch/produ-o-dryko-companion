@@ -23,6 +23,7 @@ import {
 import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { realizadoNaUnidade, type SetorGerencial } from "@/lib/indicadores";
+import { setorComConsumoSemi } from "@/lib/liquidos";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
   component: PassagemTurno,
@@ -424,7 +425,7 @@ function PassagemTurno() {
               <Indicador label="Lançados" valor={totais.lancados} />
               <Indicador label="OPs / lotes finalizados" valor={opsFinalizadas.length} />
               <Indicador label="PLTs" valor={totais.plts} />
-              {profile?.setor_atual === "liquidos" ? (
+              {setorComConsumoSemi(profile?.setor_atual) ? (
                 <>
                   <Indicador label="Unidades" valor={totais.unidades.toLocaleString("pt-BR")} />
                   <Indicador

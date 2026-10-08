@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { gruposFechados, pltsFechados, type ApontamentoTurno } from "@/lib/apontamentos-turno";
 import { horaProducao } from "@/lib/producao";
 import { nomeCurtoRelatorio } from "@/lib/responsaveis-relatorio";
+import { setorComConsumoSemi } from "@/lib/liquidos";
 
 export type SequenciaApontamento = { registro: number; inicio: number | null; fim: number | null };
 type Props = {
@@ -28,7 +29,7 @@ export function CartaoApontamento({ item, sequencia, onCorrigir }: Props) {
   const picado = grupos.reduce((n, g) => n + Number(g.pltPicadoRolos ?? 0), 0);
   const padroes = [...new Set(grupos.map((g) => g.rolosPorPlt))];
   const padrao = padroes.length === 1 ? padroes[0] : item.rolos_por_plt;
-  const liquidos = item.setor === "liquidos";
+  const liquidos = setorComConsumoSemi(item.setor);
   const unitario =
     liquidos && item.embalagem_liquido === "unidade" && item.unidades_por_plt == null;
   const sequenciaTexto =

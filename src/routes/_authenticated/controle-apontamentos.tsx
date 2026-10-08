@@ -13,6 +13,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { chaveAgrupamentoProtheus } from "@/lib/agrupamento-protheus";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataHoraProducaoFormatada, dataOperacional } from "@/lib/producao";
+import { setorComConsumoSemi } from "@/lib/liquidos";
 
 export const Route = createFileRoute("/_authenticated/controle-apontamentos")({
   component: ControleApontamentos,
@@ -30,7 +31,7 @@ type Responsavel = {
   em?: string | null;
 };
 
-const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas", "liquidos"];
+const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas", "asfox", "liquidos"];
 
 type GrupoLancamento = {
   chave: string;
@@ -446,14 +447,14 @@ function tituloGrupo(grupo: GrupoLancamento, setor: SetorCodigo) {
 }
 
 function resumoPrincipal(grupo: GrupoLancamento, setor: SetorCodigo) {
-  if (setor === "liquidos") return `${fmt(grupo.unidades)} unidades`;
+  if (setorComConsumoSemi(setor)) return `${fmt(grupo.unidades)} unidades`;
   if (setor === "fitas") return `${fmt(grupo.area)} m²`;
   if (setor === "mantas") return `${fmt(grupo.metragem)} m`;
   return `${grupo.plts} PLTs`;
 }
 
 function resumoApoio(grupo: GrupoLancamento, setor: SetorCodigo) {
-  if (setor === "liquidos")
+  if (setorComConsumoSemi(setor))
     return `${grupo.plts > 0 ? `${grupo.plts} PLTs · ` : ""}${grupo.semiKg > 0 ? `${fmt(grupo.semiKg)} kg de semi · ` : ""}${grupo.quantidadeRegistros} apontamento(s)`;
   if (setor === "fitas") return `${grupo.quantidadeRegistros} apontamento(s) agrupado(s)`;
   if (setor === "mantas")

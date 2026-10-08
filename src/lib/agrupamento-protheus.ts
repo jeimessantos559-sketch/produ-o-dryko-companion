@@ -1,3 +1,5 @@
+import { setorComConsumoSemi } from "./liquidos.ts";
+
 export type SetorAgrupamento = "corte" | "fitas" | "mantas" | string;
 
 export type ItemAgrupavelProtheus = {
@@ -32,8 +34,8 @@ export function chaveAgrupamentoProtheus(
   if (setor === "fitas" && item.op) {
     return `fitas:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   }
-  if (setor === "liquidos" && item.op) {
-    return `liquidos:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
+  if (setorComConsumoSemi(setor) && item.op) {
+    return `${setor}:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   }
   return `item:${item.id}${sufixo}`;
 }

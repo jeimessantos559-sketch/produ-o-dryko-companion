@@ -32,6 +32,7 @@ import { useAuth, type SetorCodigo, type TurnoCodigo } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
 import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-card";
 import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
+import { setorComConsumoSemi } from "@/lib/liquidos";
 
 const LazyApontamentoRapido = lazy(() =>
   import("@/components/dryko/apontamento-rapido").then((modulo) => ({
@@ -201,7 +202,7 @@ function Painel() {
   const setorFitas = setor === "fitas";
   const setorMantas = setor === "mantas";
   const setorCorte = setor === "corte";
-  const setorLiquidos = setor === "liquidos";
+  const setorLiquidos = setorComConsumoSemi(setor);
   const setorNome = setor ? nomeSetor(setor) : "Setor";
   const turnoNome = nomeTurno(profile?.turno_atual);
 
@@ -620,7 +621,7 @@ function tituloGrupo(grupo: GrupoProtheus, setor: string) {
 }
 
 function resumoRegistro(item: Registro, setor: string) {
-  if (setor === "liquidos")
+  if (setorComConsumoSemi(setor))
     return `${formatarNumero(Number(item.total_unidades ?? 0))} unidades${Number(item.semi_consumido_kg ?? 0) > 0 ? ` · ${formatarNumero(Number(item.semi_consumido_kg))} kg de semi` : ""}`;
   if (setor === "fitas") return `${formatarNumero(Number(item.area_m2 ?? 0))} m² para Protheus`;
   if (setor === "mantas")
@@ -629,7 +630,7 @@ function resumoRegistro(item: Registro, setor: string) {
 }
 
 function resumoGrupo(grupo: GrupoProtheus, setor: string) {
-  if (setor === "liquidos")
+  if (setorComConsumoSemi(setor))
     return `${formatarNumero(grupo.unidades)} unidades${grupo.semiKg > 0 ? ` · ${formatarNumero(grupo.semiKg)} kg de semi` : ""}${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
   if (setor === "fitas")
     return `${formatarNumero(grupo.area)} m² para lançar${grupo.registros > 1 ? ` · ${grupo.registros} registros` : ""}`;

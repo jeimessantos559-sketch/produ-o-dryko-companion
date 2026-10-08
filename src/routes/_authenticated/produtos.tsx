@@ -14,7 +14,12 @@ import type { Database } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import { rolosManta } from "@/lib/producao";
-import { nomeEmbalagemLiquido, pesoLiquidoKg, type EmbalagemLiquido } from "@/lib/liquidos";
+import {
+  nomeEmbalagemLiquido,
+  pesoLiquidoKg,
+  setorComConsumoSemi,
+  type EmbalagemLiquido,
+} from "@/lib/liquidos";
 
 export const Route = createFileRoute("/_authenticated/produtos")({ component: Produtos });
 
@@ -94,9 +99,9 @@ function Produtos() {
         ? largura > 0
         : setor === "mantas"
           ? Boolean(mantaValida)
-          : setor === "liquidos"
+          : setorComConsumoSemi(setor)
             ? pesoValido &&
-              ((embalagemLiquido === "unidade" && unidadesPorPlt === 0) ||
+              ((setor === "liquidos" && embalagemLiquido === "unidade" && unidadesPorPlt === 0) ||
                 (Number.isSafeInteger(unidadesPorPlt) &&
                   unidadesPorPlt > 0 &&
                   unidadesPorPlt <= 2_147_483_647))
@@ -106,14 +111,14 @@ function Produtos() {
   function limparFormulario(novoSetor = setor) {
     setEditandoId(null);
     setNome("");
-    setCategoria(novoSetor === "mantas" ? "DRYKO" : "");
+    setCategoria(novoSetor === "asfox" ? "ASFOX" : novoSetor === "mantas" ? "DRYKO" : "");
     setRolosPorPlt(0);
     setLargura(novoSetor === "fitas" ? 0.93 : 0);
     setMetragemPorPlt(250);
     setMetrosPorRolo(10);
-    setEmbalagemLiquido("balde");
-    setUnidadesPorPlt(36);
-    setPesoPorUnidade("");
+    setEmbalagemLiquido(novoSetor === "asfox" ? "saco" : "balde");
+    setUnidadesPorPlt(novoSetor === "asfox" ? 100 : 36);
+    setPesoPorUnidade(novoSetor === "asfox" ? "10" : "");
   }
 
   function trocarSetor(novoSetor: SetorCodigo) {
@@ -178,9 +183,10 @@ function Produtos() {
       largura: setor === "corte" || setor === "fitas" ? largura : null,
       metragem_por_plt: setor === "mantas" ? metragemPorPlt : null,
       metros_por_rolo: setor === "mantas" ? metrosPorRolo : null,
-      embalagem_liquido: setor === "liquidos" ? embalagemLiquido : null,
-      unidades_por_plt: setor === "liquidos" && unidadesPorPlt > 0 ? unidadesPorPlt : null,
-      semi_kg_por_unidade: setor === "liquidos" ? semiKgPorUnidade : null,
+      embalagem_liquido:
+        setor === "asfox" ? "saco" : setor === "liquidos" ? embalagemLiquido : null,
+      unidades_por_plt: setorComConsumoSemi(setor) && unidadesPorPlt > 0 ? unidadesPorPlt : null,
+      semi_kg_por_unidade: setorComConsumoSemi(setor) ? semiKgPorUnidade : null,
       ativo: true,
     };
 
@@ -420,29 +426,32 @@ function Produtos() {
                   </>
                 )}
 
-                {setor === "liquidos" && (
+                {setorComConsumoSemi(setor) && (
                   <>
-                    <div className="space-y-1 sm:col-span-2">
-                      <Label htmlFor="embalagem-liquido">Tipo de apontamento *</Label>
-                      <select
-                        id="embalagem-liquido"
-                        className="h-12 w-full rounded-xl border border-input bg-background px-3"
-                        value={embalagemLiquido}
-                        onChange={(e) => {
-                          const embalagem = e.target.value as EmbalagemLiquido;
-                          setEmbalagemLiquido(embalagem);
-                          if (embalagem === "unidade") setUnidadesPorPlt(0);
-                          else if (!unidadesPorPlt) setUnidadesPorPlt(36);
-                        }}
-                      >
-                        <option value="balde">Balde</option>
-                        <option value="galao">Galão</option>
-                        <option value="unidade">Pouch / unidade</option>
-                      </select>
-                    </div>
+                    {setor === "liquidos" && (
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label htmlFor="embalagem-liquido">Tipo de apontamento *</Label>
+                        <select
+                          id="embalagem-liquido"
+                          className="h-12 w-full rounded-xl border border-input bg-background px-3"
+                          value={embalagemLiquido}
+                          onChange={(e) => {
+                            const embalagem = e.target.value as EmbalagemLiquido;
+                            setEmbalagemLiquido(embalagem);
+                            if (embalagem === "unidade") setUnidadesPorPlt(0);
+                            else if (!unidadesPorPlt) setUnidadesPorPlt(36);
+                          }}
+                        >
+                          <option value="balde">Balde</option>
+                          <option value="galao">Galão</option>
+                          <option value="unidade">Pouch / unidade</option>
+                        </select>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <Label htmlFor="unidades-liquido">
-                        Unidades por PLT{embalagemLiquido === "unidade" ? "" : " *"}
+                        Unidades por PLT
+                        {setor === "liquidos" && embalagemLiquido === "unidade" ? "" : " *"}
                       </Label>
                       <Input
                         id="unidades-liquido"
@@ -453,19 +462,23 @@ function Produtos() {
                         step={1}
                         value={unidadesPorPlt || ""}
                         placeholder={
-                          embalagemLiquido === "unidade" ? "Opcional para pouch" : undefined
+                          setor === "liquidos" && embalagemLiquido === "unidade"
+                            ? "Opcional para pouch"
+                            : undefined
                         }
                         onChange={(e) => setUnidadesPorPlt(Number(e.target.value))}
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="peso-liquido">Peso por unidade (kg) *</Label>
+                      <Label htmlFor="peso-liquido">
+                        {setor === "asfox" ? "Peso por saco (kg) *" : "Peso por unidade (kg) *"}
+                      </Label>
                       <Input
                         id="peso-liquido"
                         type="text"
                         inputMode="decimal"
                         value={pesoPorUnidade}
-                        placeholder="Ex.: 1 ou 3,6"
+                        placeholder={setor === "asfox" ? "Ex.: 10" : "Ex.: 1 ou 3,6"}
                         onChange={(e) => setPesoPorUnidade(e.target.value)}
                       />
                       {pesoPorUnidade && !pesoValido && (
@@ -477,7 +490,7 @@ function Produtos() {
                     <p className="text-sm text-muted-foreground sm:col-span-2">
                       O semi consumido será calculado pelas unidades produzidas × peso por unidade.
                     </p>
-                    {embalagemLiquido === "unidade" && (
+                    {setor === "liquidos" && embalagemLiquido === "unidade" && (
                       <p className="text-sm text-muted-foreground sm:col-span-2">
                         Informe o padrão para apontar PLTs e picados. Deixe vazio para apontar
                         somente em unidades.
@@ -615,7 +628,7 @@ function descricaoProduto(produto: Produto) {
     return `${produto.categoria ?? "Fitas"} · largura ${produto.largura} m`;
   if (produto.setor === "mantas")
     return `${produto.categoria ?? "Sem categoria"} · ${produto.metragem_por_plt} m/PLT · ${produto.rolos_por_plt} rolos/PLT · ${produto.metros_por_rolo} m/rolo`;
-  if (produto.setor === "liquidos")
+  if (setorComConsumoSemi(produto.setor))
     return `${nomeEmbalagemLiquido(produto.embalagem_liquido)} · ${produto.unidades_por_plt ? `${produto.unidades_por_plt.toLocaleString("pt-BR")} unidades/PLT` : "Contagem em unidades"} · ${Number(produto.semi_kg_por_unidade ?? 0).toLocaleString("pt-BR")} kg/unidade`;
   return `${produto.categoria ?? "Produtos"} · ${produto.ativo ? "Ativo" : "Inativo"}`;
 }
