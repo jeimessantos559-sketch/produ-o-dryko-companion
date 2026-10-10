@@ -1,12 +1,11 @@
-const CACHE = "dryko-pwa-v8";
+const CACHE = "dryko-pwa-v9";
 const ASSETS = [
   "/manifest.webmanifest?v=5",
   "/ap-pwa-192-v5.png",
   "/ap-pwa-512-v5.png",
   "/ap-pwa-maskable-512-v5.png",
   "/ap-touch-180-v5.png",
-  "/favicon.ico?v=6",
-  "/favicon-32-v6.png",
+  "/favicon.ico?v=7",
 ];
 
 self.addEventListener("install", (event) => {
