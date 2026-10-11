@@ -69,7 +69,7 @@ Não usar um branch antigo como origem de migração. Antes da cópia, confirmar
 
 ## 6. Configurar variáveis
 
-Copiar apenas os nomes de `.env.example` para o cofre de segredos da nova plataforma.
+Copiar apenas os nomes de `.env.example` para o cofre de segredos da nova plataforma. Os valores do banco de destino devem pertencer ao mesmo projeto Supabase. No servidor, `SUPABASE_URL` e `SUPABASE_PUBLISHABLE_KEY` usam os mesmos valores das respectivas variáveis `VITE_`.
 
 ### Públicas, usadas pelo navegador
 
@@ -105,6 +105,8 @@ Regras:
 - `SUPABASE_SERVICE_ROLE_KEY` só pode existir no ambiente do servidor;
 - atualizar `APP_URL` ao trocar o domínio;
 - configurar no Supabase as URLs permitidas de login e recuperação.
+
+Na Vercel, selecionar o ambiente de cada variável e fazer uma nova implantação depois de salvá-las. Não trocar o `.env` público do repositório para o banco novo antes de concluir a restauração e as verificações.
 
 ## 7. Criar a estrutura do banco em ambiente novo
 
@@ -165,14 +167,29 @@ pg_dump --format=custom --no-owner --no-acl "$DATABASE_URL" --file aponta-dryko.
 Para restaurar em um ambiente de homologação:
 
 ```bash
-pg_restore --no-owner --no-acl --clean --if-exists --dbname "$DESTINATION_DATABASE_URL" aponta-dryko.dump
+pg_restore --no-owner --no-acl --exit-on-error --dbname "$DESTINATION_DATABASE_URL" aponta-dryko.dump
 ```
 
 Esses comandos são uma referência PostgreSQL. Auth e schemas gerenciados podem exigir o procedimento específico do Supabase. Teste primeiro em homologação; nunca faça a primeira tentativa diretamente no destino de produção.
 
+#### Exportação do Lovable Cloud para Supabase
+
+1. No projeto de origem, abrir **More → Cloud → Overview → Advanced settings → Export data** e iniciar a exportação do banco.
+2. Baixar o arquivo quando estiver disponível no Storage. O Lovable permite uma exportação a cada 24 horas; essa cópia não bloqueia novos apontamentos, então registrar seu horário e conferir alterações posteriores antes do corte.
+3. Extrair o `.zip`, quando houver. O banco é um arquivo PostgreSQL `.backup` em formato customizado, com compressão zstd; não é SQL para colar no editor. Usar um `pg_restore` compatível com o formato e com zstd.
+4. Listar o conteúdo com `pg_restore --list arquivo.backup` e preparar a seleção de objetos para o projeto de destino. A cópia inclui estrutura, dados e Auth, mas o destino já possui schemas, papéis e extensões gerenciados pelo Supabase.
+5. Restaurar a seleção revisada com `--use-list`, `--no-owner`, `--exit-on-error` e uma conexão administrativa segura. Preservar e conferir os grants e as políticas RLS exigidos pelo aplicativo. Reconciliar registros de catálogo já inseridos pelas migrações antes de importar os mesmos registros.
+6. Conferir contas, UUIDs, relações, funções, gatilhos, RLS, índices e sequências. Executar `docs/db/verificar_migracao_supabase.sql` na origem e no destino e comparar os resultados do mesmo momento de referência.
+
+Não executar `--clean` para resolver conflitos sem revisar os objetos que seriam apagados. Não reaplicar toda a cadeia de migrações se a estrutura correspondente já foi restaurada. Guardar o banco original até o destino passar nas verificações.
+
+Referências oficiais: [exportação do Cloud](https://docs.lovable.dev/features/advanced-settings#export-lovable-cloud-data) e [migração para Supabase](https://docs.lovable.dev/tips-tricks/external-deployment-hosting#host-backend-and-data-on-a-managed-provider-supabase-example).
+
 ### 9.3 Auth
 
-O backup das tabelas públicas não recria automaticamente senhas utilizáveis. Planeje uma destas opções com o provedor:
+O backup das tabelas públicas não recria automaticamente senhas utilizáveis. A exportação oficial do Lovable Cloud inclui as contas e os hashes de senha; a restauração suportada do Auth permite manter UUIDs e senhas. As sessões não acompanham a troca de projeto, por isso os usuários precisam entrar novamente. Configurações dos provedores de login e chaves do projeto são configuradas separadamente.
+
+Se a origem ou o destino não permitirem essa restauração, planeje uma destas opções com o provedor:
 
 - migração suportada do schema Auth;
 - convite/recriação administrativa das identidades;
