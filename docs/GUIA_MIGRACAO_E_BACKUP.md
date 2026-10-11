@@ -13,7 +13,9 @@ O GitHub, sozinho, não é um backup completo do aplicativo em operação.
 - Repositório: `https://github.com/jeimessantos559-sketch/produ-o-dryko-companion`
 - Branch de produção: `main`
 - Projeto Lovable conhecido: `5b6aad8c-1fd1-4fa9-a5dd-d060a95ca778`
-- Domínio público conhecido: `https://aponta-dryko.lovable.app`
+- Domínio de produção: `https://apontaproducaodryko.vercel.app`
+- Projeto Supabase de produção: `tmxfkxwbekmseglmsvph`
+- Lovable: somente pré-visualização do código sincronizado com o GitHub
 - Especificação funcional: `docs/PROMPT_MESTRE_APONTA_PRODUCAO.md`
 - Migrações do banco: `drizzle/migrations/*.sql`
 - Tipos gerados do Supabase: `src/integrations/supabase/types.ts`
@@ -178,7 +180,7 @@ Esses comandos são uma referência PostgreSQL. Auth e schemas gerenciados podem
 2. Baixar o arquivo quando estiver disponível no Storage. O Lovable permite uma exportação a cada 24 horas; essa cópia não bloqueia novos apontamentos, então registrar seu horário e conferir alterações posteriores antes do corte.
 3. Extrair o `.zip`, quando houver. O banco é um arquivo PostgreSQL `.backup` em formato customizado, com compressão zstd; não é SQL para colar no editor. Usar um `pg_restore` compatível com o formato e com zstd.
 4. Listar o conteúdo com `pg_restore --list arquivo.backup` e preparar a seleção de objetos para o projeto de destino. A cópia inclui estrutura, dados e Auth, mas o destino já possui schemas, papéis e extensões gerenciados pelo Supabase.
-5. Restaurar a seleção revisada com `--use-list`, `--no-owner`, `--exit-on-error` e uma conexão administrativa segura. Preservar e conferir os grants e as políticas RLS exigidos pelo aplicativo. Reconciliar registros de catálogo já inseridos pelas migrações antes de importar os mesmos registros.
+5. Restaurar a seleção revisada com `--use-list`, `--no-owner`, `--exit-on-error` e uma conexão administrativa segura. Preservar e conferir os grants e as políticas RLS exigidos pelo aplicativo. Os grants padrão do destino podem acrescentar permissões mesmo após restaurar os ACLs; comparar também as permissões por coluna e função. Reconciliar registros de catálogo já inseridos pelas migrações antes de importar os mesmos registros.
 6. Conferir contas, UUIDs, relações, funções, gatilhos, RLS, índices e sequências. Executar `docs/db/verificar_migracao_supabase.sql` na origem e no destino e comparar os resultados do mesmo momento de referência.
 
 Não executar `--clean` para resolver conflitos sem revisar os objetos que seriam apagados. Não reaplicar toda a cadeia de migrações se a estrutura correspondente já foi restaurada. Guardar o banco original até o destino passar nas verificações.
@@ -246,10 +248,11 @@ Conferir, no mínimo:
 ### Lovable
 
 - conectar o repositório correto;
-- configurar Supabase e segredos no ambiente;
-- usar o projeto para preview e publicação;
-- um push no GitHub pode sincronizar o editor, mas não substitui a autorização para publicar produção;
-- validar o conector Gmail da conta nova.
+- usar somente como preview e ambiente de teste;
+- editar e salvar o código no repositório, com commit em `main`;
+- um push no GitHub sincroniza o código usado no preview;
+- manter o Cloud antigo como origem de retorno, sem usá-lo para novos registros de produção após o corte para a Vercel;
+- segredos de conectores do Cloud não fazem parte do backup do banco e precisam ser configurados no provedor de destino.
 
 ### Vercel, Netlify ou outro provedor Node
 
