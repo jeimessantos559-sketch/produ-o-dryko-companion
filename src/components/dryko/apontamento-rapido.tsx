@@ -59,6 +59,7 @@ type Props = {
 
 export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = false }: Props) {
   const { user, profile } = useAuth();
+  const userId = user?.id;
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
 
@@ -117,24 +118,29 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     setCarregando(true);
     limparFormulario();
 
-    void obterProdutosAtivos(setor)
-      .then(async (lista) => {
+    // Produto e último apontamento são independentes: carrega ambos em paralelo.
+    void Promise.all([
+      obterProdutosAtivos(setor),
+      repeatLatest && userId && turno
+        ? supabase
+            .from("apontamentos")
+            .select(
+              "op, lote, produto_id, quantidade_plts, rolos_por_plt, grupos, tempo, velocidade, largura, metragem, total_unidades, picado_unidades",
+            )
+            .eq("usuario_id", userId)
+            .eq("setor", setor as never)
+            .eq("turno", turno)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : null,
+    ])
+      .then(([lista, ultimo]) => {
         if (!ativo) return;
         setProdutos(lista);
         if (setor === "asfox" && lista.length === 1) setProdutoId(lista[0]!.id);
-        if (!repeatLatest || !user || !turno) return;
-
-        const { data, error } = await supabase
-          .from("apontamentos")
-          .select(
-            "op, lote, produto_id, quantidade_plts, rolos_por_plt, grupos, tempo, velocidade, largura, metragem, total_unidades, picado_unidades",
-          )
-          .eq("usuario_id", user.id)
-          .eq("setor", setor as never)
-          .eq("turno", turno)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        if (!ultimo) return;
+        const { data, error } = ultimo;
 
         if (!ativo) return;
         if (error) {
@@ -195,7 +201,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     return () => {
       ativo = false;
     };
-  }, [open, repeatLatest, setor, turno, user]);
+  }, [open, repeatLatest, setor, turno, userId]);
 
   useEffect(() => {
     let ativo = true;

@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 import { supabase } from "@/integrations/supabase/client";
+import { obterPerfilUsuario } from "@/lib/perfil-cache";
 
 type PerfilAcesso = {
   ativo: boolean;
@@ -21,12 +22,7 @@ async function carregarPerfilAcesso(userId: string, forcar = false) {
   if (!forcar && cacheAcesso?.userId === userId && cacheAcesso.expiresAt > Date.now()) {
     return cacheAcesso.perfil;
   }
-  const { data } = await supabase
-    .from("profiles")
-    .select("ativo, deve_alterar_senha, onboarding_concluido")
-    .eq("id", userId)
-    .maybeSingle();
-  const perfil = (data as PerfilAcesso | null) ?? null;
+  const perfil = await obterPerfilUsuario(userId, forcar).catch(() => null);
   cacheAcesso = { userId, expiresAt: Date.now() + CACHE_ACESSO_MS, perfil };
   return perfil;
 }
