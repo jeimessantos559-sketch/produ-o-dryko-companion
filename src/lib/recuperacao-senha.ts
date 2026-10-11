@@ -7,11 +7,39 @@ const entrada = z.object({ email: z.string().trim().email().max(200) });
 const b64txt = (s: string) => Buffer.from(new TextEncoder().encode(s)).toString("base64");
 const cabecalho = (v: string) => (/^[\x00-\x7F]*$/.test(v) ? v : `=?UTF-8?B?${b64txt(v)}?=`);
 
-async function enviarEmailRecuperacao(destinatario: string, link: string) {
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  const gmailKey = process.env["GOOGLE_MAIL_API_KEY"] ?? process.env["GOOGLE_MAIL_API_KEY_1"];
-  if (!lovableKey || !gmailKey) throw new Error("O envio de recuperação não está configurado.");
+type RuntimeBindings = Record<string, unknown>;
 
+function lerVariavelServidor(nome: string): string | undefined {
+  const valorProcesso = process.env[nome];
+  if (typeof valorProcesso === "string" && valorProcesso.length > 0) return valorProcesso;
+  const bindings = (globalThis as typeof globalThis & { __env__?: unknown }).__env__;
+  if (!bindings || typeof bindings !== "object" || Array.isArray(bindings)) return undefined;
+  const valorRuntime = (bindings as RuntimeBindings)[nome];
+  return typeof valorRuntime === "string" && valorRuntime.length > 0 ? valorRuntime : undefined;
+}
+
+function configuracaoAppsScript() {
+  const url = lerVariavelServidor("APPS_SCRIPT_WEB_APP_URL");
+  const token = lerVariavelServidor("APPS_SCRIPT_API_TOKEN");
+  if (!url || !token) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("A URL configurada para o Apps Script é inválida.");
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.hostname !== "script.google.com" ||
+    !/^\/macros\/s\/[^/]+\/exec$/.test(parsed.pathname)
+  ) {
+    throw new Error("A URL do Apps Script deve ser a implantação Web App terminada em /exec.");
+  }
+  return { url, token };
+}
+
+function conteudoRecuperacao(destinatario: string, link: string) {
   const assunto = "Recuperação de senha - Aponta Produção DRYKO";
   const corpo = [
     "Aponta Produção DRYKO",
@@ -23,6 +51,14 @@ async function enviarEmailRecuperacao(destinatario: string, link: string) {
     "",
     "Se você não solicitou esta alteração, ignore esta mensagem.",
   ].join("\n");
+  return { destinatario, assunto, corpo };
+}
+
+async function enviarViaGmail(destinatario: string, assunto: string, corpo: string) {
+  const lovableKey = lerVariavelServidor("LOVABLE_API_KEY");
+  const gmailKey =
+    lerVariavelServidor("GOOGLE_MAIL_API_KEY") ?? lerVariavelServidor("GOOGLE_MAIL_API_KEY_1");
+  if (!lovableKey || !gmailKey) throw new Error("GMAIL_NAO_CONFIGURADO");
 
   const mime = [
     `To: ${destinatario}`,
@@ -35,17 +71,74 @@ async function enviarEmailRecuperacao(destinatario: string, link: string) {
   ].join("\r\n");
   const raw = b64txt(mime).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-  const resposta = await fetch("https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lovableKey}`,
-      "X-Connection-Api-Key": gmailKey,
-      "Content-Type": "application/json",
+  const resposta = await fetch(
+    "https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableKey}`,
+        "X-Connection-Api-Key": gmailKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ raw }),
     },
-    body: JSON.stringify({ raw }),
+  );
+
+  if (!resposta.ok) {
+    if (resposta.status === 401 || resposta.status === 403) {
+      throw new Error("O Gmail recusou o envio. Reconecte a conta de e-mail.");
+    }
+    if (resposta.status === 429) {
+      throw new Error("Limite de envios do Gmail atingido. Tente novamente em alguns minutos.");
+    }
+    throw new Error("Não foi possível enviar o e-mail de recuperação agora.");
+  }
+}
+
+async function enviarViaAppsScript(destinatario: string, assunto: string, corpo: string) {
+  const config = configuracaoAppsScript();
+  if (!config) throw new Error("APPS_SCRIPT_NAO_CONFIGURADO");
+
+  const resposta = await fetch(config.url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: config.token,
+      to: [destinatario],
+      subject: assunto,
+      body: corpo,
+      destinatarios: [destinatario],
+      assunto,
+      mensagem: corpo,
+    }),
   });
 
-  if (!resposta.ok) throw new Error("Não foi possível enviar o e-mail de recuperação agora.");
+  const textoResposta = await resposta.text();
+  let retorno: { ok?: boolean; error?: string } = {};
+  try {
+    retorno = JSON.parse(textoResposta) as typeof retorno;
+  } catch {
+    /* tratado abaixo */
+  }
+
+  if (!resposta.ok || retorno.ok !== true) {
+    throw new Error(
+      retorno.error || `Apps Script respondeu com status ${resposta.status} ou conteúdo inválido.`,
+    );
+  }
+}
+
+async function enviarEmailRecuperacao(destinatario: string, link: string) {
+  const { assunto, corpo } = conteudoRecuperacao(destinatario, link);
+  try {
+    await enviarViaGmail(destinatario, assunto, corpo);
+  } catch (erroGmail) {
+    if (erroGmail instanceof Error && erroGmail.message === "GMAIL_NAO_CONFIGURADO") {
+      await enviarViaAppsScript(destinatario, assunto, corpo);
+      return;
+    }
+    throw erroGmail;
+  }
 }
 
 export const solicitarRecuperacaoSenha = createServerFn({ method: "POST" })
