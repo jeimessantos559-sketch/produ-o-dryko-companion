@@ -1,46 +1,13 @@
-import { Buffer } from "node:buffer";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { gerarPdfRelatorio } from "@/lib/relatorio-pdf";
 
-type RuntimeBindings = Record<string, unknown>;
-function lerVariavelServidor(nome: string): string | undefined {
-  const valorProcesso = process.env[nome];
-  if (typeof valorProcesso === "string" && valorProcesso.length > 0) return valorProcesso;
-  const bindings = (globalThis as typeof globalThis & { __env__?: unknown }).__env__;
-  if (!bindings || typeof bindings !== "object" || Array.isArray(bindings)) return undefined;
-  const valorRuntime = (bindings as RuntimeBindings)[nome];
-  return typeof valorRuntime === "string" && valorRuntime.length > 0 ? valorRuntime : undefined;
-}
 const entrada = z.object({
   relatorioId: z.string().uuid(),
   destinatarios: z.array(z.string().email()).min(1).max(10),
 });
-
-function configuracao() {
-  const url = lerVariavelServidor("APPS_SCRIPT_WEB_APP_URL");
-  const token = lerVariavelServidor("APPS_SCRIPT_API_TOKEN");
-  if (!url || !token) {
-    throw new Error("A integração com o Apps Script ainda não está configurada no Lovable.");
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error("A URL configurada para o Apps Script é inválida.");
-  }
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.hostname !== "script.google.com" ||
-    !/^\/macros\/s\/[^/]+\/exec$/.test(parsed.pathname)
-  ) {
-    throw new Error("A URL do Apps Script deve ser a implantação Web App terminada em /exec.");
-  }
-  return { url, token };
-}
 
 function normalizarDestinatarios(destinatarios: string[]) {
   return [...new Set(destinatarios.map((email) => email.trim().toLowerCase()).filter(Boolean))].slice(0, 10);
@@ -82,103 +49,6 @@ function txt(valor: unknown) {
   if (typeof valor === "number") return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
   if (typeof valor === "object") return String(campo(valor, "nome") ?? campo(valor, "email") ?? "—");
   return String(valor);
-}
-
-const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
-const b64txt = (s: string) => b64(new TextEncoder().encode(s));
-const cabecalho = (v: string) => (/^[\x00-\x7F]*$/.test(v) ? v : `=?UTF-8?B?${b64txt(v)}?=`);
-
-async function enviarViaGmail(opts: {
-  to: string[];
-  subject: string;
-  body: string;
-  pdf: Uint8Array;
-  fileName: string;
-}) {
-  const lovableKey = lerVariavelServidor("LOVABLE_API_KEY");
-  const gmailKey = lerVariavelServidor("GOOGLE_MAIL_API_KEY") ?? lerVariavelServidor("GOOGLE_MAIL_API_KEY_1");
-  if (!lovableKey || !gmailKey) {
-    const ausentes = [...(!lovableKey ? ["LOVABLE_API_KEY"] : []), ...(!gmailKey ? ["GOOGLE_MAIL_API_KEY"] : [])];
-    console.error(`[Gmail] Bindings indisponíveis no runtime: ${ausentes.join(", ")}`);
-    throw new Error("GMAIL_NAO_CONFIGURADO");
-  }
-  const boundary = `dryko_${crypto.randomUUID()}`;
-  const anexo = b64(opts.pdf).replace(/.{76}/g, "$&\r\n");
-  const mime = [
-    `To: ${opts.to.join(", ")}`,
-    `Subject: ${cabecalho(opts.subject)}`,
-    "MIME-Version: 1.0",
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    "",
-    `--${boundary}`,
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
-    "",
-    b64txt(opts.body).replace(/.{76}/g, "$&\r\n"),
-    `--${boundary}`,
-    `Content-Type: application/pdf; name="${opts.fileName}"`,
-    `Content-Disposition: attachment; filename="${opts.fileName}"`,
-    "Content-Transfer-Encoding: base64",
-    "",
-    anexo,
-    `--${boundary}--`,
-  ].join("\r\n");
-  const raw = b64txt(mime).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  const resp = await fetch("https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lovableKey}`,
-      "X-Connection-Api-Key": gmailKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ raw }),
-  });
-  if (!resp.ok) {
-    const corpo = await resp.text();
-    console.error(`Gmail falhou [${resp.status}]: ${corpo}`);
-    if (resp.status === 401 || resp.status === 403)
-      throw new Error(`O Gmail recusou o envio (autorização). Reconecte a conta Gmail. [${resp.status}]`);
-    if (resp.status === 429) throw new Error("Limite de envios do Gmail atingido. Tente novamente em alguns minutos.");
-    throw new Error(`O Gmail não conseguiu enviar o e-mail [${resp.status}].`);
-  }
-}
-
-async function enviarViaAppsScript(opts: {
-  reportId: string;
-  to: string[];
-  subject: string;
-  body: string;
-  pdf: Uint8Array;
-  fileName: string;
-}) {
-  const { url, token } = configuracao();
-  const resposta = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      token,
-      to: opts.to,
-      reportId: opts.reportId,
-      subject: opts.subject,
-      body: opts.body,
-      pdfBase64: b64(opts.pdf),
-      fileName: opts.fileName,
-      destinatarios: opts.to,
-      assunto: opts.subject,
-      mensagem: opts.body,
-      nomeArquivo: opts.fileName,
-    }),
-  });
-  const textoResposta = await resposta.text();
-  let retorno: { ok?: boolean; error?: string } = {};
-  try {
-    retorno = JSON.parse(textoResposta) as typeof retorno;
-  } catch {
-    /* tratado abaixo */
-  }
-  if (!resposta.ok || retorno.ok !== true) {
-    throw new Error(retorno.error || `Apps Script respondeu com status ${resposta.status} ou conteúdo inválido.`);
-  }
 }
 
 export const enviarRelatorio = createServerFn({ method: "POST" })
@@ -245,23 +115,8 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
         "O relatório completo está anexado em PDF.",
       ].join("\n");
 
-      const envio = { reportId: relatorio.id, to: destinatarios, subject, body, pdf, fileName };
-      try {
-        await enviarViaGmail(envio);
-      } catch (erroGmail) {
-        // fallback técnico: só usa o Apps Script se o Gmail não estiver configurado
-        if (
-          erroGmail instanceof Error &&
-          erroGmail.message === "GMAIL_NAO_CONFIGURADO" &&
-          lerVariavelServidor("APPS_SCRIPT_WEB_APP_URL")
-        ) {
-          await enviarViaAppsScript(envio);
-        } else if (erroGmail instanceof Error && erroGmail.message === "GMAIL_NAO_CONFIGURADO") {
-          throw new Error("O envio por Gmail não está configurado neste projeto.");
-        } else {
-          throw erroGmail;
-        }
-      }
+      const { enviarEmail } = await import("./email.server");
+      await enviarEmail({ reportId: relatorio.id, to: destinatarios, subject, body, pdf, fileName });
 
       await context.supabase
         .from("relatorios")

@@ -90,10 +90,12 @@ Copiar apenas os nomes de `.env.example` para o cofre de segredos da nova plataf
 - `LOVABLE_API_KEY`
 - `GOOGLE_MAIL_API_KEY` ou `GOOGLE_MAIL_API_KEY_1`
 
-### Alternativa de envio de relatórios
+### E-mail pelo Apps Script na Vercel
 
 - `APPS_SCRIPT_WEB_APP_URL`
 - `APPS_SCRIPT_API_TOKEN`
+
+O serviço comum de e-mail suporta relatórios com PDF e recuperação de senha. Implantar a versão do Apps Script mantida em `integrations/apps-script/`, pela conta `apontaproducao@gmail.com`, seguindo `docs/INTEGRACAO_EMAIL.md`. Uma implantação antiga que exige PDF em toda chamada não suporta recuperação de senha.
 
 ### Rotinas agendadas
 

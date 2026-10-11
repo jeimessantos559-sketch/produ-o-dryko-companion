@@ -6,7 +6,7 @@ Esta aplicação replica o fluxo operacional mais recente validado no Floot, pre
 
 Observação de precedência: a configuração mais recente do Floot substitui o texto histórico abaixo no ponto em que divergir. Em especial, **Mantas também usa OP**, além de lote, produto, PLTs, metragem e rolos automáticos, e possui “Repetir último” e meta opcional. As regras de Asfox, Misturadores, Líquidos, Pós e Avulsos continuam aguardando definição.
 
-O envio de e-mail exige as variáveis seguras `APPS_SCRIPT_WEB_APP_URL` e `APPS_SCRIPT_API_TOKEN`. Não há integração automática com o Protheus nesta fase; a confirmação permanece manual e auditada.
+Na Vercel, relatórios e recuperação de senha usam as variáveis seguras `APPS_SCRIPT_WEB_APP_URL` e `APPS_SCRIPT_API_TOKEN`, conforme [o guia de e-mail](docs/INTEGRACAO_EMAIL.md). O conector Gmail existente continua compatível quando configurado. Não há integração automática com o Protheus nesta fase; a confirmação permanece manual e auditada.
 
 # Prompt inicial — Projeto paralelo Aponta Produção DRYKO
 

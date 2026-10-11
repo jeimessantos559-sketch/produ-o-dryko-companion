@@ -1,17 +1,9 @@
-import { Buffer } from "node:buffer";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 const entrada = z.object({ email: z.string().trim().email().max(200) });
 
-const b64txt = (s: string) => Buffer.from(new TextEncoder().encode(s)).toString("base64");
-const cabecalho = (v: string) => (/^[\x00-\x7F]*$/.test(v) ? v : `=?UTF-8?B?${b64txt(v)}?=`);
-
 async function enviarEmailRecuperacao(destinatario: string, link: string) {
-  const lovableKey = process.env["LOVABLE_API_KEY"];
-  const gmailKey = process.env["GOOGLE_MAIL_API_KEY"] ?? process.env["GOOGLE_MAIL_API_KEY_1"];
-  if (!lovableKey || !gmailKey) throw new Error("O envio de recuperação não está configurado.");
-
   const assunto = "Recuperação de senha - Aponta Produção DRYKO";
   const corpo = [
     "Aponta Produção DRYKO",
@@ -24,28 +16,8 @@ async function enviarEmailRecuperacao(destinatario: string, link: string) {
     "Se você não solicitou esta alteração, ignore esta mensagem.",
   ].join("\n");
 
-  const mime = [
-    `To: ${destinatario}`,
-    `Subject: ${cabecalho(assunto)}`,
-    "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
-    "",
-    b64txt(corpo),
-  ].join("\r\n");
-  const raw = b64txt(mime).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-  const resposta = await fetch("https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${lovableKey}`,
-      "X-Connection-Api-Key": gmailKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ raw }),
-  });
-
-  if (!resposta.ok) throw new Error("Não foi possível enviar o e-mail de recuperação agora.");
+  const { enviarEmail } = await import("./email.server");
+  await enviarEmail({ to: [destinatario], subject: assunto, body: corpo });
 }
 
 export const solicitarRecuperacaoSenha = createServerFn({ method: "POST" })
