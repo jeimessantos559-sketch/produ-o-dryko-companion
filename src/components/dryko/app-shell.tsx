@@ -49,7 +49,6 @@ const LazySetorTurnoDialog = lazy(() =>
 
 const ITENS = [
   { to: "/programacao", label: "Programação", icon: CalendarDays },
-  { to: "/contagem", label: "Contagem por produto", icon: Boxes },
   { to: "/ocorrencias", label: "Ocorrências", icon: MessageSquare },
   { to: "/historico", label: "Histórico", icon: History },
   { to: "/passagem-turno", label: "Passagem", icon: Repeat },
