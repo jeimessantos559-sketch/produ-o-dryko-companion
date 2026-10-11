@@ -22,7 +22,7 @@ async function chaveDaTentativa(acao: string, identificador: string) {
 export async function registrarTentativaAutenticacao(config: ConfiguracaoLimite) {
   const chave = await chaveDaTentativa(config.acao, config.identificador);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data, error } = await supabaseAdmin.rpc("registrar_tentativa_auth", {
+  const { data, error } = await (supabaseAdmin as any).rpc("registrar_tentativa_auth", {
     p_chave: chave,
     p_acao: config.acao,
     p_max_tentativas: config.maxTentativas,
@@ -44,7 +44,7 @@ export async function registrarTentativaAutenticacao(config: ConfiguracaoLimite)
 
 export async function limparTentativasAutenticacao(acao: string, chave: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { error } = await supabaseAdmin.rpc("limpar_tentativas_auth", {
+  const { error } = await (supabaseAdmin as any).rpc("limpar_tentativas_auth", {
     p_chave: chave,
     p_acao: acao,
   });
