@@ -56,7 +56,7 @@ function doPost(e) {
     } else if (payload.fileName || payload.nomeArquivo) throw new Error('INVALID_REQUEST');
 
     lock = LockService.getScriptLock();
-    locked = lock.tryLock(10_000);
+    locked = lock.tryLock(10000);
     if (!locked) throw new Error('BUSY');
     const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, requestId, Utilities.Charset.UTF_8);
     const key = 'email_' + digest.map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join('');
@@ -66,7 +66,7 @@ function doPost(e) {
     MailApp.sendEmail(message);
     sent = true;
     // O cache é uma proteção adicional; o bloqueio principal do relatório está no banco do aplicativo.
-    try { cache.put(key, 'sent', 21_600); } catch (_) { /* o envio já foi aceito; não repetir por falha do cache */ }
+    try { cache.put(key, 'sent', 21600); } catch (_) { /* o envio já foi aceito; não repetir por falha do cache */ }
     return emailJson_({ ok: true });
   } catch (error) {
     if (sent) return emailJson_({ ok: true });
