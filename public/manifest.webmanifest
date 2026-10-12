@@ -41,7 +41,7 @@
     {
       "name": "Programação",
       "short_name": "Programação",
-      "url": "/contagem",
+      "url": "/programacao",
       "icons": [{ "src": "/ap-pwa-192-v5.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]

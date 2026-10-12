@@ -628,7 +628,8 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
 
         {!setor || !["corte", "fitas", "mantas", "liquidos", "asfox"].includes(setor) ? (
           <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-            Este setor ainda não possui formulário rápido configurado.
+            As regras de apontamento deste setor ainda estão em definição. O formulário será
+            liberado quando a regra for cadastrada.
           </div>
         ) : (
           <div className="space-y-3">

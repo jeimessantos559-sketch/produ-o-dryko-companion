@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { AjustarHorarioApontamentos } from "@/components/dryko/ajustar-horario-apontamentos";
 import { AppShell } from "@/components/dryko/app-shell";
+import { HoraCard, Mini, ResumoGrande } from "@/components/dryko/programacao-cards";
 import { ProdutoSelect } from "@/components/dryko/produto-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,29 @@ import {
   ordemHoraTurno,
 } from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
+import {
+  linhaVazia,
+  horaVazia,
+  horaVaziaFinal,
+  somarRegistro,
+  unidadeMetaTurno,
+  unidadeProgramacao,
+  valorMetaHora,
+  correspondeProgramacaoItem,
+  valorRealizadoRegistro,
+  duracaoDoCampo,
+  formatarDuracaoHoras,
+  normalizarDuracaoDigitada,
+  numeroDoCampo,
+  formatarCampoNumero,
+  formatarData,
+  fmt,
+  type Registro,
+  type Hora,
+  type HoraInterna,
+  type HoraPlanejada,
+  type ProgramacaoItem,
+} from "@/lib/programacao-hora";
 
 export const Route = createFileRoute("/_authenticated/programacao")({
   head: () => ({
@@ -47,57 +71,8 @@ export const Route = createFileRoute("/_authenticated/programacao")({
   component: Programacao,
 });
 
-type Registro = {
-  id: string;
-  produto_id: string;
-  produto_nome: string;
-  op: string | null;
-  lote: string | null;
-  quantidade_plts: number | null;
-  total_rolos: number | null;
-  metragem: number | null;
-  area_m2: number | null;
-  data_hora_producao: string;
-};
-
 type MetaTurno = Database["public"]["Tables"]["metas_turno"]["Row"];
 
-type Linha = {
-  produto: string;
-  apontamentos: number;
-  plts: number;
-  rolos: number;
-  metragem: number;
-  area: number;
-};
-
-type Hora = {
-  hora: string;
-  apontamentos: number;
-  plts: number;
-  rolos: number;
-  metragem: number;
-  area: number;
-  produtos: Linha[];
-};
-
-type HoraInterna = Omit<Hora, "produtos"> & { produtos: Map<string, Linha> };
-
-type HoraPlanejada = Hora & {
-  metaHora: number;
-  realizadoAcumulado: number;
-  saldoAcumulado: number;
-};
-
-type ProgramacaoItem = {
-  id: string;
-  produto_id: string;
-  produto_nome: string;
-  op: string | null;
-  lote: string | null;
-  quantidade_prevista: number;
-  unidade: string;
-};
 
 type AbaProgramacao = "hora" | "programacao";
 
@@ -912,284 +887,4 @@ function Programacao() {
       </Dialog>
     </AppShell>
   );
-}
-
-function HoraCard({
-  item,
-  setor,
-  unidade,
-  mostrarMeta,
-}: {
-  item: HoraPlanejada;
-  setor: string | null | undefined;
-  unidade: string;
-  mostrarMeta: boolean;
-}) {
-  return (
-    <article className="overflow-hidden rounded-[1.6rem] border border-border bg-card shadow-sm">
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-xl font-black text-foreground">{intervaloHora(item.hora)}</p>
-            <p className="mt-2 text-sm font-semibold text-muted-foreground">
-              {resumoProdutosHora(item, setor)}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-2xl font-black text-primary">{destaqueHora(item, setor)}</p>
-            <p className="mt-1 text-sm font-bold text-muted-foreground">
-              {secundarioHora(item, setor)}
-            </p>
-          </div>
-        </div>
-
-        {mostrarMeta && (
-          <>
-            <div className="my-4 border-t border-border" />
-            <div className="grid grid-cols-3 gap-3">
-              <MetricaHora label="Previsto" valor={`${fmt(item.metaHora)} ${unidade}`} />
-              <MetricaHora label="Acumulado" valor={`${fmt(item.realizadoAcumulado)} ${unidade}`} />
-              <MetricaHora
-                label="Δ acumulado"
-                valor={`${item.saldoAcumulado > 0 ? "+" : ""}${fmt(item.saldoAcumulado)} ${unidade}`}
-                negativo={item.saldoAcumulado < 0}
-              />
-            </div>
-          </>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function ResumoGrande({
-  label,
-  valor,
-  destaque = false,
-  className = "",
-}: {
-  label: string;
-  valor: string;
-  destaque?: boolean;
-  className?: string;
-}) {
-  return (
-    <Card
-      className={`rounded-2xl border-border ${destaque ? "border-primary/40 bg-primary/10" : ""} ${className}`}
-    >
-      <CardContent className="p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className={`mt-2 text-2xl font-black ${destaque ? "text-primary" : "text-foreground"}`}>
-          {valor}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MetricaHora({
-  label,
-  valor,
-  negativo = false,
-}: {
-  label: string;
-  valor: string;
-  negativo?: boolean;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
-      <p
-        className={`mt-1 break-words text-base font-black ${negativo ? "text-primary" : "text-foreground"}`}
-      >
-        {valor}
-      </p>
-    </div>
-  );
-}
-
-function Mini({
-  label,
-  valor,
-  destaque = false,
-  alerta = false,
-}: {
-  label: string;
-  valor: string;
-  destaque?: boolean;
-  alerta?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-lg p-2 ${
-        alerta ? "bg-amber-100/80 dark:bg-amber-950/50" : destaque ? "bg-primary/10" : "bg-muted"
-      }`}
-    >
-      <p className="text-[10px] uppercase text-muted-foreground">{label}</p>
-      <p
-        className={`font-bold ${alerta ? "text-amber-900 dark:text-amber-100" : destaque ? "text-primary" : ""}`}
-      >
-        {valor}
-      </p>
-    </div>
-  );
-}
-
-function linhaVazia(produto: string): Linha {
-  return { produto, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0 };
-}
-
-function horaVazia(hora: string): HoraInterna {
-  return {
-    hora,
-    apontamentos: 0,
-    plts: 0,
-    rolos: 0,
-    metragem: 0,
-    area: 0,
-    produtos: new Map(),
-  };
-}
-
-function horaVaziaFinal(hora: string): Hora {
-  return { hora, apontamentos: 0, plts: 0, rolos: 0, metragem: 0, area: 0, produtos: [] };
-}
-
-function somarRegistro(linha: Linha, item: Registro) {
-  linha.apontamentos += 1;
-  linha.plts += Number(item.quantidade_plts ?? 0);
-  linha.rolos += Number(item.total_rolos ?? 0);
-  linha.metragem += Number(item.metragem ?? 0);
-  linha.area += Number(item.area_m2 ?? 0);
-}
-
-function unidadeMetaTurno(setor: string | null | undefined) {
-  if (setor === "mantas") return "m";
-  return "m²";
-}
-
-function unidadeProgramacao(setor: string | null | undefined) {
-  if (setor === "fitas") return "m²";
-  if (setor === "mantas") return "m";
-  return "PLTs";
-}
-
-function valorMetaHora(
-  item: Pick<Hora, "plts" | "metragem" | "area">,
-  setor: string | null | undefined,
-) {
-  if (setor === "fitas") return Number(item.area ?? 0);
-  return Number(item.metragem ?? 0);
-}
-
-function correspondeProgramacaoItem(
-  registro: Registro,
-  item: ProgramacaoItem,
-  setor: string | null | undefined,
-) {
-  if (registro.produto_id !== item.produto_id) return false;
-  if (setor === "mantas") return true;
-  const opItem = normalizar(item.op);
-  if (!opItem) return true;
-  return normalizar(registro.op) === opItem;
-}
-
-function valorRealizadoRegistro(item: Registro, setor: string | null | undefined) {
-  if (setor === "fitas") return Number(item.area_m2 ?? 0);
-  if (setor === "mantas") return Number(item.metragem ?? 0);
-  return Number(item.quantidade_plts ?? 0);
-}
-
-function normalizar(valor: string | null | undefined) {
-  return (valor ?? "").trim().toLocaleUpperCase("pt-BR");
-}
-
-function resumoProdutosHora(item: Hora, setor: string | null | undefined) {
-  if (!item.produtos.length) return "Sem produção registrada";
-  return item.produtos
-    .map((produto) => {
-      if (setor === "corte")
-        return `${produto.produto}: ${fmt(produto.plts)} PLT${produto.plts === 1 ? "" : "s"}`;
-      if (setor === "mantas") return `${produto.produto}: ${fmt(produto.metragem)} m`;
-      if (setor === "fitas") return `${produto.produto}: ${fmt(produto.area)} m²`;
-      return `${produto.produto}: ${fmt(produto.plts)}`;
-    })
-    .join(" · ");
-}
-
-function destaqueHora(item: Hora, setor: string | null | undefined) {
-  if (setor === "corte") return `${fmt(item.plts)} PLT${item.plts === 1 ? "" : "s"}`;
-  if (setor === "mantas") return `${fmt(item.metragem)} m`;
-  if (setor === "fitas") return `${fmt(item.area)} m²`;
-  return `${fmt(item.plts)} PLTs`;
-}
-
-function secundarioHora(item: Hora, setor: string | null | undefined) {
-  if (setor === "corte") return `${fmt(item.metragem)} m²`;
-  if (setor === "mantas") return `${fmt(item.plts)} PLTs · ${fmt(item.rolos)} rolos`;
-  if (setor === "fitas") return `${item.produtos.length} produto(s)`;
-  return `${fmt(item.rolos)} unidades`;
-}
-
-function intervaloHora(hora: string) {
-  const inicio = Number(hora.slice(0, 2));
-  const fim = (inicio + 1) % 24;
-  return `${String(inicio).padStart(2, "0")}:00–${String(fim).padStart(2, "0")}:00`;
-}
-
-function duracaoDoCampo(valor: string) {
-  const limpo = valor.trim().toLowerCase().replace(/\s/g, "").replace("h", ":");
-  if (!limpo) return 0;
-  if (limpo.includes(":")) {
-    const [horasTexto, minutosTexto = "0"] = limpo.split(":", 2);
-    const horas = Number(horasTexto);
-    const minutos = Number(minutosTexto);
-    if (
-      !Number.isFinite(horas) ||
-      !Number.isFinite(minutos) ||
-      horas < 0 ||
-      minutos < 0 ||
-      minutos >= 60
-    ) {
-      return Number.NaN;
-    }
-    return horas + minutos / 60;
-  }
-  return numeroDoCampo(limpo);
-}
-
-function formatarDuracaoHoras(valor: number) {
-  if (!Number.isFinite(valor) || valor <= 0) return "";
-  let horas = Math.floor(valor);
-  let minutos = Math.round((valor - horas) * 60);
-  if (minutos === 60) {
-    horas += 1;
-    minutos = 0;
-  }
-  return `${horas}:${String(minutos).padStart(2, "0")}`;
-}
-
-function normalizarDuracaoDigitada(valor: string) {
-  return valor.replace(/[^0-9:,.hH]/g, "").slice(0, 8);
-}
-
-function numeroDoCampo(valor: string) {
-  const limpo = valor.trim().replace(/\s/g, "");
-  if (!limpo) return 0;
-  if (limpo.includes(",")) return Number(limpo.replace(/\./g, "").replace(",", "."));
-  if (/^\d{1,3}(\.\d{3})+$/.test(limpo)) return Number(limpo.replace(/\./g, ""));
-  return Number(limpo);
-}
-
-function formatarCampoNumero(valor: number) {
-  return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-}
-
-function formatarData(valor: string) {
-  const [ano, mes, dia] = valor.split("-");
-  return ano && mes && dia ? `${dia}/${mes}` : "—";
-}
-
-function fmt(valor: number) {
-  return Number(valor || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 }
