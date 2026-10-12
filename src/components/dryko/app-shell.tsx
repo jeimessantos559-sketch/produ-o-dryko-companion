@@ -341,7 +341,7 @@ export function AppShell({
                 <p className="truncate text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground sm:text-[11px]">
                   {eyebrow ?? contexto}
                 </p>
-                <h1 className="truncate text-lg font-extrabold leading-tight tracking-tight text-foreground sm:text-2xl">
+                <h1 className="line-clamp-2 break-words text-[17px] font-extrabold leading-[1.15] tracking-tight text-foreground sm:line-clamp-1 sm:text-2xl sm:leading-tight">
                   {title ?? contexto}
                 </h1>
               </button>
