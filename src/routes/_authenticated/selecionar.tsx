@@ -7,6 +7,7 @@ import { DrykoLogo } from "@/components/dryko/logo";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, type SetorCodigo, type TurnoCodigo } from "@/lib/auth";
+import { ordenarSetoresParaSelecao, rotuloSetorParaSelecao } from "@/lib/setores-lista";
 
 export const Route = createFileRoute("/_authenticated/selecionar")({ component: Selecionar });
 
@@ -27,7 +28,7 @@ function Selecionar() {
       .select("codigo, nome, ordem, regras_definidas")
       .order("ordem")
       .then(({ data }) => {
-        setSetores(data ?? []);
+        setSetores(ordenarSetoresParaSelecao(data ?? []));
         setCarregando(false);
       });
   }, []);
@@ -82,7 +83,7 @@ function Selecionar() {
               disabled={carregando}
             >
               <option value="">{carregando ? "Carregando..." : "Selecione o setor"}</option>
-              {setores.map((item) => <option key={item.codigo} value={item.codigo}>{item.nome}</option>)}
+              {setores.map((item) => <option key={item.codigo} value={item.codigo}>{rotuloSetorParaSelecao(item)}</option>)}
             </select>
           </div>
 

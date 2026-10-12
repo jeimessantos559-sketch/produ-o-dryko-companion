@@ -12,11 +12,13 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, type SetorCodigo, type TurnoCodigo } from "@/lib/auth";
+import { ordenarSetoresParaSelecao, rotuloSetorParaSelecao } from "@/lib/setores-lista";
 
 type Setor = {
   codigo: SetorCodigo;
   nome: string;
   ordem: number;
+  regras_definidas: boolean;
 };
 
 type Props = {
@@ -41,7 +43,7 @@ export function SetorTurnoDialog({ open, onOpenChange }: Props) {
     setCarregando(true);
     void supabase
       .from("setores")
-      .select("codigo, nome, ordem")
+      .select("codigo, nome, ordem, regras_definidas")
       .order("ordem")
       .then(({ data, error }) => {
         setCarregando(false);
@@ -49,7 +51,7 @@ export function SetorTurnoDialog({ open, onOpenChange }: Props) {
           toast.error("Não foi possível carregar os setores.");
           return;
         }
-        setSetores((data ?? []) as Setor[]);
+        setSetores(ordenarSetoresParaSelecao((data ?? []) as Setor[]));
       });
   }, [open, profile?.setor_atual, profile?.turno_atual, setores.length]);
 
@@ -100,7 +102,7 @@ export function SetorTurnoDialog({ open, onOpenChange }: Props) {
               <option value="">{carregando ? "Carregando..." : "Selecione o setor"}</option>
               {setores.map((item) => (
                 <option key={item.codigo} value={item.codigo}>
-                  {item.nome}
+                  {rotuloSetorParaSelecao(item)}
                 </option>
               ))}
             </select>

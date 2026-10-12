@@ -17,6 +17,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
 import { setorComConsumoSemi } from "@/lib/liquidos";
+import { bloquearSeOffline } from "@/lib/rede";
 import {
   areaFitas,
   dataHoraProducaoPadrao,
@@ -378,6 +379,7 @@ function ApontarCorte() {
   async function salvar() {
     if (!valido || !user || !profile?.turno_atual || enviando.current) return;
     if (!confirmarExcessoDaMeta(meta, apontado, quantidade)) return;
+    if (bloquearSeOffline()) return;
     enviando.current = true;
     setSalvando(true);
     const { data, error } = await supabase
@@ -703,6 +705,7 @@ function ApontarMantas() {
   async function salvar() {
     if (!valido || !user || !profile?.turno_atual || !produto || enviando.current) return;
     if (!confirmarExcessoDaMeta(meta, apontado, quantidadePlts)) return;
+    if (bloquearSeOffline()) return;
     enviando.current = true;
     setSalvando(true);
     const { data, error } = await supabase
@@ -912,6 +915,7 @@ function ApontarFitas() {
     )
       return;
     if (!confirmarExcessoDaMeta(meta, apontado, area)) return;
+    if (bloquearSeOffline()) return;
     enviando.current = true;
     setSalvando(true);
     const { error } = await supabase.from("apontamentos").insert({

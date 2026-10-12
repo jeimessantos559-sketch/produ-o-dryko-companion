@@ -216,6 +216,10 @@ function PassagemTurno() {
     [apontamentos],
   );
 
+  const setorLiquidos = setorComConsumoSemi(profile?.setor_atual);
+  const setorFitas = profile?.setor_atual === "fitas";
+  const setorMantas = profile?.setor_atual === "mantas";
+
   function montarResumo(): Json {
     return {
       setor: profile?.setor_atual ? nomeSetor(profile.setor_atual) : "",
@@ -424,8 +428,8 @@ function PassagemTurno() {
               />
               <Indicador label="Lançados" valor={totais.lancados} />
               <Indicador label="OPs / lotes finalizados" valor={opsFinalizadas.length} />
-              <Indicador label="PLTs" valor={totais.plts} />
-              {setorComConsumoSemi(profile?.setor_atual) ? (
+              {!setorFitas && <Indicador label="PLTs" valor={totais.plts} />}
+              {setorLiquidos ? (
                 <>
                   <Indicador label="Unidades" valor={totais.unidades.toLocaleString("pt-BR")} />
                   <Indicador
@@ -435,14 +439,14 @@ function PassagemTurno() {
                 </>
               ) : (
                 <>
-                  <Indicador label="Rolos" valor={totais.rolos} />
+                  {!setorFitas && <Indicador label="Rolos" valor={totais.rolos} />}
                   <Indicador
-                    label="Metragem"
-                    valor={`${totais.metragem.toLocaleString("pt-BR")} m`}
-                  />
-                  <Indicador
-                    label="Área"
-                    valor={`${totais.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`}
+                    label={setorMantas ? "Metragem" : "Área produzida"}
+                    valor={
+                      setorMantas
+                        ? `${totais.metragem.toLocaleString("pt-BR")} m`
+                        : `${(setorFitas ? totais.area : totais.metragem).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`
+                    }
                   />
                 </>
               )}

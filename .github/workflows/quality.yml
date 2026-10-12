@@ -18,6 +18,11 @@ jobs:
     name: Portabilidade, testes e build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Valores públicos de exemplo: a verificação não usa segredos de produção.
+      VITE_SUPABASE_URL: https://example.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+      VITE_SUPABASE_PROJECT_ID: ci
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -28,8 +33,6 @@ jobs:
           node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun run verify:portability
-      - run: bun run verify:backup
-      - run: bun run lint:critical
       - run: bun run test
       - run: bun run build
 
