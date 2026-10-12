@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { gerarPdfRelatorio, linhasDoRelatorio } from "../src/lib/relatorio-pdf.ts";
 import type { Json } from "../src/integrations/supabase/types.ts";
 
