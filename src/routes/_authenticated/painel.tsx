@@ -32,6 +32,7 @@ import { useAuth, type SetorCodigo, type TurnoCodigo } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
 import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-card";
 import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
+import { EVENTO_ENVIADOS } from "@/lib/fila-offline";
 import { setorComConsumoSemi } from "@/lib/liquidos";
 
 const LazyApontamentoRapido = lazy(() =>
@@ -169,6 +170,13 @@ function Painel() {
     invalidarCache("painel:");
     await carregarPainel(true);
   }, [carregarPainel]);
+
+  // Apontamentos feitos sem internet que acabaram de ser enviados entram no painel.
+  useEffect(() => {
+    const aoEnviar = () => void recarregarAposMudanca();
+    window.addEventListener(EVENTO_ENVIADOS, aoEnviar);
+    return () => window.removeEventListener(EVENTO_ENVIADOS, aoEnviar);
+  }, [recarregarAposMudanca]);
 
   function aplicarPayload(payload: PainelPayload) {
     const r = payload.resumo ?? {};

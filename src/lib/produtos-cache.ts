@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { ordenarProdutosPorMarca } from "@/lib/catalogo-produtos";
+import { ehErroDeRede } from "@/lib/fila-offline";
 import type { ParametrosLiquido } from "@/lib/liquidos";
 
 export type ProdutoCatalogo = ParametrosLiquido & {
@@ -20,6 +21,26 @@ type CacheItem = {
 const CACHE_MS = 15 * 60_000;
 const cacheProdutos = new Map<string, CacheItem>();
 const requisicoes = new Map<string, Promise<ProdutoCatalogo[]>>();
+
+const CHAVE_COPIA = "dryko:produtos-ativos:v1:";
+
+function guardarCopiaLocal(setor: string, produtos: ProdutoCatalogo[]) {
+  try {
+    window.localStorage.setItem(`${CHAVE_COPIA}${setor}`, JSON.stringify(produtos));
+  } catch {
+    // Sem armazenamento disponível: segue só com o cache em memória.
+  }
+}
+
+function lerCopiaLocal(setor: string): ProdutoCatalogo[] | null {
+  try {
+    const bruto = window.localStorage.getItem(`${CHAVE_COPIA}${setor}`);
+    const lista: unknown = bruto ? JSON.parse(bruto) : null;
+    return Array.isArray(lista) ? (lista as ProdutoCatalogo[]) : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function obterProdutosAtivos(setor: string) {
   const cache = cacheProdutos.get(setor);
@@ -50,7 +71,16 @@ export async function obterProdutosAtivos(setor: string) {
         resultadoMarcas.data ?? [],
       );
       cacheProdutos.set(setor, { expiresAt: Date.now() + CACHE_MS, produtos });
+      guardarCopiaLocal(setor, produtos);
       return produtos;
+    })
+    .catch((erro: unknown) => {
+      // Sem conexão: usa a última lista recebida neste aparelho. O banco valida o
+      // produto (ativo e do setor) quando o apontamento for enviado.
+      const copia = lerCopiaLocal(setor);
+      if (copia && (ehErroDeRede(erro) || (typeof navigator !== "undefined" && !navigator.onLine)))
+        return copia;
+      throw erro;
     })
     .finally(() => {
       requisicoes.delete(setor);

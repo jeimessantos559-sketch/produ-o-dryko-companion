@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
+import { useFilaSemInternet } from "@/components/dryko/fila-sem-internet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -216,6 +217,10 @@ function PassagemTurno() {
     [apontamentos],
   );
 
+  const { itens: filaAparelho } = useFilaSemInternet();
+  const naoEnviados = filaAparelho.filter(
+    (item) => item.setor === profile?.setor_atual && item.turno === profile?.turno_atual,
+  ).length;
   const setorLiquidos = setorComConsumoSemi(profile?.setor_atual);
   const setorFitas = profile?.setor_atual === "fitas";
   const setorMantas = profile?.setor_atual === "mantas";
@@ -288,6 +293,13 @@ function PassagemTurno() {
       toast.error("Registre ao menos um apontamento antes de encerrar e gerar o relatório.");
       return;
     }
+    if (
+      naoEnviados > 0 &&
+      !window.confirm(
+        `Este aparelho tem ${naoEnviados} apontamento(s) feito(s) sem internet ainda não enviado(s). Se o turno for fechado agora, eles serão recusados e ficarão fora do relatório. Deseja fechar mesmo assim?`,
+      )
+    )
+      return;
 
     setProcessando(true);
     const { data: relatorioId, error } = await supabase.rpc("fechar_turno", {
@@ -451,6 +463,14 @@ function PassagemTurno() {
                 </>
               )}
             </div>
+
+            {naoEnviados > 0 && !fechado && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                Este aparelho tem {naoEnviados} apontamento(s) feito(s) sem internet que ainda não
+                chegaram ao servidor. Aguarde o envio (botão “aguardando envio”, no canto da tela)
+                antes de encerrar o turno.
+              </div>
+            )}
 
             {totais.pendentes > 0 && !fechado && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">

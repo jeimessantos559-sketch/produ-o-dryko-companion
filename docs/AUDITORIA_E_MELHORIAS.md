@@ -11,7 +11,7 @@
 - recuperação de envio de relatório que tenha ficado travado no estado `enviando`;
 - painel administrativo de indicadores por setor, sem misturar unidades produtivas.
 
-Para ativar o backup, cadastre os segredos `SUPABASE_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `BACKUP_ENCRYPTION_KEY` no GitHub e defina a variável `BACKUP_ENABLED=true`. A fila offline de apontamentos permanece desativada até serem formalizadas as regras de conflito com fechamento de turno, horário e produto desativado.
+Para ativar o backup, cadastre os segredos `SUPABASE_DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `BACKUP_ENCRYPTION_KEY` no GitHub e defina a variável `BACKUP_ENABLED=true`. A fila offline de apontamentos foi implantada em 12/10/2026 com as regras de conflito descritas em docs/PROMPT_MESTRE_APONTA_PRODUCAO.md (seção "Apontamento sem internet").
 
 ## Resultado da auditoria do repositório
 

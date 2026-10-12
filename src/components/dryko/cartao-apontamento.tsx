@@ -1,4 +1,4 @@
-import { Check, PackageCheck, Pencil } from "lucide-react";
+import { Check, CloudOff, PackageCheck, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gruposFechados, pltsFechados, type ApontamentoTurno } from "@/lib/apontamentos-turno";
 import { horaProducao } from "@/lib/producao";
@@ -48,6 +48,14 @@ export function CartaoApontamento({ item, sequencia, onCorrigir }: Props) {
             APT-{String(sequencia?.registro ?? "").padStart(3, "0")}
           </p>
           <p className="mt-1 text-xs text-slate-500">{horaProducao(item.data_hora_producao)}</p>
+          {item.registrado_offline_em && (
+            <p
+              className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+              title={`Salvo no aparelho sem internet e enviado às ${horario(item.created_at)}`}
+            >
+              <CloudOff className="size-3" /> Feito sem internet
+            </p>
+          )}
         </div>
         <span
           className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${item.status === "lancado" ? "bg-emerald-100 text-emerald-800" : "bg-amber-50 text-amber-800"}`}

@@ -39,7 +39,7 @@ export function StatusRedeAtualizacao() {
     if (!("serviceWorker" in navigator)) return;
     let intervalo: ReturnType<typeof setInterval> | undefined;
     void navigator.serviceWorker
-      .register("/sw.js?v=7")
+      .register("/sw.js?v=8")
       .then((reg) => {
         const observar = (sw: ServiceWorker | null) => {
           if (!sw) return;
@@ -70,7 +70,7 @@ export function StatusRedeAtualizacao() {
           className="fixed left-1/2 top-2 z-[110] flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground shadow-md"
         >
           <WifiOff className={`size-3.5 ${online ? "text-amber-500" : "text-destructive"}`} />
-          {online ? "Rede instável" : "Sem internet — nada será salvo"}
+          {online ? "Rede instável" : "Sem internet — apontamentos ficam guardados no aparelho"}
         </div>
       )}
       {espera && (

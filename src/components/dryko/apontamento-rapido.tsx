@@ -1,7 +1,6 @@
 import { Calculator, PackageCheck, Target } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { bloquearSeOffline } from "@/lib/rede";
 
 import { HoraProducaoField } from "@/components/dryko/hora-producao-field";
 import { CamposLiquidos } from "@/components/dryko/campos-liquidos";
@@ -23,9 +22,13 @@ import { produtoUnicoDaReferencia } from "@/lib/apontamentos-turno";
 import { calcularLiquidos, quantidadeLiquidoInicial, setorComConsumoSemi } from "@/lib/liquidos";
 import { invalidarCache } from "@/lib/cache-consultas";
 import {
-  preencherLoteProgramacaoMantas,
-  preencherReferenciaProgramacao,
-} from "@/lib/programacao-lote";
+  adicionarNaFila,
+  classificarErroEnvio,
+  ehErroDeRede,
+  novoIdApontamento,
+  type ApontamentoNaFila,
+} from "@/lib/fila-offline";
+import { preencherReferenciaProgramacao } from "@/lib/programacao-lote";
 import {
   HORARIOS_TURNO,
   areaFitas,
@@ -482,129 +485,177 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     }
   }
 
-  async function salvar() {
-    if (!valido || !user || !turno || !produto || salvando) return;
-    if (bloquearSeOffline()) return;
-    if (!confirmarMetaOp()) return;
-    setSalvando(true);
+  type Montagem = {
+    insercao: Record<string, unknown>;
+    programacao: ApontamentoNaFila["programacao"];
+    descricao: string;
+    sucesso: string;
+  };
 
-    try {
-      if (setor === "corte") {
-        const { data: salvoCorte, error } = await supabase
-          .from("apontamentos")
-          .insert({
-            usuario_id: user.id,
-            setor: "corte",
-            turno,
-            data_hora_producao: dataHoraProducao,
-            op: op.trim(),
-            produto_id: produto.id,
-            produto_nome: produto.nome,
-            quantidade_plts: quantidadePlts,
-            rolos_por_plt: rolosPorPlt,
-            total_rolos: totalRolosCorte,
-            largura: produto.largura,
-            grupos: [
-              {
-                quantidadePlts,
-                rolosPorPlt,
-                pltPicadoRolos: pltPicado === "" ? null : pltPicado,
-                picadoAdicional: true,
-              },
-            ],
-          })
-          .select("data_local")
-          .single();
-        if (error) throw error;
-        void preencherReferenciaProgramacao({
+  /** Mesmos campos de antes para cada setor; o banco recalcula e valida tudo. */
+  function montarInsercao(): Montagem | null {
+    if (!user || !turno || !produto || !setor) return null;
+    const base = {
+      usuario_id: user.id,
+      turno,
+      data_hora_producao: dataHoraProducao,
+      produto_id: produto.id,
+      produto_nome: produto.nome,
+    };
+    if (setor === "corte") {
+      return {
+        insercao: {
+          ...base,
           setor: "corte",
-          dataLocal:
-            (salvoCorte as { data_local?: string } | null)?.data_local ?? dataOperacional(turno),
-          produtoId: produto.id,
-          referencia: op,
-        });
-        await salvarMetaOp();
-        toast.success(
+          op: op.trim(),
+          quantidade_plts: quantidadePlts,
+          rolos_por_plt: rolosPorPlt,
+          total_rolos: totalRolosCorte,
+          largura: produto.largura,
+          grupos: [
+            {
+              quantidadePlts,
+              rolosPorPlt,
+              pltPicadoRolos: pltPicado === "" ? null : pltPicado,
+              picadoAdicional: true,
+            },
+          ],
+        },
+        programacao: { setor: "corte", produtoId: produto.id, referencia: op.trim() },
+        descricao: `OP ${op.trim()} · ${produto.nome} · ${quantidadePlts} PLT${quantidadePlts === 1 ? "" : "s"}${pltPicado === "" ? "" : ` + ${pltPicado} rolos`}`,
+        sucesso:
           quantidadePlts === 0
             ? "PLT picado registrado sem contabilizar pallet fechado."
             : "Apontamento de Corte salvo.",
-        );
-      } else if (setorComConsumoSemi(setor)) {
-        const { error } = await supabase.from("apontamentos").insert({
-          usuario_id: user.id,
+      };
+    }
+    if (setorComConsumoSemi(setor)) {
+      return {
+        insercao: {
+          ...base,
           setor,
-          turno,
-          data_hora_producao: dataHoraProducao,
           op: op.trim(),
-          produto_id: produto.id,
-          produto_nome: produto.nome,
           quantidade_plts: liquidoCalculado.plts,
           picado_unidades: liquidoCalculado.picado,
           total_unidades: liquidoCalculado.unidades,
-        });
-        if (error) throw error;
-        await salvarMetaOp();
-        toast.success(`Apontamento de ${nomeSetorRapido(setor)} salvo.`);
-      } else if (setor === "fitas") {
-        const { data: salvoFitas, error } = await supabase
-          .from("apontamentos")
-          .insert({
-            usuario_id: user.id,
-            setor: "fitas",
-            turno,
-            data_hora_producao: dataHoraProducao,
-            op: op.trim(),
-            produto_id: produto.id,
-            produto_nome: produto.nome,
-            tempo,
-            velocidade,
-            largura,
-            area_m2: areaFitasCalculada,
-          })
-          .select("data_local")
-          .single();
-        if (error) throw error;
-        void preencherReferenciaProgramacao({
+        },
+        programacao: null,
+        descricao: `OP ${op.trim()} · ${produto.nome} · ${liquidoCalculado.unidades.toLocaleString("pt-BR")} unidades`,
+        sucesso: `Apontamento de ${nomeSetorRapido(setor)} salvo.`,
+      };
+    }
+    if (setor === "fitas") {
+      return {
+        insercao: {
+          ...base,
           setor: "fitas",
-          dataLocal:
-            (salvoFitas as { data_local?: string } | null)?.data_local ?? dataOperacional(turno),
-          produtoId: produto.id,
-          referencia: op,
-        });
-        toast.success("Apontamento de Fitas salvo.");
-      } else if (setor === "mantas") {
-        const { data: salvoManta, error } = await supabase
-          .from("apontamentos")
-          .insert({
-            usuario_id: user.id,
-            setor: "mantas",
-            turno,
-            data_hora_producao: dataHoraProducao,
-            op: null,
-            lote: lote.trim(),
-            produto_id: produto.id,
-            produto_nome: produto.nome,
-            quantidade_plts: quantidadePlts,
-            rolos_por_plt: produto.rolos_por_plt,
-            total_rolos: totalRolosManta,
-            metragem: metragemManta,
-          })
-          .select("data_local")
-          .single();
-        if (error) throw error;
-        toast.success("Apontamento de Mantas salvo.");
-        void preencherLoteProgramacaoMantas({
-          dataLocal:
-            (salvoManta as { data_local?: string } | null)?.data_local ?? dataOperacional(turno),
-          produtoId: produto.id,
-          lote,
+          op: op.trim(),
+          tempo,
+          velocidade,
+          largura,
+          area_m2: areaFitasCalculada,
+        },
+        programacao: { setor: "fitas", produtoId: produto.id, referencia: op.trim() },
+        descricao: `OP ${op.trim()} · ${produto.nome} · ${areaFitasCalculada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`,
+        sucesso: "Apontamento de Fitas salvo.",
+      };
+    }
+    if (setor === "mantas") {
+      return {
+        insercao: {
+          ...base,
+          setor: "mantas",
+          op: null,
+          lote: lote.trim(),
+          quantidade_plts: quantidadePlts,
+          rolos_por_plt: produto.rolos_por_plt,
+          total_rolos: totalRolosManta,
+          metragem: metragemManta,
+        },
+        programacao: { setor: "mantas", produtoId: produto.id, referencia: lote.trim() },
+        descricao: `Lote ${lote.trim()} · ${produto.nome} · ${metragemManta.toLocaleString("pt-BR")} m`,
+        sucesso: "Apontamento de Mantas salvo.",
+      };
+    }
+    return null;
+  }
+
+  /** Sem conexão: guarda no aparelho para envio automático quando a internet voltar. */
+  function guardarSemInternet(item: ApontamentoNaFila) {
+    if (!adicionarNaFila(item)) {
+      toast.error(
+        "Sem internet e o aparelho não conseguiu guardar o apontamento. Ele NÃO foi salvo.",
+      );
+      return;
+    }
+    toast.success(
+      "Sem internet: apontamento guardado no aparelho. Ele será enviado automaticamente quando a conexão voltar.",
+      { duration: 7000 },
+    );
+    if (metaNova > 0 && !meta && programadoDia == null) {
+      toast.warning("A meta da OP não foi cadastrada porque está sem internet.");
+    }
+    onOpenChange(false);
+  }
+
+  async function salvar() {
+    if (!valido || !user || !turno || !produto || !setor || salvando) return;
+    if (!confirmarMetaOp()) return;
+    const montagem = montarInsercao();
+    if (!montagem) return;
+
+    // O mesmo id vale para o envio agora e para qualquer reenvio: nunca duplica.
+    const item: ApontamentoNaFila = {
+      id: novoIdApontamento(),
+      usuarioId: user.id,
+      setor: setor as ApontamentoNaFila["setor"],
+      turno,
+      registradoEm: new Date().toISOString(),
+      insercao: montagem.insercao,
+      programacao: montagem.programacao,
+      descricao: montagem.descricao,
+      situacao: "aguardando",
+      erro: null,
+      tentativas: 0,
+    };
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      guardarSemInternet(item);
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      const { data, error } = await supabase
+        .from("apontamentos")
+        .insert({ ...montagem.insercao, id: item.id } as never)
+        .select("data_local")
+        .single();
+      if (error) {
+        const tipo = classificarErroEnvio(error, navigator.onLine);
+        if (tipo === "sem-rede") {
+          guardarSemInternet(item);
+          return;
+        }
+        throw error;
+      }
+      if (montagem.programacao) {
+        void preencherReferenciaProgramacao({
+          ...montagem.programacao,
+          dataLocal: (data as { data_local?: string } | null)?.data_local ?? dataOperacional(turno),
         });
       }
+      await salvarMetaOp();
+      toast.success(montagem.sucesso);
 
       invalidarCache("painel:");
       onOpenChange(false);
       await onSaved?.();
     } catch (erro) {
+      if (ehErroDeRede(erro)) {
+        guardarSemInternet(item);
+        return;
+      }
       toast.error(mensagemErroApontamento(extrairMensagemErro(erro), turno));
     } finally {
       setSalvando(false);

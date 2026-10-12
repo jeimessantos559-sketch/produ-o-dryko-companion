@@ -457,6 +457,21 @@ Buckets:
 - Escritas críticas devem ser idempotentes ou protegidas contra duplo toque.
 - Toda consulta assíncrona deve apresentar estado de carregamento e erro útil.
 
+### Apontamento sem internet
+
+O apontamento rápido funciona sem conexão (src/lib/fila-offline.ts e src/lib/sincronizar-apontamentos.ts):
+
+- sem internet, o apontamento fica guardado no aparelho, com um id gerado no próprio aparelho e a hora em que foi salvo;
+- o envio é automático quando a conexão volta (também ao abrir o app, ao voltar para a tela e a cada minuto) e pode ser feito pelo botão "aguardando envio";
+- reenviar não duplica: o banco recusa o mesmo id e o item é tratado como já salvo;
+- o banco usa a hora salva no aparelho (coluna `registrado_offline_em`, migração 0029) só se ela não estiver no futuro, o envio ocorrer em até 12 horas, o horário pertencer ao turno e o turno não estiver fechado; o envio normal continua usando a hora do servidor;
+- qualquer recusa vira conflito, com a explicação; o item fica no aparelho até o facilitador tentar de novo ou descartar com confirmação;
+- a fila é separada por usuário; a lista de produtos usada sem conexão é a última recebida no aparelho, e o banco valida o produto no envio;
+- o registro aparece como "Feito sem internet" no painel e no PDF;
+- o fechamento do turno avisa e pede confirmação se o aparelho ainda tiver apontamentos do turno não enviados;
+- correção, fechamento, lançamento no Protheus e demais ações continuam exigindo internet;
+- o app abre sem internet somente se já tiver sido aberto antes naquele aparelho.
+
 ## 25. Critérios mínimos de aceite
 
 Antes de considerar uma nova implantação pronta:
@@ -478,6 +493,7 @@ Antes de considerar uma nova implantação pronta:
 15. RLS impede acesso indevido a outro setor;
 16. avatar privado e biometria funcionam no domínio final;
 17. PWA instala com nome, ícone e tema corretos;
+17a. apontamento sem internet é guardado, enviado uma única vez ao voltar a conexão e marcado como "Feito sem internet";
 18. `bun install --frozen-lockfile`, `bun run build` e `bun run verify:portability` concluem sem erro.
 
 ## 26. Limites atuais e decisões que não devem ser inventadas

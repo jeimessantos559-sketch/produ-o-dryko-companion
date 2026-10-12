@@ -341,7 +341,18 @@ function celulasDetalhamento(
     [{ texto: producao }],
     [
       { texto: responsaveis.apontador, negrito: true },
-      { texto: formatarDataHora(responsaveis.apontadoEm ?? ""), tamanho: 7, cor: "0.45 0.47 0.52" },
+      {
+        texto: formatarDataHora(
+          texto(apontamento["registrado_offline_em"]) !== "-"
+            ? texto(apontamento["registrado_offline_em"])
+            : (responsaveis.apontadoEm ?? ""),
+        ),
+        tamanho: 7,
+        cor: "0.45 0.47 0.52",
+      },
+      ...(apontamento["registrado_offline_em"]
+        ? [{ texto: "Feito sem internet", tamanho: 7, cor: "0.70 0.40 0.05" }]
+        : []),
     ],
     [
       {

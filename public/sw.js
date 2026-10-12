@@ -1,4 +1,5 @@
-const CACHE = "dryko-pwa-v9";
+const CACHE = "dryko-pwa-v10";
+const PAGINAS = "dryko-paginas-v1";
 const ASSETS = [
   "/manifest.webmanifest?v=5",
   "/ap-pwa-192-v5.png",
@@ -21,7 +22,11 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(
+          keys.filter((key) => key !== CACHE && key !== PAGINAS).map((key) => caches.delete(key)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -32,6 +37,31 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  // Páginas: sempre busca na rede primeiro (nunca mostra versão antiga com internet).
+  // Sem conexão, abre a última cópia da mesma página, ou do Painel, para o
+  // facilitador conseguir registrar apontamentos que ficam guardados no aparelho.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.ok && response.type === "basic" && !response.redirected) {
+            const clone = response.clone();
+            caches.open(PAGINAS).then((cache) => cache.put(url.pathname, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches
+            .open(PAGINAS)
+            .then((cache) =>
+              cache.match(url.pathname).then((pagina) => pagina || cache.match("/painel")),
+            )
+            .then((pagina) => pagina || Response.error()),
+        ),
+    );
+    return;
+  }
 
   // O navegador já mantém os bundles com hash em cache. Não guardar JavaScript
   // no service worker evita carregar uma versão antiga após uma atualização.

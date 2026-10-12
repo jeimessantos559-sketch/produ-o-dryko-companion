@@ -78,6 +78,7 @@ export type Database = {
           picado_unidades: number | null
           produto_id: string
           produto_nome: string
+          registrado_offline_em: string | null
           quantidade_plts: number | null
           rolos_por_plt: number | null
           semi_consumido_kg: number | null
@@ -114,6 +115,7 @@ export type Database = {
           picado_unidades?: number | null
           produto_id: string
           produto_nome: string
+          registrado_offline_em?: string | null
           quantidade_plts?: number | null
           rolos_por_plt?: number | null
           semi_consumido_kg?: number | null
@@ -150,6 +152,7 @@ export type Database = {
           picado_unidades?: number | null
           produto_id?: string
           produto_nome?: string
+          registrado_offline_em?: string | null
           quantidade_plts?: number | null
           rolos_por_plt?: number | null
           semi_consumido_kg?: number | null

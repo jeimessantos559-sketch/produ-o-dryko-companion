@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
+import { FilaSemInternet } from "@/components/dryko/fila-sem-internet";
 import { PwaInstallPrompt } from "@/components/dryko/pwa-install-prompt";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth";
@@ -182,6 +183,7 @@ function RootComponent() {
         <Outlet />
         <PwaInstallPrompt />
         <StatusRedeAtualizacao />
+        <FilaSemInternet />
         <Toaster position="top-center" richColors />
       </AuthProvider>
     </QueryClientProvider>
