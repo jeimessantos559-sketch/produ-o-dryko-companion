@@ -116,6 +116,17 @@ Na Vercel, selecionar o ambiente de cada variável e fazer uma nova implantaçã
 
 As migrações devem ser executadas em ordem lexical, de `0000` até a última. Cada arquivo precisa concluir antes do próximo.
 
+Quatro números aparecem em dois arquivos cada, por razões históricas: `0004`, `0019`, `0020` e `0021`. Esses arquivos já estão aplicados em produção com esses nomes e **não devem ser renomeados**. Dentro de cada par, vale a ordem alfabética do nome completo, que é a ordem do comando abaixo:
+
+| Número | Primeiro | Segundo |
+| --- | --- | --- |
+| 0004 | `0004_configuracoes_permissoes_biometria.sql` | `0004_login_usuario_relatorios.sql` |
+| 0019 | `0019_configuracoes_avatar_webauthn.sql` | `0019_limite_tentativas_auth.sql` |
+| 0020 | `0020_atualizar_meu_perfil_rpc.sql` | `0020_corrige_perfil_editavel.sql` |
+| 0021 | `0021_horarios_ocorrencias.sql` | `0021_seguranca_autenticacao.sql` |
+
+Toda migração nova usa o próximo número livre. O `bun run verify:portability`, executado no CI, falha se surgir outro número repetido, um nome fora do padrão `NNNN_descricao.sql` ou uma lacuna na sequência.
+
 Exemplo com uma conexão PostgreSQL administrativa, em ambiente controlado:
 
 ```bash

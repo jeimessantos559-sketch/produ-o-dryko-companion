@@ -33,6 +33,38 @@ for (const arquivo of arquivos("src")) {
   if (/SERVICE_ROLE_KEY/.test(texto) && !servidor) erros.push(`${arquivo}: referência à chave de serviço fora do servidor`);
 }
 
+// Migrações: numeração sequencial, sem lacunas e sem novos números repetidos.
+// Os quatro pares abaixo já estão aplicados em produção com estes nomes; não renomeie.
+// A ordem de execução é a ordem alfabética do nome do arquivo (ver docs/GUIA_MIGRACAO_E_BACKUP.md).
+const paresHistoricos = {
+  "0004": ["0004_configuracoes_permissoes_biometria.sql", "0004_login_usuario_relatorios.sql"],
+  "0019": ["0019_configuracoes_avatar_webauthn.sql", "0019_limite_tentativas_auth.sql"],
+  "0020": ["0020_atualizar_meu_perfil_rpc.sql", "0020_corrige_perfil_editavel.sql"],
+  "0021": ["0021_horarios_ocorrencias.sql", "0021_seguranca_autenticacao.sql"],
+};
+const migracoes = readdirSync("drizzle/migrations").filter((n) => n.endsWith(".sql")).sort();
+const porNumero = new Map();
+for (const nome of migracoes) {
+  if (!/^\d{4}_[a-z0-9_]+\.sql$/.test(nome)) {
+    erros.push(`Migração com nome fora do padrão NNNN_descricao.sql: ${nome}`);
+    continue;
+  }
+  const numero = nome.slice(0, 4);
+  porNumero.set(numero, [...(porNumero.get(numero) ?? []), nome]);
+}
+for (const [numero, nomes] of porNumero) {
+  if (nomes.length < 2) continue;
+  const permitido = paresHistoricos[numero];
+  if (!permitido || nomes.join() !== permitido.join()) {
+    erros.push(`Número de migração repetido ${numero}: ${nomes.join(", ")}. Use o próximo número livre.`);
+  }
+}
+const maior = Math.max(-1, ...[...porNumero.keys()].map(Number));
+for (let indice = 0; indice <= maior; indice += 1) {
+  const numero = String(indice).padStart(4, "0");
+  if (!porNumero.has(numero)) erros.push(`Migração ${numero} ausente na sequência.`);
+}
+
 if (erros.length) {
   console.error("verify:portability falhou:\n- " + erros.join("\n- "));
   process.exit(1);
