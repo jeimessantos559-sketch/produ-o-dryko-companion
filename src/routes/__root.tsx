@@ -77,6 +77,8 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
   );
 }
 
+const OG_IMAGE_URL = "https://apontaproducaodryko.vercel.app/og-aponta-producao.png";
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -99,8 +101,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content: "Apontamento de produção DRYKO por setor e turno.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:site_name", content: "Aponta Produção — DRYKO" },
+      { property: "og:locale", content: "pt_BR" },
+      // Pré-visualização de links (WhatsApp, Teams, e-mail): exige URL absoluta.
+      // Se o domínio público mudar, atualize OG_IMAGE_URL.
+      { property: "og:image", content: OG_IMAGE_URL },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      { property: "og:image:alt", content: "Aponta Produção DRYKO — controle de produção" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:image", content: OG_IMAGE_URL },
     ],
     links: [
       {
