@@ -381,6 +381,8 @@ O PDF continua disponível manualmente no Histórico de Relatórios para abrir, 
 
 Somente administrador pode reabrir um turno. A reabertura deve ser auditável e permitir que o fluxo operacional volte a receber correções/apontamentos conforme as regras do banco.
 
+Se o serviço de e-mail confirmar que nada foi enviado por estar ocupado ou por falha antes do envio, o próprio envio tenta de novo até 2 vezes. Resposta incerta nunca é repetida automaticamente; o reenvio manual continua disponível no histórico de relatórios.
+
 O e-mail remetente operacional é `apontaproducao@gmail.com`. Destinatários são administrados no aplicativo e limitados pelo banco. Nunca gravar tokens ou credenciais no código.
 
 ## 20. Administração

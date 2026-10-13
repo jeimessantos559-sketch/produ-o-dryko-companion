@@ -113,6 +113,16 @@ describe("envio de e-mail no servidor", () => {
     appsScript(); fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: false, error: "credencial-privada-do-provedor" })));
     await expect(enviarEmail(mensagem)).rejects.toThrow("O Apps Script não confirmou o envio [200].");
   });
+  it("informa quando o Apps Script garante que nada foi enviado", async () => {
+    appsScript(); fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: false, error: "BUSY" })));
+    await expect(enviarEmail(mensagem)).rejects.toMatchObject({ codigo: "BUSY", naoEnviado: true });
+  });
+  it("trata como incerto o retorno sem código conhecido ou sem resposta", async () => {
+    appsScript(); fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: false, error: "outro" })));
+    await expect(enviarEmail(mensagem)).rejects.toMatchObject({ codigo: "SEM_CONFIRMACAO", naoEnviado: false });
+    fetchMock.mockReset().mockRejectedValue(new Error("falha de rede"));
+    await expect(enviarEmail(mensagem)).rejects.toMatchObject({ codigo: "SEM_CONFIRMACAO", naoEnviado: false });
+  });
   it("verifica a integração sem destinatários nem mensagem", async () => {
     appsScript();
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true, dryRun: true, sender: "apontaproducao@gmail.com", capabilities: ["pdf", "password-recovery"], remainingDailyRecipients: 100 })));

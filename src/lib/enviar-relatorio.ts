@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { gerarPdfRelatorio } from "@/lib/relatorio-pdf";
+import { enviarComNovasTentativas } from "@/lib/reenvio-email";
 
 const entrada = z.object({
   relatorioId: z.string().uuid(),
@@ -116,7 +117,10 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
       ].join("\n");
 
       const { enviarEmail } = await import("./email.server");
-      await enviarEmail({ reportId: relatorio.id, to: destinatarios, subject, body, pdf, fileName });
+      // Repete sozinho só quando o serviço garantiu que nada saiu (ocupado ou falha antes do envio).
+      await enviarComNovasTentativas(() =>
+        enviarEmail({ reportId: relatorio.id, to: destinatarios, subject, body, pdf, fileName }),
+      );
 
       await context.supabase
         .from("relatorios")

@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import { z } from "zod";
 
+import { ErroEnvioEmail } from "@/lib/reenvio-email";
+
 export type MensagemEmail = {
   to: string[];
   subject: string;
@@ -12,6 +14,16 @@ export type MensagemEmail = {
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const PRAZO_ENVIO_MS = 45_000;
+/** Códigos que o Apps Script (integrations/apps-script/email.gs) só devolve quando NÃO enviou. */
+const CODIGOS_APPS_SCRIPT = new Set([
+  "UNAUTHORIZED",
+  "NOT_CONFIGURED",
+  "WRONG_SENDER",
+  "INVALID_REQUEST",
+  "QUOTA_EXCEEDED",
+  "BUSY",
+  "SEND_FAILED",
+]);
 
 export function lerVariavelEmail(nome: string): string | undefined {
   const valor = process.env[nome];
@@ -76,7 +88,11 @@ async function requisicao(url: string, init: RequestInit) {
     return await fetch(url, { ...init, signal: AbortSignal.timeout(PRAZO_ENVIO_MS) });
   } catch {
     // Sem repetição/fallback após iniciar o envio: uma falha de rede pode ocorrer após o provedor aceitar a mensagem.
-    throw new Error("Não foi possível confirmar o envio. Verifique a conexão antes de tentar novamente.");
+    throw new ErroEnvioEmail(
+      "Não foi possível confirmar o envio. Verifique se o e-mail chegou antes de tentar novamente.",
+      "SEM_CONFIRMACAO",
+      false,
+    );
   }
 }
 
@@ -87,9 +103,11 @@ async function enviarViaGmail(mensagem: MensagemEmail, lovableKey: string, gmail
     body: JSON.stringify({ raw: Buffer.from(mensagemMime(mensagem)).toString("base64url") }),
   });
   if (resposta.status === 401 || resposta.status === 403)
-    throw new Error(`O Gmail recusou o envio (autorização). Reconecte a conta Gmail. [${resposta.status}]`);
-  if (resposta.status === 429) throw new Error("Limite de envios do Gmail atingido. Tente novamente em alguns minutos.");
-  if (!resposta.ok) throw new Error(`O Gmail não conseguiu enviar o e-mail [${resposta.status}].`);
+    throw new ErroEnvioEmail(`O Gmail recusou o envio (autorização). Reconecte a conta Gmail. [${resposta.status}]`, "UNAUTHORIZED", true);
+  if (resposta.status === 429)
+    throw new ErroEnvioEmail("Limite de envios do Gmail atingido. Tente novamente em alguns minutos.", "QUOTA_EXCEEDED", true);
+  if (!resposta.ok)
+    throw new ErroEnvioEmail(`O Gmail não conseguiu enviar o e-mail [${resposta.status}].`, "SEM_CONFIRMACAO", false);
 }
 
 async function requisicaoAppsScript(payload: Record<string, unknown>) {
@@ -110,7 +128,15 @@ async function requisicaoAppsScript(payload: Record<string, unknown>) {
       QUOTA_EXCEEDED: "Limite diário de destinatários do Gmail atingido. Tente novamente após a renovação da cota.",
       BUSY: "O serviço de e-mail está ocupado. Aguarde alguns segundos.",
     };
-    throw new Error(erros[String(retorno["error"])] ?? `O Apps Script não confirmou o envio [${resposta.status}].`);
+    // Com código no retorno, o próprio Apps Script garante que não enviou (ele responde
+    // ok:true se o Gmail já tiver aceitado). Sem código, o resultado é incerto.
+    const recebido = typeof retorno["error"] === "string" ? retorno["error"] : "";
+    const codigo = CODIGOS_APPS_SCRIPT.has(recebido) ? recebido : "";
+    throw new ErroEnvioEmail(
+      erros[codigo] ?? `O Apps Script não confirmou o envio [${resposta.status}].`,
+      codigo || "SEM_CONFIRMACAO",
+      Boolean(codigo),
+    );
   }
   return retorno;
 }

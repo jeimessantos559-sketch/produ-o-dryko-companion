@@ -29,7 +29,7 @@ Configurar somente no ambiente Production do projeto `aponta_producao_dryko`:
 
 As chaves não podem ter prefixo `VITE_` nem entrar no Git. Fazer nova implantação após salvar as variáveis. A lista de redirecionamentos do Supabase já deve incluir `https://apontaproducaodryko.vercel.app/redefinir-senha`.
 
-Quando `LOVABLE_API_KEY` e `GOOGLE_MAIL_API_KEY` (ou `_1`) estão presentes, o backend preserva o conector Gmail existente. Na Vercel, usar somente as duas variáveis do Apps Script para e-mail. Falha após iniciar o envio não troca automaticamente de provedor nem repete a mensagem.
+Quando `LOVABLE_API_KEY` e `GOOGLE_MAIL_API_KEY` (ou `_1`) estão presentes, o backend preserva o conector Gmail existente. Na Vercel, usar somente as duas variáveis do Apps Script para e-mail. Falha após iniciar o envio não troca automaticamente de provedor nem repete a mensagem. A única repetição automática (até 2 vezes, após 2 s e 5 s) acontece quando o Apps Script responde `BUSY` ou `SEND_FAILED`, códigos que ele só devolve quando garantiu que nada foi enviado (src/lib/reenvio-email.ts). Resposta incerta, cota esgotada e erro de configuração não são repetidos.
 
 ## Verificação
 
