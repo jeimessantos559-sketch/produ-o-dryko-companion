@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+const APP_URL_PADRAO = "https://apontaproducaodryko.vercel.app";
+
 const entrada = z.object({ email: z.string().trim().email().max(200) });
 
 async function enviarEmailRecuperacao(destinatario: string, link: string) {
@@ -47,7 +49,8 @@ export const solicitarRecuperacaoSenha = createServerFn({ method: "POST" })
     const emailInterno = usuario.user?.email;
     if (!emailInterno) return respostaGenerica;
 
-    const appUrl = (process.env["APP_URL"] ?? "https://dryko-prod-tracker.lovable.app").replace(/\/$/, "");
+    // Endereço publicado na Vercel; APP_URL vazio também cai no padrão.
+    const appUrl = (process.env["APP_URL"]?.trim() || APP_URL_PADRAO).replace(/\/$/, "");
     const { data: link, error } = await supabaseAdmin.auth.admin.generateLink({
       type: "recovery",
       email: emailInterno,
