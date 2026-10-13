@@ -201,6 +201,48 @@ export type Database = {
         }
         Relationships: []
       }
+      erros_app: {
+        Row: {
+          created_at: string
+          id: string
+          mensagem: string
+          navegador: string | null
+          origem: string
+          pilha: string | null
+          rota: string | null
+          setor: string | null
+          turno: string | null
+          usuario_id: string
+          versao: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mensagem: string
+          navegador?: string | null
+          origem: string
+          pilha?: string | null
+          rota?: string | null
+          setor?: string | null
+          turno?: string | null
+          usuario_id?: string
+          versao?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mensagem?: string
+          navegador?: string | null
+          origem?: string
+          pilha?: string | null
+          rota?: string | null
+          setor?: string | null
+          turno?: string | null
+          usuario_id?: string
+          versao?: string | null
+        }
+        Relationships: []
+      }
       fechamentos_turno: {
         Row: {
           data_local: string

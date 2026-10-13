@@ -3,6 +3,7 @@ import { AlertTriangle, BarChart3, ClipboardCheck, PackagePlus, RefreshCcw, Shie
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/dryko/app-shell";
+import { ErrosAppAdmin } from "@/components/dryko/erros-app-admin";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -109,6 +110,8 @@ function Administracao() {
             <Linha label="Pendências de Mantas" valor={resumo.pendenciasMantas} />
           </div>
         </section>
+
+        <ErrosAppAdmin />
 
         <div className="grid gap-2 sm:grid-cols-2">
           <Link to="/indicadores" className="rounded-2xl border bg-card p-3.5 shadow-sm hover:border-primary/40 sm:col-span-2">
