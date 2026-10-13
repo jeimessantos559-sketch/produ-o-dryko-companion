@@ -275,7 +275,7 @@ function Painel() {
     <>
       <AppShell
         title="Painel do turno"
-        eyebrow={`${formatarData(dataAtual)} · ${setorNome.toUpperCase()} · ${turnoNome.toUpperCase()}`}
+        eyebrow={`${setorNome.toUpperCase()} · ${turnoNome.toUpperCase()} · ${formatarData(dataAtual).slice(0, 5)}`}
         notificationCount={pendenciasAnteriores.length}
         onNotifications={() => setNotificacoesAbertas(true)}
         onRepeat={() => abrirApontamento("repetir")}
