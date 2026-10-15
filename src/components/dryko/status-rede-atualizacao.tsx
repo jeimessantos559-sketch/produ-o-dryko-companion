@@ -2,7 +2,7 @@ import { RefreshCw, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { haNovaVersao, versaoDoAparelho } from "@/lib/versao-app";
+import { consultarVersaoPublicada, haNovaVersao, versaoDoAparelho } from "@/lib/versao-app";
 import { obterVersaoPublicada } from "@/lib/versao-publicada";
 
 type Conexao = {
@@ -24,7 +24,10 @@ export function StatusRedeAtualizacao() {
     const atualizar = () => {
       setOnline(navigator.onLine);
       setInstavel(
-        Boolean(conexao && (["slow-2g", "2g"].includes(conexao.effectiveType ?? "") || (conexao.rtt ?? 0) > 1500)),
+        Boolean(
+          conexao &&
+          (["slow-2g", "2g"].includes(conexao.effectiveType ?? "") || (conexao.rtt ?? 0) > 1500),
+        ),
       );
     };
     atualizar();
@@ -40,61 +43,78 @@ export function StatusRedeAtualizacao() {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
+    let encerrado = false;
     let intervalo: ReturnType<typeof setInterval> | undefined;
     void navigator.serviceWorker
-      .register("/sw.js?v=8")
+      .register("/sw.js?v=8", { updateViaCache: "none" })
       .then((reg) => {
+        if (encerrado) return;
         const observar = (sw: ServiceWorker | null) => {
           if (!sw) return;
-          sw.addEventListener("statechange", () => {
-            if (sw.state === "installed" && navigator.serviceWorker.controller) setEspera(sw);
-          });
+          const conferir = () => {
+            if (!encerrado && sw.state === "installed" && navigator.serviceWorker.controller)
+              setEspera(sw);
+          };
+          sw.addEventListener("statechange", conferir);
+          conferir();
         };
         if (reg.waiting && navigator.serviceWorker.controller) setEspera(reg.waiting);
+        observar(reg.installing);
         reg.addEventListener("updatefound", () => observar(reg.installing));
-        intervalo = setInterval(() => void reg.update().catch(() => undefined), 30 * 60_000);
+        void reg.update().catch(() => undefined);
+        intervalo = setInterval(aoVoltar, 5 * 60_000);
       })
       .catch(() => undefined);
     // Ao voltar para o app, confere se o service worker mudou.
     const aoVoltar = () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
       void navigator.serviceWorker
         .getRegistration()
         .then((reg) => reg?.update())
         .catch(() => undefined);
     };
     document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("online", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
     return () => {
+      encerrado = true;
       clearInterval(intervalo);
       document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("online", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
     };
   }, []);
 
   // Cada publicação tem um commit; se o servidor estiver em outro, há versão nova.
   // Funciona mesmo quando o arquivo do service worker não muda.
   useEffect(() => {
+    let encerrado = false;
     let consultando = false;
     const verificar = () => {
       if (consultando || document.visibilityState !== "visible" || !navigator.onLine) return;
       consultando = true;
-      void obterVersaoPublicada()
-        .then((r) => {
-          if (haNovaVersao(versaoDoAparelho(), r?.versao)) setNovaVersao(true);
+      void consultarVersaoPublicada()
+        .catch(() => obterVersaoPublicada().then((r) => r?.versao ?? null))
+        .then((versao) => {
+          if (!encerrado && haNovaVersao(versaoDoAparelho(), versao)) setNovaVersao(true);
         })
         .catch(() => undefined)
         .finally(() => {
           consultando = false;
         });
     };
-    const inicial = setTimeout(verificar, 15_000);
-    const intervalo = setInterval(verificar, 10 * 60_000);
+    const inicial = setTimeout(verificar, 3_000);
+    const intervalo = setInterval(verificar, 2 * 60_000);
     document.addEventListener("visibilitychange", verificar);
     window.addEventListener("online", verificar);
+    window.addEventListener("focus", verificar);
     return () => {
+      encerrado = true;
       clearTimeout(inicial);
       clearInterval(intervalo);
       document.removeEventListener("visibilitychange", verificar);
       window.removeEventListener("online", verificar);
+      window.removeEventListener("focus", verificar);
     };
   }, []);
 
@@ -105,7 +125,9 @@ export function StatusRedeAtualizacao() {
       return;
     }
     // Só recarrega após o usuário pedir, para não perder um formulário em andamento.
-    navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload(), { once: true });
+    navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload(), {
+      once: true,
+    });
     espera.postMessage({ tipo: "SKIP_WAITING" });
   }
 

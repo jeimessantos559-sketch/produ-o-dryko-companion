@@ -6,22 +6,29 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { execSync } from "node:child_process";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { atualizacaoPwa } from "./scripts/pwa-build";
 
 function commitAtual() {
   const sha = process.env["VERCEL_GIT_COMMIT_SHA"] || process.env["GITHUB_SHA"];
   if (sha) return sha.slice(0, 7);
   try {
-    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
   } catch {
     return "local";
   }
 }
 
+const versao = commitAtual();
+const build = new Date().toISOString();
+
 export default defineConfig({
+  plugins: [atualizacaoPwa(versao, build)],
   vite: {
     define: {
-      __APP_COMMIT__: JSON.stringify(commitAtual()),
-      __APP_BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace("T", " ")),
+      __APP_COMMIT__: JSON.stringify(versao),
+      __APP_BUILD__: JSON.stringify(build.slice(0, 16).replace("T", " ")),
     },
   },
   tanstackStart: {
@@ -30,4 +37,3 @@ export default defineConfig({
     server: { entry: "server" },
   },
 });
-
