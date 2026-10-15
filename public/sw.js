@@ -1,4 +1,4 @@
-const CACHE = "dryko-pwa-v10";
+const CACHE = "dryko-pwa-v11";
 const PAGINAS = "dryko-paginas-v1";
 const ASSETS = [
   "/manifest.webmanifest?v=5",

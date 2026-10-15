@@ -2,6 +2,8 @@ import { RefreshCw, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { haNovaVersao, versaoDoAparelho } from "@/lib/versao-app";
+import { obterVersaoPublicada } from "@/lib/versao-publicada";
 
 type Conexao = {
   effectiveType?: string;
@@ -15,6 +17,7 @@ export function StatusRedeAtualizacao() {
   const [online, setOnline] = useState(true);
   const [instavel, setInstavel] = useState(false);
   const [espera, setEspera] = useState<ServiceWorker | null>(null);
+  const [novaVersao, setNovaVersao] = useState(false);
 
   useEffect(() => {
     const conexao = (navigator as Navigator & { connection?: Conexao }).connection;
@@ -52,11 +55,55 @@ export function StatusRedeAtualizacao() {
         intervalo = setInterval(() => void reg.update().catch(() => undefined), 30 * 60_000);
       })
       .catch(() => undefined);
-    return () => clearInterval(intervalo);
+    // Ao voltar para o app, confere se o service worker mudou.
+    const aoVoltar = () => {
+      if (document.visibilityState !== "visible") return;
+      void navigator.serviceWorker
+        .getRegistration()
+        .then((reg) => reg?.update())
+        .catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
+  }, []);
+
+  // Cada publicação tem um commit; se o servidor estiver em outro, há versão nova.
+  // Funciona mesmo quando o arquivo do service worker não muda.
+  useEffect(() => {
+    let consultando = false;
+    const verificar = () => {
+      if (consultando || document.visibilityState !== "visible" || !navigator.onLine) return;
+      consultando = true;
+      void obterVersaoPublicada()
+        .then((r) => {
+          if (haNovaVersao(versaoDoAparelho(), r?.versao)) setNovaVersao(true);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          consultando = false;
+        });
+    };
+    const inicial = setTimeout(verificar, 15_000);
+    const intervalo = setInterval(verificar, 10 * 60_000);
+    document.addEventListener("visibilitychange", verificar);
+    window.addEventListener("online", verificar);
+    return () => {
+      clearTimeout(inicial);
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", verificar);
+      window.removeEventListener("online", verificar);
+    };
   }, []);
 
   function aplicarAtualizacao() {
-    if (!espera) return;
+    if (!espera) {
+      // Sem service worker novo: recarregar já busca a versão nova (páginas vêm da rede).
+      window.location.reload();
+      return;
+    }
     // Só recarrega após o usuário pedir, para não perder um formulário em andamento.
     navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload(), { once: true });
     espera.postMessage({ tipo: "SKIP_WAITING" });
@@ -73,7 +120,7 @@ export function StatusRedeAtualizacao() {
           {online ? "Rede instável" : "Sem internet — apontamentos ficam guardados no aparelho"}
         </div>
       )}
-      {espera && (
+      {(espera || novaVersao) && (
         <div className="fixed inset-x-3 bottom-4 z-[105] mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-2xl">
           <RefreshCw className="size-5 shrink-0 text-primary" />
           <p className="flex-1 text-sm text-foreground">
