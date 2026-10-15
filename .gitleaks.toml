@@ -1,0 +1,8 @@
+# Varredura de segredos: regras padrão do gitleaks + exceção para a chave
+# publicável do Supabase, que é pública por definição (vai para o navegador).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Chave publicável do Supabase (sb_publishable_...) não é segredo"
+regexes = ['''sb_publishable_[A-Za-z0-9_-]+''']
