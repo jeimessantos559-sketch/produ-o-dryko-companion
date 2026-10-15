@@ -4,6 +4,12 @@ type Item = { valor: unknown; expiraEm: number };
 const valores = new Map<string, Item>();
 const emAndamento = new Map<string, Promise<unknown>>();
 
+/** Um resultado confirmado substitui o cache e impede uma leitura anterior de sobrescrevê-lo. */
+export function gravarCache<T>(chave: string, ttlMs: number, valor: T) {
+  emAndamento.delete(chave);
+  valores.set(chave, { valor, expiraEm: Date.now() + ttlMs });
+}
+
 /** Valor salvo (mesmo vencido) para exibir imediatamente enquanto revalida. */
 export function lerCache<T>(chave: string): { valor: T; fresco: boolean } | null {
   const item = valores.get(chave);

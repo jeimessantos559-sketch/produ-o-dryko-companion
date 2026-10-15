@@ -31,7 +31,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth, type SetorCodigo, type TurnoCodigo } from "@/lib/auth";
 import { dataOperacional, horaProducao } from "@/lib/producao";
 import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-card";
-import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
+import { consultarComCache, lerCache } from "@/lib/cache-consultas";
+import {
+  chavePainel,
+  invalidarDadosProducao,
+  obterUltimoApontamento,
+  type PainelPayload,
+  type ResumoPainel,
+} from "@/lib/cache-producao";
 import { EVENTO_ENVIADOS } from "@/lib/fila-offline";
 import { setorComConsumoSemi } from "@/lib/liquidos";
 import { formatarKg, setorEmKg } from "@/lib/misturadores";
@@ -61,30 +68,13 @@ export const Route = createFileRoute("/_authenticated/painel")({
   component: Painel,
 });
 
-type Resumo = {
-  registros: number;
-  pendentes: number;
-  lancados: number;
-  plts: number;
-  rolos: number;
-  metragem: number;
-  area: number;
-  unidades: number;
-  semiKg: number;
-  pesoKg: number;
-};
+type Resumo = ResumoPainel;
 
 type Registro = ApontamentoTurno;
 
 type Pendencia = Registro & {
   data_local: string;
   turno: "T1" | "T2" | "T3";
-};
-
-type PainelPayload = {
-  resumo?: Partial<Resumo>;
-  recentes?: Registro[];
-  pendencias?: Pendencia[];
 };
 
 type GrupoProtheus = {
@@ -115,7 +105,8 @@ const RESUMO_VAZIO: Resumo = {
 };
 
 function Painel() {
-  const { profile, loading, isAutorizado, isAdmin } = useAuth();
+  const { user, profile, loading, isAutorizado, isAdmin } = useAuth();
+  const usuarioId = user?.id;
   const [resumo, setResumo] = useState<Resumo>(RESUMO_VAZIO);
   const [pendencias, setPendencias] = useState<Pendencia[]>([]);
   const [recentes, setRecentes] = useState<Registro[]>([]);
@@ -133,7 +124,7 @@ function Painel() {
   const carregarPainel = useCallback(
     async (forcar = false) => {
       const carga = ++cargaAtual.current;
-      if (!profile?.setor_atual || !profile.turno_atual) {
+      if (!usuarioId || !profile?.setor_atual || !profile.turno_atual) {
         setRecentes([]);
         setResumo(RESUMO_VAZIO);
         setPendencias([]);
@@ -144,7 +135,7 @@ function Painel() {
       const setorAtual = profile.setor_atual;
       const turnoAtual = profile.turno_atual;
       const dataAtual = dataOperacional(turnoAtual);
-      const chave = `painel:${setorAtual}:${turnoAtual}:${dataAtual}`;
+      const chave = chavePainel(usuarioId, setorAtual, turnoAtual, dataAtual);
       // Mostra o último resultado na hora e revalida em segundo plano.
       const salvo = lerCache<PainelPayload>(chave);
       if (salvo && !forcar) aplicarPayload(salvo.valor);
@@ -159,21 +150,50 @@ function Painel() {
         if (carga !== cargaAtual.current) return;
         setErro(false);
         aplicarPayload(payload);
+        // A lista do turno não prova qual foi o último criado em outra data operacional.
+        // Prepara Repetir em segundo plano, preservando a consulta original por usuário/setor/turno.
+        void obterUltimoApontamento(usuarioId, setorAtual, turnoAtual).catch(() => undefined);
       } catch {
         if (carga !== cargaAtual.current) return;
         setErro(true);
-        setRecentes([]);
-        setResumo(RESUMO_VAZIO);
-        setPendencias([]);
+        if (!salvo) {
+          setRecentes([]);
+          setResumo(RESUMO_VAZIO);
+          setPendencias([]);
+        }
       }
     },
-    [profile?.setor_atual, profile?.turno_atual],
+    [usuarioId, profile?.setor_atual, profile?.turno_atual],
   );
 
   const recarregarAposMudanca = useCallback(async () => {
-    invalidarCache("painel:");
+    invalidarDadosProducao();
     await carregarPainel(true);
   }, [carregarPainel]);
+
+  function aposApontamento(registro?: Registro) {
+    if (
+      registro &&
+      usuarioId &&
+      profile?.setor_atual &&
+      profile.turno_atual &&
+      registro.usuario_id === usuarioId &&
+      registro.setor === profile.setor_atual &&
+      registro.turno === profile.turno_atual &&
+      registro.data_local === dataOperacional(profile.turno_atual)
+    ) {
+      const salvo = lerCache<PainelPayload>(
+        chavePainel(usuarioId, registro.setor, registro.turno, registro.data_local),
+      );
+      if (salvo) {
+        cargaAtual.current += 1;
+        aplicarPayload(salvo.valor);
+        setErro(false);
+        return;
+      }
+    }
+    return carregarPainel(true);
+  }
 
   // Apontamentos feitos sem internet que acabaram de ser enviados entram no painel.
   useEffect(() => {
@@ -208,6 +228,22 @@ function Painel() {
 
   useEffect(() => {
     void carregarPainel();
+    return () => {
+      cargaAtual.current += 1;
+    };
+  }, [carregarPainel]);
+
+  // Mantém a produção de outros aparelhos atualizada sem bloquear cada salvamento.
+  useEffect(() => {
+    const revalidar = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) void carregarPainel(true);
+    };
+    const intervalo = window.setInterval(revalidar, 30_000);
+    document.addEventListener("visibilitychange", revalidar);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", revalidar);
+    };
   }, [carregarPainel]);
 
   const dataAtual = dataOperacional(profile?.turno_atual);
@@ -490,7 +526,7 @@ function Painel() {
             open
             onOpenChange={setApontarAberto}
             repeatLatest={modoApontamento === "repetir"}
-            onSaved={recarregarAposMudanca}
+            onSaved={aposApontamento}
           />
         </Suspense>
       )}

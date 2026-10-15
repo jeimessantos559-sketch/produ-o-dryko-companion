@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
+import { invalidarDadosProducao } from "@/lib/cache-producao";
 import { dataHoraProducaoFormatada } from "@/lib/producao";
 
 type RegistroHorario = {
@@ -66,6 +67,7 @@ export function AjustarHorarioApontamentos({ registros, setor, onAjustado }: Pro
       return;
     }
     toast.success("Horário ajustado");
+    invalidarDadosProducao();
     setValores((v) => {
       const { [r.id]: _, ...resto } = v;
       return resto;

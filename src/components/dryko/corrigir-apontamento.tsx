@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { gruposFechados, type ApontamentoTurno } from "@/lib/apontamentos-turno";
-import { invalidarCache } from "@/lib/cache-consultas";
+import { invalidarDadosProducao } from "@/lib/cache-producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
 import { totalPlts, totalRolos, type GrupoCorte } from "@/lib/producao";
 import { bloquearSeOffline } from "@/lib/rede";
@@ -208,7 +208,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
         p_dados: dados,
       });
       if (error) throw error;
-      invalidarCache("painel:");
+      invalidarDadosProducao();
       toast.success(
         item.status === "lancado"
           ? "Correção salva. Confira o ajuste no Protheus e confirme o lançamento novamente."

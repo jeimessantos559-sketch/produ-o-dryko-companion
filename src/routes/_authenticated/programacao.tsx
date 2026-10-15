@@ -30,6 +30,9 @@ import {
   ordemHoraTurno,
 } from "@/lib/producao";
 import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache";
+import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
+import { PRAZO_DADOS_PRODUCAO } from "@/lib/cache-producao";
+import { EVENTO_ENVIADOS } from "@/lib/fila-offline";
 import {
   linhaVazia,
   horaVazia,
@@ -72,12 +75,18 @@ export const Route = createFileRoute("/_authenticated/programacao")({
 });
 
 type MetaTurno = Database["public"]["Tables"]["metas_turno"]["Row"];
-
+type DadosTurno = { registros: Registro[]; meta: MetaTurno | null };
+type DadosDia = {
+  programacao: ProgramacaoItem[];
+  produtos: ProdutoCatalogo[];
+  registros: Registro[];
+};
 
 type AbaProgramacao = "hora" | "programacao";
 
 function Programacao() {
   const { profile, user, canFinalizeGoals, canProgramProduction } = useAuth();
+  const usuarioId = user?.id;
   const [recarga, setRecarga] = useState(0);
   const setor = profile?.setor_atual;
   const turno = profile?.turno_atual;
@@ -106,8 +115,26 @@ function Programacao() {
   const [salvandoMeta, setSalvandoMeta] = useState(false);
   const [salvandoProgramacao, setSalvandoProgramacao] = useState(false);
   const carregamentoAtual = useRef(0);
+  const revisaoMeta = useRef(0);
   const carregamentoProgramacaoAtual = useRef(0);
   const cacheProgramacao = useRef<{ chave: string; at: number } | null>(null);
+
+  useEffect(() => {
+    const atualizar = () => setRecarga((v) => v + 1);
+    window.addEventListener("apontamento-salvo", atualizar);
+    window.addEventListener(EVENTO_ENVIADOS, atualizar);
+    return () => {
+      window.removeEventListener("apontamento-salvo", atualizar);
+      window.removeEventListener(EVENTO_ENVIADOS, atualizar);
+    };
+  }, []);
+
+  function invalidarProgramacaoDia() {
+    carregamentoProgramacaoAtual.current += 1;
+    cacheProgramacao.current = null;
+    invalidarCache("programacao-dia:");
+    setCarregandoProgramacao(false);
+  }
 
   const produtoSelecionado = useMemo(
     () => produtos.find((item) => item.id === produtoId) ?? null,
@@ -116,6 +143,7 @@ function Programacao() {
 
   useEffect(() => {
     const carga = ++carregamentoAtual.current;
+    const versaoMeta = revisaoMeta.current;
     setErro(false);
     setErroMeta(false);
     setProgramacao([]);
@@ -127,7 +155,7 @@ function Programacao() {
     setQuantidadeEmEdicao("");
     cacheProgramacao.current = null;
 
-    if (!setor || !turno || !dataAtual) {
+    if (!usuarioId || !setor || !turno || !dataAtual) {
       setRegistros([]);
       setMetaTurno(null);
       setMetaDigitada("");
@@ -135,85 +163,126 @@ function Programacao() {
       return;
     }
 
-    void Promise.all([
-      supabase
-        .from("apontamentos")
-        .select(
-          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
-        )
-        .eq("setor", setor)
-        .eq("turno", turno)
-        .eq("data_local", dataAtual)
-        .order("data_hora_producao", { ascending: true }),
-      supabase
-        .from("metas_turno")
-        .select("*")
-        .eq("setor", setor)
-        .eq("turno", turno)
-        .eq("data_local", dataAtual)
-        .maybeSingle(),
-    ]).then(([resultadoApontamentos, resultadoMeta]) => {
-      if (carga !== carregamentoAtual.current) return;
+    const chave = `programacao-turno:${usuarioId}:${setor}:${turno}:${dataAtual}`;
+    function aplicar(dados: DadosTurno) {
+      setRegistros(dados.registros);
+      if (versaoMeta !== revisaoMeta.current) return;
+      setMetaTurno(dados.meta);
+      setMetaDigitada(dados.meta ? formatarCampoNumero(Number(dados.meta.quantidade_meta)) : "");
+      setHorasDigitadas(
+        dados.meta ? formatarDuracaoHoras(Number(dados.meta.horas_produtivas)) : "",
+      );
+    }
+    const salvo = lerCache<DadosTurno>(chave);
+    if (salvo) aplicar(salvo.valor);
+    else {
+      setRegistros([]);
+      setMetaTurno(null);
+    }
 
-      if (resultadoApontamentos.error) setErro(true);
-      setRegistros((resultadoApontamentos.data ?? []) as Registro[]);
-
+    void consultarComCache<DadosTurno>(chave, PRAZO_DADOS_PRODUCAO, async () => {
+      const [resultadoApontamentos, resultadoMeta] = await Promise.all([
+        supabase
+          .from("apontamentos")
+          .select(
+            "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+          )
+          .eq("setor", setor)
+          .eq("turno", turno)
+          .eq("data_local", dataAtual)
+          .order("data_hora_producao", { ascending: true }),
+        supabase
+          .from("metas_turno")
+          .select("*")
+          .eq("setor", setor)
+          .eq("turno", turno)
+          .eq("data_local", dataAtual)
+          .maybeSingle(),
+      ]);
+      if (resultadoApontamentos.error) throw resultadoApontamentos.error;
       if (resultadoMeta.error) {
-        setErroMeta(true);
-        setMetaTurno(null);
-        setMetaDigitada("");
-        setHorasDigitadas("");
-      } else {
-        const meta = (resultadoMeta.data as MetaTurno | null) ?? null;
-        setMetaTurno(meta);
-        setMetaDigitada(meta ? formatarCampoNumero(Number(meta.quantidade_meta)) : "");
-        setHorasDigitadas(meta ? formatarDuracaoHoras(Number(meta.horas_produtivas)) : "");
+        if (carga === carregamentoAtual.current) {
+          setRegistros((resultadoApontamentos.data ?? []) as Registro[]);
+          setErroMeta(true);
+        }
+        throw resultadoMeta.error;
       }
-    });
-  }, [dataAtual, setor, turno, recarga]);
+      return {
+        registros: (resultadoApontamentos.data ?? []) as Registro[],
+        meta: resultadoMeta.data,
+      };
+    })
+      .then((dados) => {
+        if (carga === carregamentoAtual.current) aplicar(dados);
+      })
+      .catch(() => {
+        if (carga === carregamentoAtual.current) setErro(true);
+      });
+    return () => {
+      carregamentoAtual.current += 1;
+    };
+  }, [usuarioId, dataAtual, setor, turno, recarga]);
 
   useEffect(() => {
-    if (abaAtiva !== "programacao" || !programacaoSuportada || !setor || !turno || !dataAtual) {
+    if (
+      !usuarioId ||
+      abaAtiva !== "programacao" ||
+      !programacaoSuportada ||
+      !setor ||
+      !turno ||
+      !dataAtual
+    ) {
       return;
     }
 
-    const chave = `${setor}:${dataAtual}`;
+    const chave = `programacao-dia:${usuarioId}:${setor}:${dataAtual}`;
     if (
       cacheProgramacao.current?.chave === chave &&
-      Date.now() - cacheProgramacao.current.at < 30_000
+      Date.now() - cacheProgramacao.current.at < PRAZO_DADOS_PRODUCAO &&
+      lerCache(chave)?.fresco
     ) {
       return;
     }
 
     const carga = ++carregamentoProgramacaoAtual.current;
-    setCarregandoProgramacao(true);
+    function aplicar(dados: DadosDia) {
+      setProgramacao(dados.programacao);
+      setProdutos(dados.produtos);
+      setRegistrosDia(dados.registros);
+    }
+    const salvo = lerCache<DadosDia>(chave);
+    if (salvo) aplicar(salvo.valor);
+    setCarregandoProgramacao(!salvo);
 
-    void Promise.all([
-      (supabase as any)
-        .from("programacao_producao")
-        .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
-        .eq("setor", setor)
-        .eq("data_local", dataAtual)
-        .eq("global_dia", true)
-        .order("created_at", { ascending: true }),
-      obterProdutosAtivos(setor),
-      supabase
-        .from("apontamentos")
-        .select(
-          "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
-        )
-        .eq("setor", setor)
-        .eq("data_local", dataAtual),
-    ])
-      .then(([resultadoProgramacao, listaProdutos, resultadoDia]) => {
+    void consultarComCache<DadosDia>(chave, PRAZO_DADOS_PRODUCAO, async () => {
+      const [resultadoProgramacao, listaProdutos, resultadoDia] = await Promise.all([
+        (supabase as any)
+          .from("programacao_producao")
+          .select("id, produto_id, produto_nome, op, lote, quantidade_prevista, unidade")
+          .eq("setor", setor)
+          .eq("data_local", dataAtual)
+          .eq("global_dia", true)
+          .order("created_at", { ascending: true }),
+        obterProdutosAtivos(setor),
+        supabase
+          .from("apontamentos")
+          .select(
+            "id, produto_id, produto_nome, op, lote, quantidade_plts, total_rolos, metragem, area_m2, data_hora_producao",
+          )
+          .eq("setor", setor)
+          .eq("data_local", dataAtual),
+      ]);
+      if (resultadoProgramacao.error) throw resultadoProgramacao.error;
+      if (resultadoDia.error) throw resultadoDia.error;
+      return {
+        programacao: (resultadoProgramacao.data ?? []) as ProgramacaoItem[],
+        produtos: listaProdutos,
+        registros: (resultadoDia.data ?? []) as Registro[],
+      };
+    })
+      .then((dados) => {
         if (carga !== carregamentoProgramacaoAtual.current) return;
-        if (resultadoProgramacao.error || resultadoDia.error) {
-          setErro(true);
-          return;
-        }
-        setProgramacao((resultadoProgramacao.data ?? []) as ProgramacaoItem[]);
-        setProdutos(listaProdutos as ProdutoCatalogo[]);
-        setRegistrosDia((resultadoDia.data ?? []) as Registro[]);
+        aplicar(dados);
         cacheProgramacao.current = { chave, at: Date.now() };
       })
       .catch(() => {
@@ -222,7 +291,10 @@ function Programacao() {
       .finally(() => {
         if (carga === carregamentoProgramacaoAtual.current) setCarregandoProgramacao(false);
       });
-  }, [abaAtiva, dataAtual, programacaoSuportada, setor, turno]);
+    return () => {
+      carregamentoProgramacaoAtual.current += 1;
+    };
+  }, [usuarioId, abaAtiva, dataAtual, programacaoSuportada, setor, turno, recarga]);
 
   const porHora = useMemo(() => {
     const mapa = new Map<string, HoraInterna>();
@@ -340,6 +412,8 @@ function Programacao() {
     }
 
     const metaSalva = data as MetaTurno;
+    revisaoMeta.current += 1;
+    invalidarCache("programacao-turno:");
     setMetaTurno(metaSalva);
     setHorasDigitadas(formatarDuracaoHoras(Number(metaSalva.horas_produtivas)));
     toast.success("Meta do turno salva.");
@@ -403,10 +477,10 @@ function Programacao() {
     }
 
     const salvo = resultado.data as ProgramacaoItem;
+    invalidarProgramacaoDia();
     setProgramacao((atuais) => [...atuais.filter((item) => item.id !== salvo.id), salvo]);
     setProdutoId("");
     setQuantidadePrevista("");
-    cacheProgramacao.current = { chave: `${setor}:${dataAtual}`, at: Date.now() };
     toast.success("Produto adicionado à programação.");
   }
 
@@ -451,8 +525,8 @@ function Programacao() {
       }
       if (carga !== carregamentoAtual.current) return;
 
+      invalidarProgramacaoDia();
       setProgramacao((atuais) => atuais.map((item) => (item.id === data.id ? data : item)));
-      cacheProgramacao.current = { chave: `${setor}:${dataAtual}`, at: Date.now() };
       setProgramacaoEmEdicao(null);
       toast.success("Quantidade da programação atualizada.");
     } catch (error) {
@@ -484,6 +558,7 @@ function Programacao() {
       toast.error(`Não foi possível atualizar ${coluna === "lote" ? "o lote" : "a OP"}.`);
       return;
     }
+    invalidarProgramacaoDia();
     setProgramacao((atuais) =>
       atuais.map((item) => (item.id === id ? { ...item, [coluna]: valor } : item)),
     );
@@ -496,8 +571,8 @@ function Programacao() {
       toast.error("Não foi possível remover este item.");
       return;
     }
+    invalidarProgramacaoDia();
     setProgramacao((atuais) => atuais.filter((item) => item.id !== id));
-    if (setor) cacheProgramacao.current = { chave: `${setor}:${dataAtual}`, at: Date.now() };
   }
 
   if (!setor || !turno) {

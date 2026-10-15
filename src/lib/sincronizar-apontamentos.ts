@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { invalidarCache } from "@/lib/cache-consultas";
+import { invalidarDadosProducao } from "@/lib/cache-producao";
 import {
   armazenamentoPadrao,
   atualizarNaFila,
@@ -89,7 +89,7 @@ export function sincronizarFila(usuarioId: string): Promise<ResumoEnvio> {
       }
     }
     if (enviados > 0) {
-      invalidarCache("painel:");
+      invalidarDadosProducao();
       if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENTO_ENVIADOS));
     }
     const restantes = lerFila(usuarioId, armazenamento);

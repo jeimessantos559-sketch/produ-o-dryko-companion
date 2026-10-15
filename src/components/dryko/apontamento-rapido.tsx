@@ -21,7 +21,8 @@ import { useAuth } from "@/lib/auth";
 import { produtoUnicoDaReferencia } from "@/lib/apontamentos-turno";
 import { calcularLiquidos, quantidadeLiquidoInicial, setorComConsumoSemi } from "@/lib/liquidos";
 import { formatarKg, pesoDigitadoKg, pesoParaCampo, setorEmKg } from "@/lib/misturadores";
-import { invalidarCache } from "@/lib/cache-consultas";
+import { obterUltimoApontamento, registrarApontamentoConfirmado } from "@/lib/cache-producao";
+import type { ApontamentoTurno } from "@/lib/apontamentos-turno";
 import {
   adicionarNaFila,
   classificarErroEnvio,
@@ -59,7 +60,7 @@ type MetaAtiva = {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved?: () => void | Promise<void>;
+  onSaved?: (registro?: ApontamentoTurno) => void | Promise<void>;
   repeatLatest?: boolean;
 };
 
@@ -129,31 +130,21 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     void Promise.all([
       obterProdutosAtivos(setor),
       repeatLatest && userId && turno
-        ? supabase
-            .from("apontamentos")
-            .select(
-              "op, lote, produto_id, quantidade_plts, rolos_por_plt, grupos, tempo, velocidade, largura, metragem, total_unidades, picado_unidades, peso_kg",
-            )
-            .eq("usuario_id", userId)
-            .eq("setor", setor as never)
-            .eq("turno", turno)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle()
+        ? obterUltimoApontamento(userId, setor, turno)
+            .then((data) => ({ data, error: null }))
+            .catch((error: unknown) => ({ data: null, error }))
         : null,
     ])
       .then(([lista, ultimo]) => {
         if (!ativo) return;
         setProdutos(lista);
         if (setor === "asfox" && lista.length === 1) setProdutoId(lista[0]!.id);
-        if (!ultimo) return;
-        const { data, error } = ultimo;
-
-        if (!ativo) return;
-        if (error) {
+        if (!repeatLatest || !userId || !turno) return;
+        if (ultimo?.error) {
           toast.error("Não foi possível consultar o último apontamento.");
           return;
         }
+        const data = ultimo?.data;
         if (!data) {
           toast.info("Ainda não existe apontamento neste setor para repetir.");
           return;
@@ -646,7 +637,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       const { data, error } = await supabase
         .from("apontamentos")
         .insert({ ...montagem.insercao, id: item.id } as never)
-        .select("data_local")
+        .select("*")
         .single();
       if (error) {
         const tipo = classificarErroEnvio(error, navigator.onLine);
@@ -665,9 +656,9 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       await salvarMetaOp();
       toast.success(montagem.sucesso);
 
-      invalidarCache("painel:");
+      registrarApontamentoConfirmado(user.id, data);
       onOpenChange(false);
-      await onSaved?.();
+      await onSaved?.(data);
     } catch (erro) {
       if (ehErroDeRede(erro)) {
         guardarSemInternet(item);

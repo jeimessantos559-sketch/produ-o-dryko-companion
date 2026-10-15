@@ -14,6 +14,7 @@ import { chaveAgrupamentoProtheus } from "@/lib/agrupamento-protheus";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataHoraProducaoFormatada, dataOperacional } from "@/lib/producao";
 import { setorComConsumoSemi } from "@/lib/liquidos";
+import { invalidarDadosProducao } from "@/lib/cache-producao";
 import { formatarKg, setorEmKg } from "@/lib/misturadores";
 
 export const Route = createFileRoute("/_authenticated/controle-apontamentos")({
@@ -144,6 +145,7 @@ function ControleApontamentos() {
       return;
     }
     toast.success(`${total ?? ids.length} apontamento(s) marcado(s) como lançado(s).`);
+    invalidarDadosProducao();
     await carregar();
   }
 

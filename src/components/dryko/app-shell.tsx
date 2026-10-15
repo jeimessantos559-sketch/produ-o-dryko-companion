@@ -34,6 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { NOMES_PAPEIS, useAuth } from "@/lib/auth";
 import { useAvatarUrl } from "@/lib/avatar";
 import { dataOperacional } from "@/lib/producao";
+import { invalidarDadosProducao } from "@/lib/cache-producao";
 
 const LazyApontamentoRapido = lazy(() =>
   import("@/components/dryko/apontamento-rapido").then((modulo) => ({
@@ -299,6 +300,7 @@ export function AppShell({
       return;
     }
     toast.success("Apontamento lançado no Protheus.");
+    invalidarDadosProducao();
     await carregarNotificacoesInternas();
   }
 

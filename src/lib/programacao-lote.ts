@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
+import { invalidarCache } from "@/lib/cache-consultas";
 
 /**
  * Após salvar um apontamento, preenche a referência da programação global do dia
@@ -27,6 +28,7 @@ export async function preencherReferenciaProgramacao(params: {
       .eq("global_dia", true)
       .or(`${coluna}.is.null,${coluna}.eq.`);
     if (error) throw error;
+    invalidarCache("programacao-dia:");
   } catch {
     toast.warning(
       `Apontamento salvo, mas não foi possível preencher ${coluna === "lote" ? "o lote" : "a OP"} da programação.`,

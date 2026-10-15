@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronRight, Edit3, History as HistoryIcon, Plus, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { AppShell, nomeSetor } from "@/components/dryko/app-shell";
@@ -10,7 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { consultarComCache } from "@/lib/cache-consultas";
+import { consultarComCache, lerCache } from "@/lib/cache-consultas";
+import { invalidarDadosProducao, PRAZO_DADOS_PRODUCAO } from "@/lib/cache-producao";
+import { EVENTO_ENVIADOS } from "@/lib/fila-offline";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataHoraProducaoFormatada, dataOperacional, type GrupoCorte } from "@/lib/producao";
@@ -37,6 +39,11 @@ type Apontamento = ApontamentoBase & {
   lancado_por_nome?: string | null;
 };
 type Auditoria = Database["public"]["Tables"]["apontamento_auditoria"]["Row"];
+type HistoricoPayload = {
+  itens: Apontamento[];
+  auditorias: Auditoria[];
+  nomes: Record<string, string>;
+};
 type Edicao = {
   op: string;
   lote: string;
@@ -50,7 +57,9 @@ type Edicao = {
 const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas"];
 
 function Historico() {
-  const { profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
+  const usuarioId = user?.id;
+  const cargaAtual = useRef(0);
   const [setor, setSetor] = useState<SetorCodigo>(profile?.setor_atual ?? "corte");
   const [dataInicio, setDataInicio] = useState(() => dataOperacional(profile?.turno_atual));
   const [dataFim, setDataFim] = useState(() => dataOperacional(profile?.turno_atual));
@@ -84,33 +93,75 @@ function Historico() {
   useEffect(() => setLimite(PAGINA), [dataFim, dataInicio, setor]);
 
   const carregar = useCallback(async () => {
-    setCarregando(true);
-    const [{ data: registros, error }, { data: trilha }, perfis] = await Promise.all([
-      supabase
-        .from("apontamentos")
-        .select("*")
-        .eq("setor", setor)
-        .gte("data_local", dataInicio)
-        .lte("data_local", dataFim)
-        .order("data_hora_producao", { ascending: false })
-        .limit(limite),
-      supabase
-        .from("apontamento_auditoria")
-        .select("*")
-        .eq("setor", setor)
-        .order("created_at", { ascending: false })
-        .limit(1000),
-      consultarComCache("perfis:nomes", 5 * 60_000, async () => (await supabase.from("profiles").select("id, nome")).data ?? []),
-    ]);
-    if (error) toast.error("Não foi possível carregar o histórico.");
-    setItens((registros ?? []) as Apontamento[]);
-    setAuditorias(trilha ?? []);
-    setNomes(Object.fromEntries(perfis.map((item) => [item.id, item.nome || "Sem nome"])));
-    setCarregando(false);
-  }, [dataFim, dataInicio, setor, limite]);
+    const carga = ++cargaAtual.current;
+    if (!usuarioId) return;
+    const chave = `historico:${usuarioId}:${isAdmin}:${setor}:${dataInicio}:${dataFim}:${limite}`;
+    function aplicar(payload: HistoricoPayload) {
+      setItens(payload.itens);
+      setAuditorias(payload.auditorias);
+      setNomes(payload.nomes);
+    }
+    const salvo = lerCache<HistoricoPayload>(chave);
+    if (salvo) aplicar(salvo.valor);
+    setCarregando(!salvo);
+    try {
+      const payload = await consultarComCache<HistoricoPayload>(
+        chave,
+        PRAZO_DADOS_PRODUCAO,
+        async () => {
+          const [registros, trilha, perfis] = await Promise.all([
+            supabase
+              .from("apontamentos")
+              .select("*")
+              .eq("setor", setor)
+              .gte("data_local", dataInicio)
+              .lte("data_local", dataFim)
+              .order("data_hora_producao", { ascending: false })
+              .limit(limite),
+            supabase
+              .from("apontamento_auditoria")
+              .select("*")
+              .eq("setor", setor)
+              .order("created_at", { ascending: false })
+              .limit(1000),
+            consultarComCache(
+              "perfis:nomes",
+              5 * 60_000,
+              async () => (await supabase.from("profiles").select("id, nome")).data ?? [],
+            ),
+          ]);
+          if (registros.error) throw registros.error;
+          if (trilha.error) throw trilha.error;
+          return {
+            itens: registros.data ?? [],
+            auditorias: trilha.data ?? [],
+            nomes: Object.fromEntries(perfis.map((p) => [p.id, p.nome || "Sem nome"])),
+          };
+        },
+      );
+      if (carga === cargaAtual.current) aplicar(payload);
+    } catch {
+      if (carga === cargaAtual.current) toast.error("Não foi possível carregar o histórico.");
+    } finally {
+      if (carga === cargaAtual.current) setCarregando(false);
+    }
+  }, [usuarioId, isAdmin, dataFim, dataInicio, setor, limite]);
 
   useEffect(() => {
     void carregar();
+    return () => {
+      cargaAtual.current += 1;
+    };
+  }, [carregar]);
+
+  useEffect(() => {
+    const atualizar = () => void carregar();
+    window.addEventListener("apontamento-salvo", atualizar);
+    window.addEventListener(EVENTO_ENVIADOS, atualizar);
+    return () => {
+      window.removeEventListener("apontamento-salvo", atualizar);
+      window.removeEventListener(EVENTO_ENVIADOS, atualizar);
+    };
   }, [carregar]);
 
   const produtos = useMemo(
@@ -227,6 +278,7 @@ function Historico() {
         : "Correção salva com auditoria.",
     );
     fecharEdicao();
+    invalidarDadosProducao();
     await carregar();
   }
 
