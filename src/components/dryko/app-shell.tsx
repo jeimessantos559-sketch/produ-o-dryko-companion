@@ -76,6 +76,7 @@ type PendenciaRapida = {
   area_m2: number | null;
   total_unidades?: number | null;
   semi_consumido_kg?: number | null;
+  peso_kg?: number | null;
   data_local: string;
   turno: "T1" | "T2" | "T3";
 };
@@ -432,11 +433,14 @@ export function AppShell({
                     {pendenciasInternas.length} apontamento(s) pendente(s)
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {pendenciasInternas.reduce(
-                      (total, item) => total + Number(item.quantidade_plts ?? 0),
-                      0,
-                    )}{" "}
-                    PLTs fechados aguardando lançamento
+                    {pendenciasInternas.some((item) => item.peso_kg != null)
+                      ? `${pendenciasInternas
+                          .reduce((total, item) => total + Number(item.peso_kg ?? 0), 0)
+                          .toLocaleString("pt-BR", { maximumFractionDigits: 3 })} kg aguardando lançamento`
+                      : `${pendenciasInternas.reduce(
+                          (total, item) => total + Number(item.quantidade_plts ?? 0),
+                          0,
+                        )} PLTs fechados aguardando lançamento`}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -495,6 +499,8 @@ export function AppShell({
 }
 
 function resumoPendencia(item: PendenciaRapida) {
+  if (item.peso_kg != null)
+    return `${Number(item.peso_kg).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} kg`;
   if (item.total_unidades != null)
     return `${Number(item.total_unidades).toLocaleString("pt-BR")} unidades${Number(item.semi_consumido_kg ?? 0) > 0 ? ` · ${Number(item.semi_consumido_kg).toLocaleString("pt-BR")} kg de semi` : ""}`;
   if (Number(item.area_m2 ?? 0) > 0)

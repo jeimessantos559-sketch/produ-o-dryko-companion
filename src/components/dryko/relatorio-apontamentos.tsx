@@ -34,11 +34,13 @@ export function RelatorioApontamentos({
   fitas,
   unidade,
   liquidos = false,
+  kg = false,
 }: {
   apontamentos: Json[];
   fitas: boolean;
   unidade: string;
   liquidos?: boolean;
+  kg?: boolean;
 }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -60,8 +62,8 @@ export function RelatorioApontamentos({
               "OP / Lote",
               "Produto",
               "PLTs",
-              liquidos ? "Unidades" : "Rolos",
-              liquidos ? "Semi (kg)" : "Produção",
+              kg ? "—" : liquidos ? "Unidades" : "Rolos",
+              kg ? "Peso (kg)" : liquidos ? "Semi (kg)" : "Produção",
               "Apontado por",
               "Protheus / Lançado por",
             ].map((titulo) => (
@@ -83,7 +85,9 @@ export function RelatorioApontamentos({
                   ? inicio
                   : `${inicio}–${fim}`
                 : String(indice + 1);
-            const producao = liquidos
+            const producao = kg
+              ? `${formatarNumero(numero(item["peso_kg"]), 3)} kg`
+              : liquidos
               ? item["embalagem_liquido"] === "unidade" &&
                 item["semi_kg_por_unidade"] == null &&
                 numero(item["semi_consumido_kg"]) === 0
@@ -105,10 +109,12 @@ export function RelatorioApontamentos({
                   {texto(item["produto_nome"])}
                 </td>
                 <td className="px-3 py-3 text-slate-600">
-                  {formatarNumero(numero(item["quantidade_plts"]), 0)}
+                  {kg ? "—" : formatarNumero(numero(item["quantidade_plts"]), 0)}
                 </td>
                 <td className="px-3 py-3 text-slate-600">
-                  {formatarNumero(numero(item[liquidos ? "total_unidades" : "total_rolos"]), 0)}
+                  {kg
+                    ? "—"
+                    : formatarNumero(numero(item[liquidos ? "total_unidades" : "total_rolos"]), 0)}
                 </td>
                 <td className="break-words px-3 py-3 text-slate-600">{producao}</td>
                 <td className="px-3 py-3">

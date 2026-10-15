@@ -21,7 +21,7 @@ export const EVENTO_FILA = "dryko:fila-apontamentos";
 export const EVENTO_ENVIADOS = "dryko:apontamentos-enviados";
 const PREFIXO = "dryko:apontamentos-sem-internet:v1:";
 
-export type SetorFila = "corte" | "fitas" | "mantas" | "liquidos" | "asfox";
+export type SetorFila = "corte" | "fitas" | "mantas" | "liquidos" | "asfox" | "misturadores";
 
 export type ApontamentoNaFila = {
   id: string;
@@ -175,6 +175,7 @@ const NOME_SETOR: Record<SetorFila, string> = {
   mantas: "Mantas",
   liquidos: "Líquidos",
   asfox: "Asfox",
+  misturadores: "Misturadores",
 };
 const NOME_TURNO: Record<string, string> = { T1: "1º turno", T2: "2º turno", T3: "3º turno" };
 

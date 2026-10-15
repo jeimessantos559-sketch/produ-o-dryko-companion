@@ -34,6 +34,7 @@ import { OcorrenciasAbertasCard } from "@/components/dryko/ocorrencias-abertas-c
 import { consultarComCache, invalidarCache, lerCache } from "@/lib/cache-consultas";
 import { EVENTO_ENVIADOS } from "@/lib/fila-offline";
 import { setorComConsumoSemi } from "@/lib/liquidos";
+import { formatarKg, setorEmKg } from "@/lib/misturadores";
 
 const LazyApontamentoRapido = lazy(() =>
   import("@/components/dryko/apontamento-rapido").then((modulo) => ({
@@ -70,6 +71,7 @@ type Resumo = {
   area: number;
   unidades: number;
   semiKg: number;
+  pesoKg: number;
 };
 
 type Registro = ApontamentoTurno;
@@ -96,6 +98,7 @@ type GrupoProtheus = {
   area: number;
   unidades: number;
   semiKg: number;
+  pesoKg: number;
 };
 
 const RESUMO_VAZIO: Resumo = {
@@ -108,6 +111,7 @@ const RESUMO_VAZIO: Resumo = {
   area: 0,
   unidades: 0,
   semiKg: 0,
+  pesoKg: 0,
 };
 
 function Painel() {
@@ -196,6 +200,7 @@ function Painel() {
         (n, item) => n + Number(item.semi_consumido_kg ?? 0),
         0,
       ),
+      pesoKg: (payload.recentes ?? []).reduce((n, item) => n + Number(item.peso_kg ?? 0), 0),
     });
     setRecentes(payload.recentes ?? []);
     setPendencias(payload.pendencias ?? []);
@@ -211,6 +216,7 @@ function Painel() {
   const setorMantas = setor === "mantas";
   const setorCorte = setor === "corte";
   const setorLiquidos = setorComConsumoSemi(setor);
+  const setorKg = setorEmKg(setor);
   const setorNome = setor ? nomeSetor(setor) : "Setor";
   const turnoNome = nomeTurno(profile?.turno_atual);
 
@@ -326,24 +332,32 @@ function Painel() {
             />
             <Indicador
               icon={Boxes}
-              label={setorFitas ? "Apontamentos" : "PLTs fechados"}
-              valor={setorFitas ? resumo.registros : resumo.plts}
+              label={setorFitas || setorKg ? "Apontamentos" : "PLTs fechados"}
+              valor={setorFitas || setorKg ? resumo.registros : resumo.plts}
               detalhe="neste turno"
               tone="slate"
             />
             <Indicador
               icon={Gauge}
               label={
-                setorLiquidos
-                  ? "Semi consumido"
-                  : setorCorte
-                    ? "Metragem produzida"
-                    : "Metragem Protheus"
+                setorKg
+                  ? "Peso produzido"
+                  : setorLiquidos
+                    ? "Semi consumido"
+                    : setorCorte
+                      ? "Metragem produzida"
+                      : "Metragem Protheus"
               }
-              valor={formatarNumero(
-                setorLiquidos ? resumo.semiKg : setorFitas ? resumo.area : resumo.metragem,
-              )}
-              detalhe={setorLiquidos ? "kg neste turno" : setorFitas || setorCorte ? "m²" : "m"}
+              valor={
+                setorKg
+                  ? resumo.pesoKg.toLocaleString("pt-BR", { maximumFractionDigits: 3 })
+                  : formatarNumero(
+                      setorLiquidos ? resumo.semiKg : setorFitas ? resumo.area : resumo.metragem,
+                    )
+              }
+              detalhe={
+                setorLiquidos || setorKg ? "kg neste turno" : setorFitas || setorCorte ? "m²" : "m"
+              }
               tone="slate"
             />
             {setorLiquidos && (
@@ -629,6 +643,7 @@ function tituloGrupo(grupo: GrupoProtheus, setor: string) {
 }
 
 function resumoRegistro(item: Registro, setor: string) {
+  if (setorEmKg(setor)) return `${formatarKg(Number(item.peso_kg ?? 0))} para Protheus`;
   if (setorComConsumoSemi(setor))
     return `${formatarNumero(Number(item.total_unidades ?? 0))} unidades${Number(item.semi_consumido_kg ?? 0) > 0 ? ` · ${formatarNumero(Number(item.semi_consumido_kg))} kg de semi` : ""}`;
   if (setor === "fitas") return `${formatarNumero(Number(item.area_m2 ?? 0))} m² para Protheus`;
@@ -638,6 +653,8 @@ function resumoRegistro(item: Registro, setor: string) {
 }
 
 function resumoGrupo(grupo: GrupoProtheus, setor: string) {
+  if (setorEmKg(setor))
+    return `${formatarKg(grupo.pesoKg)} para lançar${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
   if (setorComConsumoSemi(setor))
     return `${formatarNumero(grupo.unidades)} unidades${grupo.semiKg > 0 ? ` · ${formatarNumero(grupo.semiKg)} kg de semi` : ""}${grupo.registros > 1 ? ` · ${grupo.registros} registros agrupados` : ""}`;
   if (setor === "fitas")

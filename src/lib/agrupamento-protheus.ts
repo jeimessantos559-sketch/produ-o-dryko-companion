@@ -1,4 +1,5 @@
 import { setorComConsumoSemi } from "./liquidos.ts";
+import { setorEmKg } from "./misturadores.ts";
 
 export type SetorAgrupamento = "corte" | "fitas" | "mantas" | string;
 
@@ -15,7 +16,7 @@ export function normalizarChaveProtheus(valor: string | null | undefined) {
 
 /**
  * Regra industrial única para consolidação antes do lançamento:
- * - Corte e Fitas: OP + produto;
+ * - Corte, Fitas, Líquidos, Asfox e Misturadores: OP + produto;
  * - Mantas: lote + produto;
  * - sem o identificador obrigatório: mantém o registro isolado.
  */
@@ -34,7 +35,7 @@ export function chaveAgrupamentoProtheus(
   if (setor === "fitas" && item.op) {
     return `fitas:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   }
-  if (setorComConsumoSemi(setor) && item.op) {
+  if ((setorComConsumoSemi(setor) || setorEmKg(setor)) && item.op) {
     return `${setor}:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   }
   return `item:${item.id}${sufixo}`;

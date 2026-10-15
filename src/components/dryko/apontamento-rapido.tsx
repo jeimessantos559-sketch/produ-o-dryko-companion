@@ -20,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { produtoUnicoDaReferencia } from "@/lib/apontamentos-turno";
 import { calcularLiquidos, quantidadeLiquidoInicial, setorComConsumoSemi } from "@/lib/liquidos";
+import { formatarKg, pesoDigitadoKg, pesoParaCampo, setorEmKg } from "@/lib/misturadores";
 import { invalidarCache } from "@/lib/cache-consultas";
 import {
   adicionarNaFila,
@@ -46,6 +47,8 @@ import {
 export { invalidarCacheProdutos };
 
 type Produto = ProdutoCatalogo;
+
+const SETORES_COM_APONTAMENTO = ["corte", "fitas", "mantas", "liquidos", "asfox", "misturadores"];
 
 type MetaAtiva = {
   id: string;
@@ -77,6 +80,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   const [quantidadeLiquido, setQuantidadeLiquido] = useState(quantidadeLiquidoInicial);
   const [lote, setLote] = useState("");
   const [metragemManta, setMetragemManta] = useState(0);
+  const [pesoTexto, setPesoTexto] = useState("");
   const [tempo, setTempo] = useState(60);
   const [velocidade, setVelocidade] = useState(25);
   const [largura, setLargura] = useState(0.93);
@@ -105,6 +109,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
     setQuantidadeLiquido(quantidadeLiquidoInicial());
     setLote("");
     setMetragemManta(0);
+    setPesoTexto("");
     setTempo(60);
     setVelocidade(25);
     setLargura(0.93);
@@ -115,8 +120,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
   }
 
   useEffect(() => {
-    if (!open || !setor || !["corte", "fitas", "mantas", "liquidos", "asfox"].includes(setor))
-      return;
+    if (!open || !setor || !SETORES_COM_APONTAMENTO.includes(setor)) return;
     let ativo = true;
     setCarregando(true);
     limparFormulario();
@@ -128,7 +132,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
         ? supabase
             .from("apontamentos")
             .select(
-              "op, lote, produto_id, quantidade_plts, rolos_por_plt, grupos, tempo, velocidade, largura, metragem, total_unidades, picado_unidades",
+              "op, lote, produto_id, quantidade_plts, rolos_por_plt, grupos, tempo, velocidade, largura, metragem, total_unidades, picado_unidades, peso_kg",
             )
             .eq("usuario_id", userId)
             .eq("setor", setor as never)
@@ -182,6 +186,9 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
             picadoUnidades: data.picado_unidades || "",
             unidades: data.total_unidades ?? 0,
           });
+        } else if (setorEmKg(setor)) {
+          setOp(data.op ?? "");
+          setPesoTexto(pesoParaCampo(data.peso_kg));
         } else if (setor === "fitas") {
           setOp(data.op ?? "");
           setTempo(Number(data.tempo ?? 60));
@@ -404,6 +411,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
       : 0;
   const mantaRolosValidos = totalRolosManta > 0 && Number.isInteger(totalRolosManta);
   const liquidoCalculado = calcularLiquidos(produto, quantidadeLiquido);
+  const pesoKg = setorEmKg(setor) ? pesoDigitadoKg(pesoTexto) : null;
   const unidadeMeta =
     meta?.unidade ??
     (setorComConsumoSemi(setor) && liquidoCalculado.unitario ? "unidades" : "PLTs");
@@ -433,6 +441,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
         Number.isInteger(metaNova) &&
         metaNova >= 0) ||
       (setor === "fitas" && op.trim() && tempo > 0 && velocidade > 0 && largura > 0) ||
+      (setorEmKg(setor) && op.trim() && pesoKg != null) ||
       (setor === "mantas" &&
         lote.trim() &&
         Number.isInteger(quantidadePlts) &&
@@ -542,6 +551,14 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
         programacao: null,
         descricao: `OP ${op.trim()} · ${produto.nome} · ${liquidoCalculado.unidades.toLocaleString("pt-BR")} unidades`,
         sucesso: `Apontamento de ${nomeSetorRapido(setor)} salvo.`,
+      };
+    }
+    if (setorEmKg(setor) && pesoKg != null) {
+      return {
+        insercao: { ...base, setor: "misturadores", op: op.trim(), peso_kg: pesoKg },
+        programacao: null,
+        descricao: `OP ${op.trim()} · ${produto.nome} · ${formatarKg(pesoKg)}`,
+        sucesso: "Apontamento de Misturadores salvo.",
       };
     }
     if (setor === "fitas") {
@@ -677,7 +694,7 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
           </DialogDescription>
         </DialogHeader>
 
-        {!setor || !["corte", "fitas", "mantas", "liquidos", "asfox"].includes(setor) ? (
+        {!setor || !SETORES_COM_APONTAMENTO.includes(setor) ? (
           <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
             As regras de apontamento deste setor ainda estão em definição. O formulário será
             liberado quando a regra for cadastrada.
@@ -928,6 +945,44 @@ export function ApontamentoRapido({ open, onOpenChange, onSaved, repeatLatest = 
               </>
             )}
 
+            {setorEmKg(setor) && produto && (
+              <>
+                <div className="space-y-1">
+                  <Label htmlFor="rapido-peso">Peso produzido (kg) *</Label>
+                  <Input
+                    id="rapido-peso"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    className="h-11 text-base"
+                    value={pesoTexto}
+                    onChange={(event) => setPesoTexto(event.target.value.replace(/[^\d.,]/g, ""))}
+                    placeholder="Ex.: 1250 ou 1250,5"
+                    aria-invalid={pesoTexto.trim() !== "" && pesoKg == null}
+                  />
+                  {pesoTexto.trim() !== "" && pesoKg == null && (
+                    <p className="text-xs text-amber-700">
+                      Digite só o número, com vírgula para decimais e sem ponto de milhar. Ex.:
+                      1250,5.
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border-2 border-primary/25 bg-primary/5 p-3">
+                  <PackageCheck className="size-6 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Peso para lançar no Protheus
+                    </p>
+                    <p className="text-3xl font-extrabold leading-none text-slate-950">
+                      {formatarKg(pesoKg ?? 0)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      OP {op.trim() || "—"} · {produto.nome}
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+
             {setor === "fitas" && produto && (
               <>
                 <div className="grid grid-cols-3 gap-2">
@@ -1085,6 +1140,7 @@ function nomeSetorRapido(setor: string) {
   if (setor === "mantas") return "Mantas";
   if (setor === "liquidos") return "Líquidos";
   if (setor === "asfox") return "Asfox";
+  if (setor === "misturadores") return "Misturadores";
   return setor;
 }
 

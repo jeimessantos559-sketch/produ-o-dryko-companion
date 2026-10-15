@@ -25,6 +25,7 @@ import { dataOperacional } from "@/lib/producao";
 import { baixarPdf } from "@/lib/relatorio-pdf";
 import { realizadoNaUnidade, type SetorGerencial } from "@/lib/indicadores";
 import { setorComConsumoSemi } from "@/lib/liquidos";
+import { formatarKg, setorEmKg } from "@/lib/misturadores";
 
 export const Route = createFileRoute("/_authenticated/passagem-turno")({
   component: PassagemTurno,
@@ -201,6 +202,7 @@ function PassagemTurno() {
           area: acc.area + Number(item.area_m2 ?? 0),
           unidades: acc.unidades + Number(item.total_unidades ?? 0),
           semiKg: acc.semiKg + Number(item.semi_consumido_kg ?? 0),
+          pesoKg: acc.pesoKg + Number(item.peso_kg ?? 0),
         }),
         {
           apontamentos: 0,
@@ -212,6 +214,7 @@ function PassagemTurno() {
           area: 0,
           unidades: 0,
           semiKg: 0,
+          pesoKg: 0,
         },
       ),
     [apontamentos],
@@ -224,6 +227,7 @@ function PassagemTurno() {
   const setorLiquidos = setorComConsumoSemi(profile?.setor_atual);
   const setorFitas = profile?.setor_atual === "fitas";
   const setorMantas = profile?.setor_atual === "mantas";
+  const setorKg = setorEmKg(profile?.setor_atual);
 
   function montarResumo(): Json {
     return {
@@ -440,8 +444,10 @@ function PassagemTurno() {
               />
               <Indicador label="Lançados" valor={totais.lancados} />
               <Indicador label="OPs / lotes finalizados" valor={opsFinalizadas.length} />
-              {!setorFitas && <Indicador label="PLTs" valor={totais.plts} />}
-              {setorLiquidos ? (
+              {!setorFitas && !setorKg && <Indicador label="PLTs" valor={totais.plts} />}
+              {setorKg ? (
+                <Indicador label="Peso produzido" valor={formatarKg(totais.pesoKg)} />
+              ) : setorLiquidos ? (
                 <>
                   <Indicador label="Unidades" valor={totais.unidades.toLocaleString("pt-BR")} />
                   <Indicador

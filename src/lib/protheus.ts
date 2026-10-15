@@ -1,7 +1,8 @@
 // Regras puras de agrupamento para lançamento manual no Protheus.
 // Apontamentos continuam unitários no banco; o agrupamento serve apenas para lançar.
-// Corte: OP + produto · Fitas: OP + produto · Mantas: lote + produto.
+// Corte: OP + produto · Fitas: OP + produto · Mantas: lote + produto · Misturadores: OP + produto.
 import { setorComConsumoSemi } from "./liquidos.ts";
+import { setorEmKg } from "./misturadores.ts";
 
 export type ItemProtheus = {
   id: string;
@@ -18,6 +19,7 @@ export type ItemProtheus = {
   area_m2?: number | null;
   total_unidades?: number | null;
   semi_consumido_kg?: number | null;
+  peso_kg?: number | null;
 };
 
 export type GrupoProtheusBase<T extends ItemProtheus> = {
@@ -32,6 +34,7 @@ export type GrupoProtheusBase<T extends ItemProtheus> = {
   area: number;
   unidades: number;
   semiKg: number;
+  pesoKg: number;
 };
 
 export function normalizarChaveProtheus(valor: string | null | undefined) {
@@ -53,7 +56,7 @@ export function chaveProtheus(
     return `corte:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   if (setor === "fitas" && item.op)
     return `fitas:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
-  if (setorComConsumoSemi(setor) && item.op)
+  if ((setorComConsumoSemi(setor) || setorEmKg(setor)) && item.op)
     return `${setor}:${produto}:${normalizarChaveProtheus(item.op)}${sufixo}`;
   return unitario;
 }
@@ -78,6 +81,7 @@ export function agruparProtheus<T extends ItemProtheus>(
       area: 0,
       unidades: 0,
       semiKg: 0,
+      pesoKg: 0,
     };
     atual.ids.push(item.id);
     atual.itens.push(item);
@@ -88,6 +92,7 @@ export function agruparProtheus<T extends ItemProtheus>(
     atual.area += Number(item.area_m2 ?? 0);
     atual.unidades += Number(item.total_unidades ?? 0);
     atual.semiKg += Number(item.semi_consumido_kg ?? 0);
+    atual.pesoKg += Number(item.peso_kg ?? 0);
     mapa.set(chave, atual);
   }
   return [...mapa.values()];

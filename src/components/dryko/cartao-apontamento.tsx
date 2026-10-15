@@ -4,6 +4,7 @@ import { gruposFechados, pltsFechados, type ApontamentoTurno } from "@/lib/apont
 import { horaProducao } from "@/lib/producao";
 import { nomeCurtoRelatorio } from "@/lib/responsaveis-relatorio";
 import { setorComConsumoSemi } from "@/lib/liquidos";
+import { formatarKg, setorEmKg } from "@/lib/misturadores";
 
 export type SequenciaApontamento = { registro: number; inicio: number | null; fim: number | null };
 type Props = {
@@ -68,7 +69,12 @@ export function CartaoApontamento({ item, sequencia, onCorrigir }: Props) {
         {item.setor === "mantas" ? `Lote ${item.lote ?? "—"}` : `OP ${item.op ?? "—"}`} ·{" "}
         {item.produto_nome}
       </p>
-      {item.setor === "fitas" ? (
+      {setorEmKg(item.setor) ? (
+        <div className="rounded-xl bg-slate-50 p-3">
+          <p className="text-xs text-slate-500">Peso produzido</p>
+          <p className="mt-1 font-bold text-slate-950">{formatarKg(Number(item.peso_kg ?? 0))}</p>
+        </div>
+      ) : item.setor === "fitas" ? (
         <p className="rounded-xl bg-slate-50 p-3 text-sm font-semibold">
           {numero(Number(item.area_m2 ?? 0))} m² · {numero(Number(item.tempo ?? 0))} min
         </p>
@@ -89,7 +95,7 @@ export function CartaoApontamento({ item, sequencia, onCorrigir }: Props) {
           </div>
         </div>
       )}
-      {item.setor !== "fitas" && !unitario && (
+      {item.setor !== "fitas" && !setorEmKg(item.setor) && !unitario && (
         <p className="mt-2 text-xs leading-relaxed text-slate-500">
           {[
             sequenciaTexto,

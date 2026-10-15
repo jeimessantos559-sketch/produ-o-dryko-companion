@@ -630,5 +630,7 @@ function descricaoProduto(produto: Produto) {
     return `${produto.categoria ?? "Sem categoria"} · ${produto.metragem_por_plt} m/PLT · ${produto.rolos_por_plt} rolos/PLT · ${produto.metros_por_rolo} m/rolo`;
   if (setorComConsumoSemi(produto.setor))
     return `${nomeEmbalagemLiquido(produto.embalagem_liquido)} · ${produto.unidades_por_plt ? `${produto.unidades_por_plt.toLocaleString("pt-BR")} unidades/PLT` : "Contagem em unidades"} · ${Number(produto.semi_kg_por_unidade ?? 0).toLocaleString("pt-BR")} kg/unidade`;
+  if (produto.setor === "misturadores")
+    return `${produto.categoria ?? "Sem marca"} · apontamento em kg`;
   return `${produto.categoria ?? "Produtos"} · ${produto.ativo ? "Ativo" : "Inativo"}`;
 }

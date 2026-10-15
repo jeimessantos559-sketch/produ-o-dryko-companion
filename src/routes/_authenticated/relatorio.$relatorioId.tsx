@@ -25,6 +25,7 @@ import { opsFinalizadasNoRelatorio, referenciaFinalizada } from "@/lib/fechament
 import { baixarPdf, compartilharPdf, imprimirPdf } from "@/lib/relatorio-pdf";
 import { completarResponsaveisRelatorio, nomeCurtoRelatorio } from "@/lib/responsaveis-relatorio";
 import { setorComConsumoSemi } from "@/lib/liquidos";
+import { setorEmKg } from "@/lib/misturadores";
 
 export const Route = createFileRoute("/_authenticated/relatorio/$relatorioId")({
   component: RelatorioDetalhado,
@@ -141,6 +142,7 @@ function RelatorioDetalhado() {
         area: number;
         unidades: number;
         semiKg: number;
+        pesoKg: number;
       }
     >();
     for (const item of apontamentos) {
@@ -153,6 +155,7 @@ function RelatorioDetalhado() {
         area: 0,
         unidades: 0,
         semiKg: 0,
+        pesoKg: 0,
       };
       atual.apontamentos += 1;
       atual.plts += numero(item.quantidade_plts);
@@ -161,6 +164,7 @@ function RelatorioDetalhado() {
       atual.area += numero(item.area_m2);
       atual.unidades += numero(item["total_unidades"]);
       atual.semiKg += numero(item["semi_consumido_kg"]);
+      atual.pesoKg += numero(item["peso_kg"]);
       produtos.set(nome, atual);
     }
     return {
@@ -169,7 +173,7 @@ function RelatorioDetalhado() {
       apontamentos,
       opsFinalizadas,
       produtos: [...produtos.entries()].sort(
-        (a, b) => b[1].plts - a[1].plts || b[1].area - a[1].area,
+        (a, b) => b[1].plts - a[1].plts || b[1].area - a[1].area || b[1].pesoKg - a[1].pesoKg,
       ),
     };
   }, [relatorio]);
@@ -199,6 +203,7 @@ function RelatorioDetalhado() {
   const fitas = relatorio.setor === "fitas";
   const mantas = relatorio.setor === "mantas";
   const liquidos = setorComConsumoSemi(relatorio.setor);
+  const kg = setorEmKg(relatorio.setor);
   const metragem = fitas ? numero(dados.totais.area) : numero(dados.totais.metragem);
   const unidade = mantas ? "m" : "m²";
 
@@ -365,18 +370,28 @@ function RelatorioDetalhado() {
               />
               <Indicador
                 icon={Boxes}
-                titulo={fitas ? "Registros" : "PLTs fechados"}
+                titulo={fitas || kg ? "Registros" : "PLTs fechados"}
                 valor={
-                  fitas
+                  fitas || kg
                     ? formatarNumero(numero(dados.totais.apontamentos), 0)
                     : formatarNumero(numero(dados.totais.plts), 0)
                 }
               />
               <Indicador
                 icon={Ruler}
-                titulo={liquidos ? "Semi consumido" : fitas ? "Produção" : "Metragem produzida"}
+                titulo={
+                  kg
+                    ? "Peso produzido"
+                    : liquidos
+                      ? "Semi consumido"
+                      : fitas
+                        ? "Produção"
+                        : "Metragem produzida"
+                }
                 valor={
-                  liquidos
+                  kg
+                    ? `${formatarNumero(numero(dados.totais["pesoKg"]), 3)} kg`
+                    : liquidos
                     ? `${formatarNumero(numero(dados.totais["semiKg"]), 3)} kg`
                     : `${formatarNumero(metragem)} ${unidade}`
                 }
@@ -409,14 +424,17 @@ function RelatorioDetalhado() {
                       <p className="text-xs text-slate-500">{total.apontamentos} apontamento(s)</p>
                     </div>
                     <span className="hidden self-center text-slate-600 sm:block">
-                      {total.plts} PLTs
+                      {kg ? "" : `${total.plts} PLTs`}
                     </span>
                     <span className="hidden self-center text-slate-600 sm:block">
-                      {formatarNumero(liquidos ? total.unidades : total.rolos, 0)}{" "}
-                      {liquidos ? "unidades" : "rolos"}
+                      {kg
+                        ? ""
+                        : `${formatarNumero(liquidos ? total.unidades : total.rolos, 0)} ${liquidos ? "unidades" : "rolos"}`}
                     </span>
                     <strong className="self-center text-right text-slate-900">
-                      {liquidos
+                      {kg
+                        ? `${formatarNumero(total.pesoKg, 3)} kg`
+                        : liquidos
                         ? total.semiKg > 0
                           ? `${formatarNumero(total.semiKg, 3)} kg de semi`
                           : "—"
@@ -438,6 +456,7 @@ function RelatorioDetalhado() {
                 fitas={fitas}
                 unidade={unidade}
                 liquidos={liquidos}
+                kg={kg}
               />
             </Secao>
 

@@ -23,6 +23,7 @@ import { obterProdutosAtivos, type ProdutoCatalogo } from "@/lib/produtos-cache"
 import { totalPlts, totalRolos, type GrupoCorte } from "@/lib/producao";
 import { bloquearSeOffline } from "@/lib/rede";
 import { calcularLiquidos, quantidadeLiquidoInicial, setorComConsumoSemi } from "@/lib/liquidos";
+import { formatarKg, pesoDigitadoKg, pesoParaCampo, setorEmKg } from "@/lib/misturadores";
 
 type Props = { item: ApontamentoTurno; onClose: () => void; onSaved: () => void | Promise<void> };
 
@@ -53,6 +54,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
     unidades: item.total_unidades ?? 0,
   }));
   const [metragem, setMetragem] = useState(Number(item.metragem ?? 0));
+  const [pesoTexto, setPesoTexto] = useState(() => pesoParaCampo(item.peso_kg));
   const [tempo, setTempo] = useState(Number(item.tempo ?? 60));
   const [velocidade, setVelocidade] = useState(Number(item.velocidade ?? 25));
   const [largura, setLargura] = useState(Number(item.largura ?? 0.93));
@@ -142,6 +144,7 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
   ]);
   const metrosPorRolo = Number(produto?.metros_por_rolo ?? 10);
   const totalLiquido = calcularLiquidos(produto, quantidadeLiquido);
+  const pesoKg = pesoDigitadoKg(pesoTexto);
   const gruposValidos = grupos.every(
     (g) =>
       Number.isInteger(g.quantidadePlts) &&
@@ -164,7 +167,9 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
       ? gruposValidos && totalPlts(grupos) <= 20 && totalRolos(grupos) > 0
       : setorComConsumoSemi(item.setor)
         ? totalLiquido.valido
-        : item.setor === "fitas"
+        : setorEmKg(item.setor)
+          ? pesoKg != null
+          : item.setor === "fitas"
           ? tempo > 0 && velocidade > 0 && largura > 0
           : Number.isInteger(quantidadePlts) &&
             quantidadePlts > 0 &&
@@ -190,8 +195,10 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
               picado_unidades: totalLiquido.picado,
               total_unidades: totalLiquido.unidades,
             }
-          : item.setor === "fitas"
-            ? { op: referencia.trim(), tempo, velocidade, largura }
+          : setorEmKg(item.setor)
+            ? { op: referencia.trim(), peso_kg: pesoKg }
+            : item.setor === "fitas"
+              ? { op: referencia.trim(), tempo, velocidade, largura }
             : { lote: referencia.trim(), quantidade_plts: quantidadePlts, metragem }),
     };
     try {
@@ -344,6 +351,25 @@ export function CorrigirApontamento({ item, onClose, onSaved }: Props) {
               quantidade={quantidadeLiquido}
               onChange={setQuantidadeLiquido}
             />
+          )}
+          {setorEmKg(item.setor) && (
+            <div className="space-y-1">
+              <Label htmlFor="correcao-peso">Peso produzido (kg) *</Label>
+              <Input
+                id="correcao-peso"
+                inputMode="decimal"
+                autoComplete="off"
+                className="h-12 text-base"
+                value={pesoTexto}
+                onChange={(e) => setPesoTexto(e.target.value.replace(/[^\d.,]/g, ""))}
+                aria-invalid={pesoKg == null}
+              />
+              <p className={`text-xs ${pesoKg == null ? "text-amber-700" : "text-slate-500"}`}>
+                {pesoKg == null
+                  ? "Digite só o número, com vírgula para decimais e sem ponto de milhar."
+                  : `Peso para lançar no Protheus: ${formatarKg(pesoKg)}`}
+              </p>
+            </div>
           )}
           {item.setor === "fitas" && (
             <div className="grid gap-3 sm:grid-cols-3">

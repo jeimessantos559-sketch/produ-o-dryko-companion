@@ -66,6 +66,7 @@ export function contagemPorProduto(
       area: number;
       unidades: number;
       semiKg: number;
+      pesoKg: number;
     }
   >();
   for (const item of itens) {
@@ -79,6 +80,7 @@ export function contagemPorProduto(
       area: 0,
       unidades: 0,
       semiKg: 0,
+      pesoKg: 0,
     };
     total.plts += pltsFechados(item);
     total.rolos += Number(item.total_rolos ?? 0);
@@ -86,6 +88,7 @@ export function contagemPorProduto(
     total.area += Number(item.area_m2 ?? 0);
     total.unidades += Number(item.total_unidades ?? 0);
     total.semiKg += Number(item.semi_consumido_kg ?? 0);
+    total.pesoKg += Number(item.peso_kg ?? 0);
     mapa.set(item.produto_id, total);
   }
   return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));

@@ -75,6 +75,7 @@ export type Database = {
           lote: string | null
           metragem: number | null
           op: string | null
+          peso_kg: number | null
           picado_unidades: number | null
           produto_id: string
           produto_nome: string
@@ -112,6 +113,7 @@ export type Database = {
           lote?: string | null
           metragem?: number | null
           op?: string | null
+          peso_kg?: number | null
           picado_unidades?: number | null
           produto_id: string
           produto_nome: string
@@ -149,6 +151,7 @@ export type Database = {
           lote?: string | null
           metragem?: number | null
           op?: string | null
+          peso_kg?: number | null
           picado_unidades?: number | null
           produto_id?: string
           produto_nome?: string

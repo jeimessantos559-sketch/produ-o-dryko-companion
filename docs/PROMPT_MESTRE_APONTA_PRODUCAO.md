@@ -83,7 +83,9 @@ Setores cadastrados:
 7. Pós;
 8. Avulsos.
 
-Corte, Fitas e Mantas possuem regras de apontamento implementadas. Asfox, Misturadores, Líquidos, Pós e Avulsos permanecem preparados na arquitetura, mas com regras operacionais **aguardando definição**. Não copiar automaticamente campos ou fórmulas de outro setor.
+Corte, Fitas, Mantas, Líquidos, Asfox e Misturadores possuem regras de apontamento implementadas. Pós e Avulsos permanecem preparados na arquitetura, mas com regras operacionais **aguardando definição**. Não copiar automaticamente campos ou fórmulas de outro setor.
+
+**Misturadores:** cada apontamento informa OP, produto e o **peso total produzido em kg**, digitado pelo facilitador (até 3 casas decimais, sem conversão). O peso fica em `apontamentos.peso_kg` (não usa o semi de Líquidos/Asfox). Não tem PLT nem sequência. O lançamento no Protheus agrupa por **OP + produto** e soma o peso. Produtos iniciais: Compound Adesiva e Compound W-11 (marca COMPOUND).
 
 Os dados são isolados por setor. Usuários comuns visualizam e operam o setor atual; o administrador possui visão ampliada conforme as políticas do banco.
 
@@ -501,7 +503,7 @@ Antes de considerar uma nova implantação pronta:
 ## 26. Limites atuais e decisões que não devem ser inventadas
 
 - Integração automática de escrita no Protheus ainda não existe.
-- Regras de Asfox, Misturadores, Líquidos, Pós e Avulsos aguardam levantamento operacional.
+- Regras de Pós e Avulsos aguardam levantamento operacional. Misturadores ainda não tem programação diária nem meta em kg.
 - GitHub guarda código e estrutura do banco, não os registros vivos do Supabase.
 - Dados de Auth e arquivos de Storage exigem estratégia própria de backup/restauração.
 - Uma nova plataforma pode trocar a tecnologia de interface, mas deve preservar cálculos, permissões, auditoria, data operacional e agrupamentos.

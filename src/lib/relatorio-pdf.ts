@@ -48,6 +48,7 @@ type ProdutoResumo = {
   area: number;
   unidades: number;
   semiKg: number;
+  pesoKg: number;
 };
 
 function registro(valor: Json | undefined): ResumoRegistro {
@@ -130,6 +131,7 @@ function resumirProdutos(apontamentos: Json[]) {
       area: 0,
       unidades: 0,
       semiKg: 0,
+      pesoKg: 0,
     };
     atual.apontamentos += 1;
     atual.plts += numero(apontamento.quantidade_plts);
@@ -138,10 +140,12 @@ function resumirProdutos(apontamentos: Json[]) {
     atual.area += numero(apontamento.area_m2);
     atual.unidades += numero(apontamento["total_unidades"]);
     atual.semiKg += numero(apontamento["semi_consumido_kg"]);
+    atual.pesoKg += numero(apontamento["peso_kg"]);
     mapa.set(nome, atual);
   }
   return [...mapa.values()].sort(
-    (a, b) => b.plts - a.plts || b.area - a.area || a.nome.localeCompare(b.nome),
+    (a, b) =>
+      b.plts - a.plts || b.area - a.area || b.pesoKg - a.pesoKg || a.nome.localeCompare(b.nome),
   );
 }
 
@@ -152,6 +156,7 @@ export function linhasDoRelatorio(resumo: Json) {
   const setor = texto(raiz.setor).toLowerCase();
   const fitas = setor.includes("fita");
   const liquidos = semAcentos(setor).includes("liquid") || setor.includes("asfox");
+  const kg = setor.includes("mistur");
   const responsaveis = nomesResponsaveisRelatorio(resumo);
   return [
     `DRYKO - Relatorio de Producao`,
@@ -160,7 +165,9 @@ export function linhasDoRelatorio(resumo: Json) {
     `Apontado por: ${responsaveis.apontadores}`,
     `Lancado no Protheus por: ${responsaveis.lancadores}`,
     `Apontamentos: ${texto(totais.apontamentos)} | Pendentes: ${texto(totais.pendentes)} | Lancados: ${texto(totais.lancados)}`,
-    liquidos
+    kg
+      ? `Peso produzido: ${formatarNumero(numero(totais["pesoKg"]), 3)} kg`
+      : liquidos
       ? `PLTs: ${texto(totais.plts)} | Unidades: ${texto(totais["unidades"])} | Semi consumido: ${texto(totais["semiKg"])} kg`
       : fitas
         ? `Producao: ${texto(totais.area)} m2`
@@ -286,11 +293,16 @@ function desenharCabecalhoDetalhamento(
   y: number,
   fitas: boolean,
   liquidos = false,
+  kg = false,
 ) {
   comandos.push(comandoRetangulo(36, y - 10, 523, 28, "0.93 0.95 0.97", "0.84 0.85 0.88"));
   for (const coluna of colunasDetalhamento) {
     const titulo =
-      liquidos && coluna.titulo === "Rolos"
+      kg && (coluna.titulo === "PLTs" || coluna.titulo === "Rolos")
+        ? "-"
+        : kg && coluna.titulo === "Producao"
+          ? "Peso (kg)"
+          : liquidos && coluna.titulo === "Rolos"
         ? "Unidades"
         : liquidos && coluna.titulo === "Producao"
           ? "Semi (kg)"
@@ -308,6 +320,7 @@ function celulasDetalhamento(
   fitas: boolean,
   mantas: boolean,
   liquidos = false,
+  kg = false,
 ) {
   const apontamento = registro(item);
   const responsaveis = responsaveisDoApontamento(item);
@@ -319,7 +332,9 @@ function celulasDetalhamento(
         ? seqIni
         : `${seqIni}-${seqFim}`
       : String(indice + 1);
-  const producao = liquidos
+  const producao = kg
+    ? `${formatarNumero(numero(apontamento["peso_kg"]), 3)} kg`
+    : liquidos
     ? apontamento["embalagem_liquido"] === "unidade" &&
       apontamento["semi_kg_por_unidade"] == null &&
       numero(apontamento["semi_consumido_kg"]) === 0
@@ -335,7 +350,9 @@ function celulasDetalhamento(
     [{ texto: String(numero(apontamento.quantidade_plts) || "-") }],
     [
       {
-        texto: formatarNumero(numero(apontamento[liquidos ? "total_unidades" : "total_rolos"]), 0),
+        texto: kg
+          ? "-"
+          : formatarNumero(numero(apontamento[liquidos ? "total_unidades" : "total_rolos"]), 0),
       },
     ],
     [{ texto: producao }],
@@ -387,11 +404,12 @@ function alturaDetalhamento(
   fitas: boolean,
   mantas: boolean,
   liquidos = false,
+  kg = false,
 ) {
   return (
     16 +
     Math.max(
-      ...celulasDetalhamento(item, indice, fitas, mantas, liquidos).map((linhas) => linhas.length),
+      ...celulasDetalhamento(item, indice, fitas, mantas, liquidos, kg).map((linhas) => linhas.length),
     ) *
       11
   );
@@ -405,9 +423,10 @@ function desenharLinhaDetalhamento(
   fitas: boolean,
   mantas: boolean,
   liquidos = false,
+  kg = false,
 ) {
-  const celulas = celulasDetalhamento(item, indice, fitas, mantas, liquidos);
-  const altura = alturaDetalhamento(item, indice, fitas, mantas, liquidos);
+  const celulas = celulasDetalhamento(item, indice, fitas, mantas, liquidos, kg);
+  const altura = alturaDetalhamento(item, indice, fitas, mantas, liquidos, kg);
   const base = y - altura + 12;
   comandos.push(comandoRetangulo(36, base, 523, altura, "1 1 1", "0.84 0.85 0.88"));
   celulas.forEach((linhas, indiceColuna) => {
@@ -440,6 +459,7 @@ function montarPrimeiraPagina(resumo: Json) {
   const fitas = setorChave.includes("fita");
   const mantas = setorChave.includes("manta");
   const liquidos = semAcentos(setorChave).includes("liquid") || setorChave.includes("asfox");
+  const kg = setorChave.includes("mistur");
   const comandos: string[] = [];
 
   cabecalhoPagina(comandos, "RELATORIO DE PRODUCAO", "Fechamento operacional de turno");
@@ -473,7 +493,7 @@ function montarPrimeiraPagina(resumo: Json) {
 
   const cards: Array<readonly [string, string]> = [
     ["APONTAMENTOS", texto(totais.apontamentos)],
-    ["PLTs FECHADOS", fitas ? "-" : texto(totais.plts)],
+    ["PLTs FECHADOS", fitas || kg ? "-" : texto(totais.plts)],
     ["PENDENTES", texto(totais.pendentes)],
     ["LANCADOS", texto(totais.lancados)],
   ];
@@ -506,7 +526,9 @@ function montarPrimeiraPagina(resumo: Json) {
   comandos.push(comandoRetangulo(38, 543, 247, 53, "0.98 0.96 0.96", "0.91 0.80 0.81"));
   comandos.push(
     comandoTexto(
-      liquidos
+      kg
+        ? "PESO PRODUZIDO"
+        : liquidos
         ? "SEMI CONSUMIDO"
         : fitas
           ? "PRODUCAO TOTAL"
@@ -520,7 +542,9 @@ function montarPrimeiraPagina(resumo: Json) {
       "0.55 0.24 0.25",
     ),
   );
-  const producao = liquidos
+  const producao = kg
+    ? `${formatarNumero(numero(totais["pesoKg"]), 3)} kg`
+    : liquidos
     ? `${formatarNumero(numero(totais["semiKg"]), 3)} kg`
     : fitas
       ? `${formatarNumero(numero(totais.area))} m2`
@@ -530,7 +554,7 @@ function montarPrimeiraPagina(resumo: Json) {
   comandos.push(comandoRetangulo(300, 543, 245, 53, "0.97 0.98 0.99", "0.86 0.87 0.89"));
   comandos.push(
     comandoTexto(
-      liquidos ? "UNIDADES PRODUZIDAS" : "ROLOS PRODUZIDOS",
+      kg ? "OPS APONTADAS" : liquidos ? "UNIDADES PRODUZIDAS" : "ROLOS PRODUZIDOS",
       312,
       576,
       7.5,
@@ -540,7 +564,9 @@ function montarPrimeiraPagina(resumo: Json) {
   );
   comandos.push(
     comandoTexto(
-      formatarNumero(numero(totais[liquidos ? "unidades" : "rolos"]), 0),
+      kg
+        ? String(opsDistintas(apontamentos))
+        : formatarNumero(numero(totais[liquidos ? "unidades" : "rolos"]), 0),
       312,
       554,
       18,
@@ -555,11 +581,15 @@ function montarPrimeiraPagina(resumo: Json) {
   y -= 18;
   comandos.push(comandoTexto("Produto", 44, y, 7.5, true, "0.42 0.44 0.49"));
   comandos.push(comandoTexto("Apont.", 275, y, 7.5, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto("PLTs", 332, y, 7.5, true, "0.42 0.44 0.49"));
-  comandos.push(comandoTexto(liquidos ? "Unidades" : "Rolos", 382, y, 7.5, true, "0.42 0.44 0.49"));
+  if (!kg) {
+    comandos.push(comandoTexto("PLTs", 332, y, 7.5, true, "0.42 0.44 0.49"));
+    comandos.push(
+      comandoTexto(liquidos ? "Unidades" : "Rolos", 382, y, 7.5, true, "0.42 0.44 0.49"),
+    );
+  }
   comandos.push(
     comandoTexto(
-      liquidos ? "Semi (kg)" : fitas ? "Area" : "Producao",
+      kg ? "Peso (kg)" : liquidos ? "Semi (kg)" : fitas ? "Area" : "Producao",
       455,
       y,
       7.5,
@@ -575,11 +605,20 @@ function montarPrimeiraPagina(resumo: Json) {
     comandos.push(comandoRetangulo(38, y - 17, 519, 22, fundo));
     comandos.push(comandoTexto(limitar(produto.nome, 34), 44, y - 7, 8.5, true));
     comandos.push(comandoTexto(String(produto.apontamentos), 286, y - 7, 8.5));
-    comandos.push(comandoTexto(String(produto.plts), 338, y - 7, 8.5));
-    comandos.push(
-      comandoTexto(formatarNumero(liquidos ? produto.unidades : produto.rolos, 0), 389, y - 7, 8.5),
-    );
-    const producaoProduto = liquidos
+    if (!kg) {
+      comandos.push(comandoTexto(String(produto.plts), 338, y - 7, 8.5));
+      comandos.push(
+        comandoTexto(
+          formatarNumero(liquidos ? produto.unidades : produto.rolos, 0),
+          389,
+          y - 7,
+          8.5,
+        ),
+      );
+    }
+    const producaoProduto = kg
+      ? `${formatarNumero(produto.pesoKg, 3)} kg`
+      : liquidos
       ? produto.semiKg > 0
         ? `${formatarNumero(produto.semiKg, 3)} kg`
         : "-"
@@ -636,16 +675,16 @@ function montarPrimeiraPagina(resumo: Json) {
   if (
     opsConsumidas === opsFinalizadas.length &&
     primeiroApontamento &&
-    y - 56 - alturaDetalhamento(primeiroApontamento, 0, fitas, mantas, liquidos) >= 66
+    y - 56 - alturaDetalhamento(primeiroApontamento, 0, fitas, mantas, liquidos, kg) >= 66
   ) {
     y -= 8;
     comandos.push(comandoTexto("DETALHAMENTO DO TURNO", 38, y, 10, true));
     y -= 20;
-    desenharCabecalhoDetalhamento(comandos, y, fitas, liquidos);
+    desenharCabecalhoDetalhamento(comandos, y, fitas, liquidos, kg);
     y -= 22;
     for (const item of apontamentos) {
-      if (y - alturaDetalhamento(item, consumidos, fitas, mantas, liquidos) < 66) break;
-      y -= desenharLinhaDetalhamento(comandos, item, consumidos, y, fitas, mantas, liquidos);
+      if (y - alturaDetalhamento(item, consumidos, fitas, mantas, liquidos, kg) < 66) break;
+      y -= desenharLinhaDetalhamento(comandos, item, consumidos, y, fitas, mantas, liquidos, kg);
       consumidos += 1;
     }
     if (consumidos < apontamentos.length && y > 55) {
@@ -663,6 +702,14 @@ function montarPrimeiraPagina(resumo: Json) {
   }
 
   return { comandos, consumidos, opsConsumidas };
+}
+
+function opsDistintas(apontamentos: Json[]) {
+  return new Set(
+    apontamentos
+      .map((item) => texto(registro(item).op).trim().toUpperCase())
+      .filter((op) => op !== "-"),
+  ).size;
 }
 
 function desenharOpFinalizada(comandos: string[], op: OpFinalizada, y: number) {
@@ -706,6 +753,7 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
   const fitas = setor.includes("fita");
   const mantas = setor.includes("manta");
   const liquidos = semAcentos(setor).includes("liquid") || setor.includes("asfox");
+  const kg = setor.includes("mistur");
   const paginas: string[][] = [];
 
   let inicio = inicioDetalhamento;
@@ -716,15 +764,15 @@ function montarPaginasDetalhamento(resumo: Json, inicioDetalhamento = 0) {
       "DETALHAMENTO DO TURNO",
       `${texto(raiz.setor)} | ${turnoLegivel(texto(raiz.turno))} | ${formatarData(texto(raiz.data))}`,
     );
-    desenharCabecalhoDetalhamento(comandos, 730, fitas, liquidos);
+    desenharCabecalhoDetalhamento(comandos, 730, fitas, liquidos, kg);
 
     let y = 708;
     const inicioPagina = inicio;
     while (inicio < apontamentos.length) {
       const item = apontamentos[inicio];
-      if (item === undefined || y - alturaDetalhamento(item, inicio, fitas, mantas, liquidos) < 66)
+      if (item === undefined || y - alturaDetalhamento(item, inicio, fitas, mantas, liquidos, kg) < 66)
         break;
-      y -= desenharLinhaDetalhamento(comandos, item, inicio, y, fitas, mantas, liquidos);
+      y -= desenharLinhaDetalhamento(comandos, item, inicio, y, fitas, mantas, liquidos, kg);
       inicio += 1;
     }
     if (inicio === inicioPagina)

@@ -14,6 +14,7 @@ import { chaveAgrupamentoProtheus } from "@/lib/agrupamento-protheus";
 import { useAuth, type SetorCodigo } from "@/lib/auth";
 import { dataHoraProducaoFormatada, dataOperacional } from "@/lib/producao";
 import { setorComConsumoSemi } from "@/lib/liquidos";
+import { formatarKg, setorEmKg } from "@/lib/misturadores";
 
 export const Route = createFileRoute("/_authenticated/controle-apontamentos")({
   component: ControleApontamentos,
@@ -31,7 +32,7 @@ type Responsavel = {
   em?: string | null;
 };
 
-const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas", "asfox", "liquidos"];
+const SETORES: SetorCodigo[] = ["corte", "fitas", "mantas", "asfox", "misturadores", "liquidos"];
 
 type GrupoLancamento = {
   chave: string;
@@ -44,6 +45,7 @@ type GrupoLancamento = {
   area: number;
   unidades: number;
   semiKg: number;
+  pesoKg: number;
   apontadores: Responsavel[];
   lancadores: Responsavel[];
 };
@@ -344,7 +346,7 @@ function ControleApontamentos() {
                             </p>
                           )}
                           <p
-                            className={`mt-2 font-extrabold ${setor === "mantas" || setor === "fitas" ? "text-xl text-primary" : "text-base text-foreground"}`}
+                            className={`mt-2 font-extrabold ${setor === "mantas" || setor === "fitas" || setorEmKg(setor) ? "text-xl text-primary" : "text-base text-foreground"}`}
                           >
                             {resumoPrincipal(grupo, setor)}
                           </p>
@@ -410,6 +412,7 @@ function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo) {
         area: Number(item.area_m2 ?? 0),
         unidades: Number(item.total_unidades ?? 0),
         semiKg: Number(item.semi_consumido_kg ?? 0),
+        pesoKg: Number(item.peso_kg ?? 0),
         apontadores: [apontador],
         lancadores: lancador ? [lancador] : [],
       });
@@ -424,6 +427,7 @@ function agruparParaLancamento(itens: Apontamento[], setor: SetorCodigo) {
     atual.area += Number(item.area_m2 ?? 0);
     atual.unidades += Number(item.total_unidades ?? 0);
     atual.semiKg += Number(item.semi_consumido_kg ?? 0);
+    atual.pesoKg += Number(item.peso_kg ?? 0);
     if (!atual.apontadores.some((responsavel) => responsavel.id === apontador.id))
       atual.apontadores.push(apontador);
     if (lancador && !atual.lancadores.some((responsavel) => responsavel.id === lancador.id))
@@ -447,6 +451,7 @@ function tituloGrupo(grupo: GrupoLancamento, setor: SetorCodigo) {
 }
 
 function resumoPrincipal(grupo: GrupoLancamento, setor: SetorCodigo) {
+  if (setorEmKg(setor)) return formatarKg(grupo.pesoKg);
   if (setorComConsumoSemi(setor)) return `${fmt(grupo.unidades)} unidades`;
   if (setor === "fitas") return `${fmt(grupo.area)} m²`;
   if (setor === "mantas") return `${fmt(grupo.metragem)} m`;
@@ -454,6 +459,7 @@ function resumoPrincipal(grupo: GrupoLancamento, setor: SetorCodigo) {
 }
 
 function resumoApoio(grupo: GrupoLancamento, setor: SetorCodigo) {
+  if (setorEmKg(setor)) return `${grupo.quantidadeRegistros} apontamento(s) agrupado(s)`;
   if (setorComConsumoSemi(setor))
     return `${grupo.plts > 0 ? `${grupo.plts} PLTs · ` : ""}${grupo.semiKg > 0 ? `${fmt(grupo.semiKg)} kg de semi · ` : ""}${grupo.quantidadeRegistros} apontamento(s)`;
   if (setor === "fitas") return `${grupo.quantidadeRegistros} apontamento(s) agrupado(s)`;
