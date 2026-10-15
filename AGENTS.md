@@ -20,3 +20,4 @@
 - Ocorrências abertas (hora_inicio sem hora_fim) são finalizadas/transferidas só pelas RPCs finalizar_ocorrencia/transferir_ocorrencia (lock + auditoria em ocorrencia_transferencias); regras puras espelhadas em src/lib/ocorrencias-operacionais.ts — evita corrida entre aparelhos e duplicação.
 - Repeated client reads go through src/lib/cache-consultas.ts (short TTL + in-flight dedupe, explicit invalidation after mutations) — avoids duplicate fetches without hiding fresh operational data.
 - Misturadores aponta o peso total em kg na coluna própria apontamentos.peso_kg (migração 0031; OP + produto no Protheus) — não reaproveitar semi_consumido_kg, que é consumo de Líquidos/Asfox.
+- Two Supabase databases: the Vercel production app uses project tmxfkxwbekmseglmsvph (Vercel env vars); the Lovable preview and the repo .env use bgzkfxixywoxsfxdlhqt. Apply every migration to both — production is tmxf — or the Vercel app breaks (e.g. selects of new columns fail).
