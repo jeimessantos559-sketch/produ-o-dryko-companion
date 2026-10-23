@@ -1,0 +1,36 @@
+name: Manter banco ativo
+
+# O plano gratuito do Supabase pausa o projeto após 7 dias sem uso, e o app
+# fica sem dados. Uma consulta leve por dia mantém o banco ligado.
+# Usa só a URL e a chave publicável do .env (valores públicos, sem segredos).
+
+on:
+  schedule:
+    - cron: "17 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consultar:
+    name: Consulta diária ao banco
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consultar o banco
+        shell: bash
+        run: |
+          URL=$(grep '^VITE_SUPABASE_URL=' .env | cut -d'"' -f2)
+          CHAVE=$(grep '^VITE_SUPABASE_PUBLISHABLE_KEY=' .env | cut -d'"' -f2)
+          test -n "$URL" && test -n "$CHAVE"
+          for tentativa in 1 2 3; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "apikey: $CHAVE" "$URL/rest/v1/setores?select=codigo&limit=1")
+            echo "Tentativa $tentativa: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then exit 0; fi
+            sleep 30
+          done
+          echo "::error::O banco não respondeu. Confira no painel do Supabase se o projeto está pausado."
+          exit 1

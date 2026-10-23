@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { gerarPdfRelatorio } from "@/lib/relatorio-pdf";
 import { enviarComNovasTentativas } from "@/lib/reenvio-email";
-import { formatarKg } from "@/lib/misturadores";
+import { linhasDeProducaoEmail } from "@/lib/resumo-email";
 
 const entrada = z.object({
   relatorioId: z.string().uuid(),
@@ -95,13 +95,6 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
         throw new Error("O PDF ultrapassa 20 MB e não pode ser enviado por e-mail.");
       const raiz = relatorio.resumo;
       const totais = campo(raiz, "totais");
-      const fitas = relatorio.setor === "fitas";
-      const kg = relatorio.setor === "misturadores";
-      const producao = kg
-        ? formatarKg(Number(campo(totais, "pesoKg") ?? 0))
-        : fitas
-        ? `${txt(campo(totais, "area"))} m²`
-        : `${txt(campo(totais, "metragem"))} ${relatorio.setor === "mantas" ? "m" : "m²"}`;
       const subject = `Relatório de Produção DRYKO - ${setor} - ${dataFormatada} - ${turnoFormatado}`;
       const body = [
         "Relatório de Produção DRYKO",
@@ -112,8 +105,7 @@ export const enviarRelatorio = createServerFn({ method: "POST" })
         `Responsável pelo fechamento: ${txt(campo(raiz, "responsavel"))}`,
         "",
         `Total de apontamentos: ${txt(campo(totais, "apontamentos"))}`,
-        ...(kg ? [] : [`PLTs: ${fitas ? "—" : txt(campo(totais, "plts"))}`]),
-        `${kg ? "Peso produzido" : fitas ? "Área" : "Metragem"}: ${producao}`,
+        ...linhasDeProducaoEmail(relatorio.setor, totais),
         `Pendentes: ${txt(campo(totais, "pendentes"))}`,
         `Lançados: ${txt(campo(totais, "lancados"))}`,
         "",

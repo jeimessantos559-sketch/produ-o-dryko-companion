@@ -61,7 +61,7 @@ jobs:
         with:
           name: aponta-dryko-backup-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/aponta-dryko-backup/aponta-dryko.tar.gz.enc
-            ${{ runner.temp }}/aponta-dryko-backup/aponta-dryko.tar.gz.enc.sha256
+            /tmp/aponta-dryko-backup/aponta-dryko.tar.gz.enc
+            /tmp/aponta-dryko-backup/aponta-dryko.tar.gz.enc.sha256
           retention-days: 14
           if-no-files-found: error
